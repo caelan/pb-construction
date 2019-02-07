@@ -12,5 +12,5 @@ $ ./pddlstreamFastDownward/build.py
 
 ## Examples
 
-*
-*
+* `$ python -m extrusion.run`
+* `$ python -m picknplace.run`
