@@ -1,11 +1,14 @@
 from __future__ import print_function
 
+import sys
+sys.path.append('pddlstream/')
+
 import cProfile
 import pstats
 import numpy as np
 import argparse
 
-from examples.pybullet.construction.extrusion.utils import create_elements, \
+from extrusion.utils import create_elements, \
     load_extrusion, TOOL_NAME, check_trajectory_collision, get_grasp_pose, load_world, \
     get_node_neighbors, sample_direction, draw_element, get_disabled_collisions, get_custom_limits
 from examples.pybullet.utils.pybullet_tools.utils import connect, disconnect, wait_for_interrupt, \

@@ -1,5 +1,8 @@
 from __future__ import print_function
 
+import sys
+sys.path.append('pddlstream/')
+
 import argparse
 import cProfile
 import json
@@ -11,8 +14,8 @@ from collections import namedtuple
 
 import numpy as np
 
-from examples.pybullet.construction.extrusion.run import MotionTrajectory
-from examples.pybullet.construction.extrusion.utils import get_disabled_collisions, parse_point, \
+from extrusion.run import MotionTrajectory
+from extrusion.utils import get_disabled_collisions, parse_point, \
     parse_transform, get_custom_limits
 from examples.pybullet.utils.pybullet_tools.ikfast.kuka_kr6r900.ik import sample_tool_ik
 from examples.pybullet.utils.pybullet_tools.utils import get_movable_joints, link_from_name, set_pose, \
