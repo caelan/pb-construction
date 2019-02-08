@@ -14,11 +14,13 @@ from extrusion.utils import create_elements, \
 from examples.pybullet.utils.pybullet_tools.utils import connect, disconnect, wait_for_interrupt, \
     get_movable_joints, get_sample_fn, set_joint_positions, link_from_name, add_line, inverse_kinematics, \
     get_link_pose, multiply, wait_for_duration, add_text, angle_between, plan_joint_motion, \
-    get_pose, invert, point_from_pose, get_distance, get_joint_positions, wrap_angle, get_collision_fn
+    get_pose, invert, point_from_pose, get_distance, get_joint_positions, wrap_angle, get_collision_fn, LockRenderer
+
+from pddlstream.algorithms.incremental import solve_incremental
 from pddlstream.algorithms.focused import solve_focused
 from pddlstream.language.constants import PDDLProblem, And, print_solution
 from pddlstream.language.generator import from_test
-from pddlstream.language.stream import StreamInfo, PartialInputs, NEGATIVE_SUFFIX
+from pddlstream.language.stream import StreamInfo, PartialInputs, NEGATIVE_SUFFIX, WildOutput
 from pddlstream.utils import read, get_file_path, user_input, irange, neighbors_from_orders
 
 SUPPORT_THETA = np.math.radians(10)  # Support polygon
@@ -168,7 +170,6 @@ def plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
     pr.enable()
     pddlstream_problem = get_pddlstream(robot, obstacles, node_points, element_bodies,
                                         ground_nodes, trajectories=trajectories, collisions=collisions)
-    #solution = solve_exhaustive(pddlstream_problem, planner='goal-lazy', max_time=300, debug=True)
     #solution = solve_incremental(pddlstream_problem, planner='add-random-lazy', max_time=600,
     #                             max_planner_time=300, debug=True)
     stream_info = {
@@ -177,7 +178,7 @@ def plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
     #planner = 'ff-ehc'
     planner = 'ff-lazy-tiebreak' # Branching factor becomes large. Rely on preferred. Preferred should also be cheaper
     solution = solve_focused(pddlstream_problem, stream_info=stream_info, max_time=max_time,
-                             effort_weight=1, unit_efforts=True, use_skeleton=False, unit_costs=True,
+                             effort_weight=1, unit_efforts=True, max_skeletons=None, unit_costs=True,
                              planner=planner, max_planner_time=15, debug=debug, reorder=False)
     # Reachability heuristics good for detecting dead-ends
     # Infeasibility from the start means disconnected or collision
@@ -344,7 +345,7 @@ def get_wild_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_
             facts = [('Collision', t, e2) for e2 in t.colliding] if collisions else []
             #outputs = []
             #facts.append(('PrintAction', node1, element, t))
-            yield outputs, facts
+            yield WildOutput(outputs, facts)
     return wild_gen_fn
 
 def test_stiffness(fluents=[]):
@@ -529,20 +530,21 @@ def main(precompute=False):
     #debug_elements(robot, node_points, node_order, elements)
     element_bodies = dict(zip(elements, create_elements(node_points, elements)))
 
-    if precompute:
-        pr = cProfile.Profile()
-        pr.enable()
-        trajectories = sample_trajectories(robot, obstacles, node_points, element_bodies, ground_nodes)
-        pr.disable()
-        pstats.Stats(pr).sort_stats('tottime').print_stats(10)
-        user_input('Continue?')
-    else:
-        trajectories = []
+    with LockRenderer():
+        if precompute:
+            pr = cProfile.Profile()
+            pr.enable()
+            trajectories = sample_trajectories(robot, obstacles, node_points, element_bodies, ground_nodes)
+            pr.disable()
+            pstats.Stats(pr).sort_stats('tottime').print_stats(10)
+            user_input('Continue?')
+        else:
+            trajectories = []
+        plan = plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
+                             trajectories=trajectories, collisions=not args.cfree)
+        if args.motions:
+            plan = compute_motions(robot, obstacles, element_bodies, initial_conf, plan)
 
-    plan = plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
-                         trajectories=trajectories, collisions=not args.cfree)
-    if args.motions:
-        plan = compute_motions(robot, obstacles, element_bodies, initial_conf, plan)
     disconnect()
     display_trajectories(ground_nodes, plan)
     # TODO: collisions at the ends of elements?

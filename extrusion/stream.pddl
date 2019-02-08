@@ -4,8 +4,7 @@
   ;  :domain (and (Traj ?t) (Element ?e))
   ;  :certified (CFree ?t ?e)
   ;)
-  ; (:stream sample-print
-  (:wild-stream sample-print
+  (:stream sample-print
     :inputs (?n ?e)
     :domain (StartNode ?n ?e)
     ; :fluents (Printed)
