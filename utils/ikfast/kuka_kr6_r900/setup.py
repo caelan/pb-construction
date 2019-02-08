@@ -10,14 +10,14 @@ from distutils.core import setup, Extension
 # see: https://docs.python.org/3/extending/building.html
 
 # lib name template: 'ikfast_<robot name>'
-IKFAST = 'ikfast_kuka_kr6r900'
+IKFAST = 'ikfast_kuka_kr6_r900'
 
 ikfast_module = Extension(IKFAST,
                           sources=['ikfast0x1000004a.Transform6D.0_1_2_3_4_5.cpp'])
 
 setup(name=IKFAST,
       version='1.0',
-      description="ikfast module for KUKA kr6r900.",
+      description="ikfast module for KUKA kr6 r900.",
       ext_modules=[ikfast_module])
 
 build_lib_path = None
@@ -31,7 +31,7 @@ copy_tree(build_lib_path, os.getcwd())
 shutil.rmtree(os.path.join(os.getcwd(), 'build'))
 
 try:
-    import ikfast_kuka_kr6r900
+    import ikfast_kuka_kr6_r900
     print('\nikfast module {} imported successful'.format(IKFAST))
 except ImportError as e:
     print('\nikfast module {} imported failed'.format(IKFAST))

@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 from __future__ import print_function
 
 import sys
@@ -8,7 +9,7 @@ import pstats
 import numpy as np
 import argparse
 
-from extrusion.utils import create_elements, \
+from extrusion.extrusion_utils import create_elements, \
     load_extrusion, TOOL_NAME, check_trajectory_collision, get_grasp_pose, load_world, \
     get_node_neighbors, sample_direction, draw_element, get_disabled_collisions, get_custom_limits
 from examples.pybullet.utils.pybullet_tools.utils import connect, disconnect, wait_for_interrupt, \
@@ -20,6 +21,15 @@ from pddlstream.language.constants import PDDLProblem, And, print_solution
 from pddlstream.language.generator import from_test
 from pddlstream.language.stream import StreamInfo, PartialInputs, NEGATIVE_SUFFIX
 from pddlstream.utils import read, get_file_path, user_input, irange, neighbors_from_orders
+
+try:
+    from utils.ikfast.kuka_kr6_r900.ik import sample_tool_ik
+except ImportError as e:
+    print('\x1b[6;30;43m' + '{}, Using pybullet ik fn instead'.format(e) + '\x1b[0m')
+    USE_IKFAST = False
+    input("Press Enter to continue...")
+else:
+    USE_IKFAST = True
 
 SUPPORT_THETA = np.math.radians(10)  # Support polygon
 SELF_COLLISIONS = True
@@ -194,24 +204,30 @@ def plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
 def optimize_angle(robot, link, element_pose, translation, direction, reverse, initial_angles,
                    collision_fn, max_error=1e-2):
     movable_joints = get_movable_joints(robot)
-    initial_conf = get_joint_positions(robot, movable_joints)
     best_error, best_angle, best_conf = max_error, None, None
+    initial_conf = get_joint_positions(robot, movable_joints)
     for i, angle in enumerate(initial_angles):
         grasp_pose = get_grasp_pose(translation, direction, angle, reverse)
+        # Pose_{world,EE} = Pose_{world,element} * Pose_{element,EE}
+        #                 = Pose_{world,element} * (Pose_{EE,element})^{-1}
         target_pose = multiply(element_pose, invert(grasp_pose))
-        conf = inverse_kinematics(robot, link, target_pose)
-        # if conf is None:
-        #    continue
+        set_joint_positions(robot, movable_joints, initial_conf)
+
+        if ~USE_IKFAST:
+            # note that the conf get assigned inside this ik fn right away!
+            conf = inverse_kinematics(robot, link, target_pose)
+        else:
+            conf = sample_tool_ik(robot, target_pose, initial_conf)
+        if conf is None:
+            conf = get_joint_positions(robot, movable_joints)
         #if pairwise_collision(robot, robot):
-        conf = get_joint_positions(robot, movable_joints)
+
         if not collision_fn(conf):
             link_pose = get_link_pose(robot, link)
             error = get_distance(point_from_pose(target_pose), point_from_pose(link_pose))
             if error < best_error:  # TODO: error a function of direction as well
                 best_error, best_angle, best_conf = error, angle, conf
             # wait_for_interrupt()
-        if i != len(initial_angles)-1:
-            set_joint_positions(robot, movable_joints, initial_conf)
     #print(best_error, translation, direction, best_angle)
     if best_conf is not None:
         set_joint_positions(robot, movable_joints, best_conf)
@@ -220,6 +236,17 @@ def optimize_angle(robot, link, element_pose, translation, direction, reverse, i
 
 
 def compute_direction_path(robot, length, reverse, element_body, direction, collision_fn):
+    """
+    :param robot:
+    :param length: element's length
+    :param reverse: True if element end id tuple needs to be reversed
+    :param element_body: the considered element's pybullet body
+    :param direction: a sampled Pose (v \in unit sphere)
+    :param collision_fn: collision checker (pybullet_tools.utils.get_collision_fn)
+    note that all the static objs + elements in the support set of the considered element
+    are accounted in the collision fn
+    :return: feasible PrintTrajectory if found, None otherwise
+    """
     step_size = 0.0025 # 0.005
     #angle_step_size = np.pi / 128
     angle_step_size = np.math.radians(0.25)
@@ -233,8 +260,11 @@ def compute_direction_path(robot, length, reverse, element_body, direction, coll
     #initial_angles = [wrap_angle(angle) for angle in np.linspace(0, 2*np.pi, num_initial, endpoint=False)]
     initial_angles = [wrap_angle(angle) for angle in np.random.uniform(0, 2*np.pi, num_initial)]
     movable_joints = get_movable_joints(robot)
-    sample_fn = get_sample_fn(robot, movable_joints)
-    set_joint_positions(robot, movable_joints, sample_fn())
+
+    if ~USE_IKFAST:
+        # randomly sample and set joint conf for the pybullet ik fn
+        sample_fn = get_sample_fn(robot, movable_joints)
+        set_joint_positions(robot, movable_joints, sample_fn())
     link = link_from_name(robot, TOOL_NAME)
     element_pose = get_pose(element_body)
     current_angle, current_conf = optimize_angle(robot, link, element_pose,

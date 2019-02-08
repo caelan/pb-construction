@@ -10045,9 +10045,9 @@ static PyMethodDef ikfast_methods[] =
 
 #if PY_MAJOR_VERSION >= 3
 
-static struct PyModuleDef ikfast_kuka_kr6r900_module = {
+static struct PyModuleDef ikfast_kuka_kr6_r900_module = {
     PyModuleDef_HEAD_INIT,
-    "ikfast_kuka_kr6r900",   /* name of module */
+    "ikfast_kuka_kr6_r900",   /* name of module */
     NULL, /* module documentation, may be NULL */
     -1,       /* size of per-interpreter state of the module,
                  or -1 if the module keeps state in global variables. */
@@ -10057,19 +10057,19 @@ static struct PyModuleDef ikfast_kuka_kr6r900_module = {
 #define INITERROR return NULL
 
 PyMODINIT_FUNC
-PyInit_ikfast_kuka_kr6r900(void)
+PyInit_ikfast_kuka_kr6_r900(void)
 
 #else // PY_MAJOR_VERSION < 3
 #define INITERROR return
 
 PyMODINIT_FUNC
-initikfast_kuka_kr6r900(void)
+initikfast_kuka_kr6_r900(void)
 #endif
 {
 #if PY_MAJOR_VERSION >= 3
-    PyObject *module = PyModule_Create(&ikfast_kuka_kr6r900_module);
+    PyObject *module = PyModule_Create(&ikfast_kuka_kr6_r900_module);
 #else
-    PyObject *module = Py_InitModule("ikfast_kuka_kr6r900", ikfast_methods);
+    PyObject *module = Py_InitModule("ikfast_kuka_kr6_r900", ikfast_methods);
 #endif
 
 if (module == NULL)

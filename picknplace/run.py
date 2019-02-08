@@ -15,7 +15,7 @@ from collections import namedtuple
 import numpy as np
 
 from extrusion.run import MotionTrajectory
-from extrusion.utils import get_disabled_collisions, parse_point, \
+from extrusion.extrusion_utils import get_disabled_collisions, parse_point, \
     parse_transform, get_custom_limits
 from examples.pybullet.utils.pybullet_tools.utils import get_movable_joints, link_from_name, set_pose, \
     multiply, invert, inverse_kinematics, plan_direct_joint_motion, Attachment, set_joint_positions, plan_joint_motion, \
@@ -27,13 +27,15 @@ from pddlstream.algorithms.focused import solve_focused
 from pddlstream.language.constants import And, print_solution
 from pddlstream.language.generator import from_gen_fn, from_fn
 from pddlstream.utils import read, get_file_path
+
 try:
-    from utils.ikfast.kuka_kr6r900.ik import sample_tool_ik
+    from utils.ikfast.kuka_kr6_r900.ik import sample_tool_ik
 except ImportError as e:
-    print('Using pybullet ik fn instead, {}'.format(e))
-    IK_FAST = False
+    print('\x1b[6;30;43m' + '{}, Using pybullet ik fn instead'.format(e) + '\x1b[0m')
+    USE_IKFAST = False
+    input("Press Enter to continue...")
 else:
-    IK_FAST = True
+    USE_IKFAST = True
 
 #PICKNPLACE_DIRECTORY = 'picknplace/'
 PICKNPLACE_DIRECTORY = ''
@@ -184,7 +186,7 @@ def get_ik_gen_fn(robot, brick_from_index, obstacle_from_name, max_attempts=25):
         approach_pose = multiply(attach_pose, (approach_vector, unit_quat()))
         # approach_pose = multiply(pose.value, invert(grasp.approach))
         for _ in range(max_attempts):
-            if IK_FAST:
+            if USE_IKFAST:
                 attach_conf = sample_tool_ik(robot, attach_pose)
             else:
                 set_joint_positions(robot, movable_joints, sample_fn())  # Random seed
@@ -192,7 +194,7 @@ def get_ik_gen_fn(robot, brick_from_index, obstacle_from_name, max_attempts=25):
             if (attach_conf is None) or collision_fn(attach_conf):
                 continue
             set_joint_positions(robot, movable_joints, attach_conf)
-            if IK_FAST:
+            if USE_IKFAST:
                 approach_conf = sample_tool_ik(robot, approach_pose, nearby_conf=attach_conf)
             else:
                 approach_conf = inverse_kinematics(robot, tool_link, approach_pose)
