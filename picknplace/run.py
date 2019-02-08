@@ -22,7 +22,7 @@ from examples.pybullet.utils.pybullet_tools.utils import get_movable_joints, lin
     get_configuration, wait_for_interrupt, point_from_pose, HideOutput, load_pybullet, draw_pose, unit_quat, create_obj, \
     add_body_name, get_pose, pose_from_tform, connect, WorldSaver, get_sample_fn, \
     wait_for_duration, enable_gravity, enable_real_time, trajectory_controller, simulate_controller, \
-    add_fixed_constraint, remove_fixed_constraint, Pose, Euler, get_collision_fn
+    add_fixed_constraint, remove_fixed_constraint, Pose, Euler, get_collision_fn, LockRenderer
 from pddlstream.algorithms.focused import solve_focused
 from pddlstream.language.constants import And, print_solution
 from pddlstream.language.generator import from_gen_fn, from_fn
@@ -407,7 +407,8 @@ def main():
     with WorldSaver():
         pddlstream_problem = get_pddlstream(robot, brick_from_index, obstacle_from_name,
                                             collisions=not args.cfree, teleport=args.teleport)
-        solution = solve_focused(pddlstream_problem, planner='ff-wastar1', max_time=30)
+        with LockRenderer():
+            solution = solve_focused(pddlstream_problem, planner='ff-wastar1', max_time=30)
     pr.disable()
     pstats.Stats(pr).sort_stats('cumtime').print_stats(10)
     print_solution(solution)
