@@ -1,7 +1,8 @@
 import random
 
-from ..utils import get_ik_limits, compute_forward_kinematics, compute_inverse_kinematics, select_solution
-from ...utils import multiply, get_link_pose, \
+from pddlstream.examples.pybullet.utils.pybullet_tools.ikfast.utils import get_ik_limits, compute_forward_kinematics, \
+    compute_inverse_kinematics, select_solution
+from pddlstream.examples.pybullet.utils.pybullet_tools.utils import multiply, get_link_pose, \
     link_from_name, get_joint_positions, invert, violates_limits, joint_from_name, joints_from_names
 
 BASE_FRAME = 'linear_axis_base_link'
