@@ -1,10 +1,10 @@
 import math
 import numpy as np
 
-from pddlstream.examples.pybullet.utils.pybullet_tools.pr2_utils import get_top_grasps, get_side_grasps
-from pddlstream.examples.pybullet.utils.pybullet_tools.utils import link_from_name, get_body_name, GraspInfo, Pose, \
+from examples.pybullet.utils.pybullet_tools.pr2_utils import get_top_grasps, get_side_grasps
+from examples.pybullet.utils.pybullet_tools.utils import link_from_name, get_body_name, GraspInfo, Pose, \
     INF, Point, approximate_as_prism, multiply, point_from_pose, unit_pose
-from pddlstream.examples.pybullet.utils.pybullet_tools.kuka_primitives import BodyGrasp
+from examples.pybullet.utils.pybullet_tools.kuka_primitives import BodyGrasp
 
 GRASP_LENGTH = 0.
 MAX_GRASP_WIDTH = np.inf
@@ -25,6 +25,7 @@ GRASP_INFO = {
 TOOL_FRAMES = {
     'abb_irb6600_track': 'eef_tcp_frame',
 }
+
 
 def get_bottom_grasps(body, under=False, tool_pose=Pose(), body_pose=unit_pose(),
                    max_width=MAX_GRASP_WIDTH, grasp_length=GRASP_LENGTH):
@@ -47,9 +48,11 @@ def get_bottom_grasps(body, under=False, tool_pose=Pose(), body_pose=unit_pose()
 
     return grasps
 
-def get_grasp_gen(robot, grasp_name):
+
+def get_grasp_gen(robot, grasp_name, tool_frame_name):
     grasp_info = GRASP_INFO[grasp_name]
-    end_effector_link = link_from_name(robot, TOOL_FRAMES[get_body_name(robot)])
+    end_effector_link = link_from_name(robot, tool_frame_name)
+
     def gen(body):
         grasp_poses = grasp_info.get_grasps(body)
         for grasp_pose in grasp_poses:

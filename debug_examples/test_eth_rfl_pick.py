@@ -3,27 +3,26 @@
 from __future__ import print_function
 
 import os
-from pybullet_tools.kuka_primitives import BodyPose, BodyConf, Command, \
-    get_free_motion_gen, get_holding_motion_gen, BodyPath, Attach
-from pybullet_tools.utils import WorldSaver, enable_gravity, connect, dump_world, set_pose, \
-    Pose, Point, set_default_camera, stable_z, \
-    BLOCK_URDF, load_model, wait_for_interrupt, disconnect, user_input, update_state, disable_real_time, \
-    load_pybullet
-from pybullet_tools.utils import get_movable_joints, get_configuration, \
-    set_joint_positions, add_fixed_constraint, enable_real_time, joint_controller, \
-    enable_gravity, get_refine_fn, wait_for_duration, link_from_name, get_body_name, sample_placement, \
-    end_effector_from_body, approach_from_grasp, plan_joint_motion, GraspInfo, INF, \
-    inverse_kinematics, pairwise_collision, remove_fixed_constraint, Attachment, get_sample_fn, \
-    step_simulation, refine_path, plan_direct_joint_motion, draw_pose, joints_from_names
+import sys
+sys.path.append('pddlstream/')
 
-from pybullet_tools.eth_rfl_utils import get_torso_arm_joints, get_grasp_gen
-from pybullet_tools.ikfast.eth_rfl.ik import sample_tool_ik, get_tool_pose
+from examples.pybullet.utils.pybullet_tools.kuka_primitives import BodyPose, BodyConf, Command, \
+    get_free_motion_gen, get_holding_motion_gen, BodyPath, Attach
+from examples.pybullet.utils.pybullet_tools.utils import WorldSaver, connect, dump_world, \
+    set_pose, Pose, Point, BLOCK_URDF, load_model, wait_for_interrupt, disconnect, user_input, update_state, \
+    disable_real_time, load_pybullet, set_joint_positions, enable_gravity, end_effector_from_body, \
+    approach_from_grasp, inverse_kinematics, pairwise_collision, get_sample_fn, plan_direct_joint_motion, draw_pose
+
+from utils.ikfast.eth_rfl.ik import sample_tool_ik, get_tool_pose
+from utils.eth_rfl_utils import get_torso_arm_joints, get_tool_frame
+from utils.pick_primitives import get_grasp_gen
 
 USE_IKFAST = True
 DEBUG_FAILURE = True
 ENABLE_SELF_COLLISION = False
 
-ARM = 'right' # 'left'
+ARM = 'right'  # 'left'
+
 
 def get_ik_fn(robot, fixed=[], teleport=False, num_attempts=10, self_collisions=True):
     # movable_joints = get_movable_joints(robot)
@@ -86,8 +85,9 @@ def get_ik_fn(robot, fixed=[], teleport=False, num_attempts=10, self_collisions=
         return None
     return fn
 
+
 def plan(robot, block, fixed, teleport):
-    grasp_gen = get_grasp_gen(robot, ARM, 'bottom') #'top'
+    grasp_gen = get_grasp_gen(robot, 'bottom', get_tool_frame(ARM)) #'top'
     ik_fn = get_ik_fn(robot, fixed=fixed, teleport=teleport, self_collisions=ENABLE_SELF_COLLISION)
     free_motion_fn = get_free_motion_gen(robot, fixed=([block] + fixed), teleport=teleport, self_collisions=ENABLE_SELF_COLLISION)
     holding_motion_fn = get_holding_motion_gen(robot, fixed=fixed, teleport=teleport, self_collisions=ENABLE_SELF_COLLISION)
@@ -144,6 +144,7 @@ def main(display='execute'): # control | execute | step
     # set_default_camera()
     dump_world()
 
+    print('Change camera view, it is a big scene...')
     wait_for_interrupt()
 
     saved_world = WorldSaver()
@@ -162,7 +163,7 @@ def main(display='execute'): # control | execute | step
         enable_gravity()
         command.control(real_time=False, dt=0)
     elif display == 'execute':
-        command.refine(num_steps=10).execute(time_step=0.005)
+        command.refine(num_steps=10).execute(time_step=0.002)
     elif display == 'step':
         command.step()
     else:
@@ -171,6 +172,7 @@ def main(display='execute'): # control | execute | step
     print('Quit?')
     wait_for_interrupt()
     disconnect()
+
 
 if __name__ == '__main__':
     main()

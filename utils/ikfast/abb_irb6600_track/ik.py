@@ -1,8 +1,8 @@
 import random
 
-from pddlstream.examples.pybullet.utils.pybullet_tools.ikfast.utils import get_ik_limits, compute_forward_kinematics, \
+from examples.pybullet.utils.pybullet_tools.ikfast.utils import get_ik_limits, compute_forward_kinematics, \
     compute_inverse_kinematics, select_solution
-from pddlstream.examples.pybullet.utils.pybullet_tools.utils import multiply, get_link_pose, \
+from examples.pybullet.utils.pybullet_tools.utils import multiply, get_link_pose, \
     link_from_name, get_joint_positions, invert, violates_limits, joint_from_name, joints_from_names
 
 BASE_FRAME = 'linear_axis_base_link'
@@ -14,11 +14,12 @@ TRACK_JOINT = ['linear_axis_actuation_joint']
 ARM_JOINTS = ['robot_joint_1', 'robot_joint_2', 'robot_joint_3', 'robot_joint_4', 'robot_joint_5', 'robot_joint_6']
 TRACK_ARM_JOINT = TRACK_JOINT + ARM_JOINTS
 
+
 def get_track_arm_joints(robot):
     return joints_from_names(robot, TRACK_ARM_JOINT)
 
-#####################################
 
+#####################################
 def get_tool_pose(robot):
     from .ikfast_abb_irb6600_track import get_fk
     ik_joints = get_track_arm_joints(robot)
@@ -29,14 +30,15 @@ def get_tool_pose(robot):
     world_from_base = get_link_pose(robot, link_from_name(robot, BASE_FRAME))
     return multiply(world_from_base, base_from_tool)
 
-#####################################
 
+#####################################
 def is_ik_compiled():
     try:
         from .ikfast_abb_irb6600_track import ikfast_abb_irb6600_track
         return True
     except ImportError:
         return False
+
 
 def get_ik_generator(robot, tool_pose, track_limits=False):
     from .ikfast_abb_irb6600_track import get_ik
@@ -50,11 +52,13 @@ def get_ik_generator(robot, tool_pose, track_limits=False):
         confs = compute_inverse_kinematics(get_ik, base_from_ik, sampled_values)
         yield [q for q in confs if not violates_limits(robot, ik_joints, q)]
 
+
 def get_tool_from_ik(robot):
     world_from_tool = get_link_pose(robot, link_from_name(robot, TOOL_FRAME))
     world_from_ik = get_link_pose(robot, link_from_name(robot, IK_FRAME))
     # tool from the bare flange (6th axis)
     return multiply(invert(world_from_tool), world_from_ik)
+
 
 def sample_tool_ik(robot, tool_pose, nearby_conf=None, max_attempts=10, **kwargs):
     generator = get_ik_generator(robot, tool_pose, **kwargs)

@@ -1,5 +1,4 @@
-from .utils import joints_from_names, joint_from_name, link_from_name
-from .kuka_primitives import GRASP_INFO, BodyGrasp
+from examples.pybullet.utils.pybullet_tools.utils import joints_from_names, joint_from_name, link_from_name
 
 ARM_NAMES = {'left', 'right'}
 
@@ -38,14 +37,3 @@ def get_torso_arm_joint_names(arm):
 
 def get_tool_frame(arm):
     return ETH_RFL_TOOL_FRAMES[arm]
-
-def get_grasp_gen(robot, arm, grasp_name):
-    grasp_info = GRASP_INFO[grasp_name]
-    end_effector_link = link_from_name(robot, get_tool_frame(arm))
-    def gen(body):
-        grasp_poses = grasp_info.get_grasps(body)
-        for grasp_pose in grasp_poses:
-            body_grasp = BodyGrasp(body, grasp_pose, grasp_info.approach_pose,
-                                   robot, end_effector_link)
-            yield (body_grasp,)
-    return gen

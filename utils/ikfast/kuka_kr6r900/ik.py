@@ -1,5 +1,5 @@
-from ..utils import compute_forward_kinematics, compute_inverse_kinematics, select_solution
-from ...utils import multiply, get_link_pose, get_movable_joints, \
+from pddlstream.examples.pybullet.utils.pybullet_tools.ikfast.utils import compute_forward_kinematics, compute_inverse_kinematics, select_solution
+from pddlstream.examples.pybullet.utils.pybullet_tools.utils import multiply, get_link_pose, get_movable_joints, \
     link_from_name, get_joint_positions, invert, violates_limits, get_pose
 
 # models/kuka_kr6r900_description/framefab_kr6_r900_support/urdf/kuka_kr6_r900.urdf

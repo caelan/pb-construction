@@ -3,15 +3,18 @@
 from __future__ import print_function
 
 import os
-from pddlstream.examples.pybullet.utils.pybullet_tools.kuka_primitives import BodyPose, BodyConf, Command, \
+import sys
+sys.path.append('pddlstream/')
+
+from examples.pybullet.utils.pybullet_tools.kuka_primitives import BodyPose, BodyConf, Command, \
     get_free_motion_gen, get_holding_motion_gen, BodyPath, Attach
-from pddlstream.examples.pybullet.utils.pybullet_tools.utils import WorldSaver, connect, dump_world, set_pose, \
+from examples.pybullet.utils.pybullet_tools.utils import WorldSaver, connect, dump_world, set_pose, \
     Pose, Point, stable_z, BLOCK_URDF, load_model, wait_for_interrupt, disconnect, user_input, update_state, \
     disable_real_time, load_pybullet
-from pddlstream.examples.pybullet.utils.pybullet_tools.utils import get_movable_joints, \
+from examples.pybullet.utils.pybullet_tools.utils import get_movable_joints, \
     set_joint_positions, enable_gravity, end_effector_from_body, approach_from_grasp, \
     inverse_kinematics, pairwise_collision, get_sample_fn, plan_direct_joint_motion
-from utils.ikfast.abb_irb6600_track.ik import sample_tool_ik, get_track_arm_joints
+from utils.ikfast.abb_irb6600_track.ik import sample_tool_ik, get_track_arm_joints, TOOL_FRAME
 from utils.pick_primitives import get_grasp_gen
 
 USE_IKFAST = True
@@ -73,9 +76,9 @@ def get_ik_fn(robot, fixed=[], teleport=False, num_attempts=10, self_collisions=
         return None
     return fn
 
-def plan(robot, block, fixed, teleport):
 
-    grasp_gen = get_grasp_gen(robot, 'top')
+def plan(robot, block, fixed, teleport):
+    grasp_gen = get_grasp_gen(robot, 'top', TOOL_FRAME)
     ik_fn = get_ik_fn(robot, fixed=fixed, teleport=teleport, self_collisions=ENABLE_SELF_COLLISION)
     free_motion_fn = get_free_motion_gen(robot, fixed=([block] + fixed), teleport=teleport, self_collisions=ENABLE_SELF_COLLISION)
     holding_motion_fn = get_holding_motion_gen(robot, fixed=fixed, teleport=teleport, self_collisions=ENABLE_SELF_COLLISION)
@@ -103,13 +106,11 @@ def plan(robot, block, fixed, teleport):
         if result3 is None:
             continue
         path3, = result3
-        return Command(path1.body_paths +
-                          path2.body_paths +
-                          path3.body_paths)
+        return Command(path1.body_paths + path2.body_paths + path3.body_paths)
     return None
 
 
-def main(display='execute'): # control | execute | step
+def main(display='execute'):  # control | execute | step
     root_directory = os.path.dirname(os.path.abspath(__file__))
 
     connect(use_gui=True)
@@ -141,7 +142,7 @@ def main(display='execute'): # control | execute | step
         enable_gravity()
         command.control(real_time=False, dt=0)
     elif display == 'execute':
-        command.refine(num_steps=10).execute(time_step=0.005)
+        command.refine(num_steps=10).execute(time_step=0.002)
     elif display == 'step':
         command.step()
     else:
@@ -150,6 +151,7 @@ def main(display='execute'): # control | execute | step
     print('Quit?')
     wait_for_interrupt()
     disconnect()
+
 
 if __name__ == '__main__':
     main()

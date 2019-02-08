@@ -24,15 +24,14 @@ EXTRUSION_FILENAMES = {
     'simple_frame': 'simple_frame.json',
 }
 
-KUKA_PATH = '../models/framefab_kr6_r900_support/urdf/kr6_r900.urdf'
-#KUKA_PATH = '../models/framefab_kr6_r900_support/urdf/kr6_r900_workspace.urdf'
+KUKA_PATH = '../models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
 TOOL_NAME = 'eef_tcp_frame'
 # [u'base_frame_in_rob_base', u'element_list', u'node_list', u'assembly_type', u'model_type', u'unit']
 
 DEFAULT_SCALE = 1e-3 # TODO: load different scales
 
-##################################################
 
+##################################################
 def load_extrusion(extrusion_name):
     if extrusion_name not in EXTRUSION_FILENAMES:
         raise ValueError(extrusion_name)

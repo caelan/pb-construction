@@ -17,7 +17,6 @@ import numpy as np
 from extrusion.run import MotionTrajectory
 from extrusion.utils import get_disabled_collisions, parse_point, \
     parse_transform, get_custom_limits
-from examples.pybullet.utils.pybullet_tools.ikfast.kuka_kr6r900.ik import sample_tool_ik
 from examples.pybullet.utils.pybullet_tools.utils import get_movable_joints, link_from_name, set_pose, \
     multiply, invert, inverse_kinematics, plan_direct_joint_motion, Attachment, set_joint_positions, plan_joint_motion, \
     get_configuration, wait_for_interrupt, point_from_pose, HideOutput, load_pybullet, draw_pose, unit_quat, create_obj, \
@@ -28,6 +27,13 @@ from pddlstream.algorithms.focused import solve_focused
 from pddlstream.language.constants import And, print_solution
 from pddlstream.language.generator import from_gen_fn, from_fn
 from pddlstream.utils import read, get_file_path
+try:
+    from utils.ikfast.kuka_kr6r900.ik import sample_tool_ik
+except ImportError as e:
+    print('Using pybullet ik fn instead, {}'.format(e))
+    IK_FAST = False
+else:
+    IK_FAST = True
 
 #PICKNPLACE_DIRECTORY = 'picknplace/'
 PICKNPLACE_DIRECTORY = ''
@@ -40,7 +46,6 @@ GRASP_NAMES = ['pick_grasp_approach_plane', 'pick_grasp_plane', 'pick_grasp_retr
 TOOL_NAME = 'eef_tcp_frame' # robot_tool0 | eef_base_link | eef_tcp_frame
 SELF_COLLISIONS = False
 MILLIMETER = 0.001
-IK_FAST = True
 
 ##################################################
 
@@ -80,7 +85,7 @@ def load_pick_and_place(extrusion_name, scale=MILLIMETER, max_bricks=6):
     with open(os.path.join(bricks_directory, PICKNPLACE_FILENAMES[extrusion_name]), 'r') as f:
         json_data = json.loads(f.read())
 
-    kuka_urdf = '../models/framefab_kr6_r900_support/urdf/kr6_r900_mit_suction_gripper.urdf'
+    kuka_urdf = '../models/kuka_kr6_r900/urdf/kuka_kr6_r900_mit_suction_gripper.urdf'
     obj_directory = os.path.join(bricks_directory, 'meshes', 'collision')
     with HideOutput():
         #world = load_pybullet(os.path.join(bricks_directory, 'urdf', 'brick_demo.urdf'))
@@ -371,7 +376,7 @@ def simulate_plan(plan, time_step=0.0, real_time=False): #time_step=np.inf
             add_fixed_constraint(attachment.child, attachment.parent, attachment.parent_link)
             simulate_trajectory(trajectory.reverse(), time_step)
         elif action == 'place':
-            attachment = trajectory.attachments.pop()
+            ttachment = trajectory.attachments.pop()
             simulate_trajectory(trajectory, time_step)
             remove_fixed_constraint(attachment.child, attachment.parent, attachment.parent_link)
             simulate_trajectory(trajectory.reverse(), time_step)
