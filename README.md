@@ -7,7 +7,7 @@ Pybullet Construction Planning
 $ git clone https://github.com/caelan/pb-construction.git
 $ cd pb-construction
 $ git submodule update --init --recursive
-$ ./pddlstreamFastDownward/build.py
+$ ./pddlstream/FastDownward/build.py
 $ cd pddlstream/examples/pybullet/utils/pybullet_tools/ikfast/kuka_kr6r900/
 $ python setup.py build
 ```
