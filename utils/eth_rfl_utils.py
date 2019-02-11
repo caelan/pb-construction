@@ -1,6 +1,6 @@
-from examples.pybullet.utils.pybullet_tools.utils import joints_from_names, joint_from_name, link_from_name
+from examples.pybullet.utils.pybullet_tools.utils import joints_from_names, joint_from_name
 
-ARM_NAMES = {'left', 'right'}
+ARM_NAMES = ['left', 'right']
 
 # dict name composers
 def arm_joints_from_arm(arm):
@@ -15,25 +15,27 @@ ETH_RFL_GROUPS = {
         'base': ['x', 'y'],
         torso_from_arm('left'): ['l_gantry_z_joint'],
         torso_from_arm('right'): ['r_gantry_z_joint'],
-        arm_joints_from_arm('left'): ['l_robot_joint_1', 'l_robot_joint_2', 'l_robot_joint_3', 'l_robot_joint_4', 'l_robot_joint_5', 'l_robot_joint_6'],
-        arm_joints_from_arm('right'): ['r_robot_joint_1', 'r_robot_joint_2', 'r_robot_joint_3', 'r_robot_joint_4', 'r_robot_joint_5', 'r_robot_joint_6'],
-        }
+        arm_joints_from_arm('left'): ['l_robot_joint_{}'.format(i+1) for i in range(6)],
+        arm_joints_from_arm('right'): ['r_robot_joint_{}'.format(i+1) for i in range(6)],
+}
 
 ETH_RFL_TOOL_FRAMES = {
     'left': 'l_eef_tcp_frame',
     'right': 'r_eef_tcp_frame',
 }
 
-# joint id in pybullet
+def get_torso_arm_joint_names(arm):
+    # frame name (urdf)
+    return ETH_RFL_GROUPS[torso_from_arm(arm)] + \
+           ETH_RFL_GROUPS[arm_joints_from_arm(arm)]
+
 def get_torso_arm_joints(robot, arm):
+    # joint id in pybullet
     return joints_from_names(robot, get_torso_arm_joint_names(arm))
 
 def get_torso_joint(robot, arm):
-    return joint_from_name(robot, *ETH_RFL_GROUPS[torso_from_arm(arm)])
-
-# frame name (udrf)
-def get_torso_arm_joint_names(arm):
-    return ETH_RFL_GROUPS[torso_from_arm(arm)] + ETH_RFL_GROUPS[arm_joints_from_arm(arm)]
+    [torso_joint] = ETH_RFL_GROUPS[torso_from_arm(arm)]
+    return joint_from_name(robot, torso_joint)
 
 def get_tool_frame(arm):
     return ETH_RFL_TOOL_FRAMES[arm]

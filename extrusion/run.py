@@ -11,17 +11,16 @@ import argparse
 
 from extrusion.extrusion_utils import create_elements, \
     load_extrusion, TOOL_NAME, check_trajectory_collision, get_grasp_pose, load_world, \
-    get_node_neighbors, sample_direction, draw_element, get_disabled_collisions, get_custom_limits
+    get_node_neighbors, sample_direction, draw_element, get_disabled_collisions, MotionTrajectory, PrintTrajectory
 from examples.pybullet.utils.pybullet_tools.utils import connect, disconnect, wait_for_interrupt, \
     get_movable_joints, get_sample_fn, set_joint_positions, link_from_name, add_line, inverse_kinematics, \
     get_link_pose, multiply, wait_for_duration, add_text, angle_between, plan_joint_motion, \
     get_pose, invert, point_from_pose, get_distance, get_joint_positions, wrap_angle, get_collision_fn, LockRenderer
 
-from pddlstream.algorithms.incremental import solve_incremental
 from pddlstream.algorithms.focused import solve_focused
 from pddlstream.language.constants import PDDLProblem, And, print_solution
 from pddlstream.language.generator import from_test
-from pddlstream.language.stream import StreamInfo, PartialInputs, NEGATIVE_SUFFIX, WildOutput
+from pddlstream.language.stream import StreamInfo, PartialInputs, WildOutput
 from pddlstream.utils import read, get_file_path, user_input, irange, neighbors_from_orders
 
 try:
@@ -29,7 +28,7 @@ try:
 except ImportError as e:
     print('\x1b[6;30;43m' + '{}, Using pybullet ik fn instead'.format(e) + '\x1b[0m')
     USE_IKFAST = False
-    input("Press Enter to continue...")
+    user_input("Press Enter to continue...")
 else:
     USE_IKFAST = True
 
@@ -38,31 +37,6 @@ SELF_COLLISIONS = True
 JOINT_WEIGHTS = [0.3078557810844393, 0.443600199302506, 0.23544367607317915,
                  0.03637161028426032, 0.04644626184081511, 0.015054267683041092]
 
-class MotionTrajectory(object):
-    def __init__(self, robot, joints, path, attachments=[]):
-        self.robot = robot
-        self.joints = joints
-        self.path = path
-        self.attachments = attachments
-    def reverse(self):
-        return self.__class__(self.robot, self.joints, self.path[::-1], self.attachments)
-    def iterate(self):
-        for conf in self.path[1:]:
-            set_joint_positions(self.robot, self.joints, conf)
-            yield
-    def __repr__(self):
-        return 'm({},{})'.format(len(self.joints), len(self.path))
-
-class PrintTrajectory(object):
-    def __init__(self, robot, joints, path, element, reverse, colliding=set()):
-        self.robot = robot
-        self.joints = joints
-        self.path = path
-        self.n1, self.n2 = reversed(element) if reverse else element
-        self.element = element
-        self.colliding = colliding
-    def __repr__(self):
-        return '{}->{}'.format(self.n1, self.n2)
 
 ##################################################
 
@@ -214,11 +188,11 @@ def optimize_angle(robot, link, element_pose, translation, direction, reverse, i
         target_pose = multiply(element_pose, invert(grasp_pose))
         set_joint_positions(robot, movable_joints, initial_conf)
 
-        if ~USE_IKFAST:
+        if USE_IKFAST:
+            conf = sample_tool_ik(robot, target_pose, nearby_conf=initial_conf)
+        else:
             # note that the conf get assigned inside this ik fn right away!
             conf = inverse_kinematics(robot, link, target_pose)
-        else:
-            conf = sample_tool_ik(robot, target_pose, initial_conf)
         if conf is None:
             conf = get_joint_positions(robot, movable_joints)
         #if pairwise_collision(robot, robot):
@@ -520,12 +494,13 @@ def debug_elements(robot, node_points, node_order, elements):
 
 ##################################################
 
-def main(precompute=False):
+def main(precompute=True):
     parser = argparse.ArgumentParser()
     # djmm_test_block | mars_bubble | sig_artopt-bunny | topopt-100 | topopt-205 | topopt-310 | voronoi
     parser.add_argument('-p', '--problem', default='simple_frame', help='The name of the problem to solve')
     parser.add_argument('-c', '--cfree', action='store_true', help='Disables collisions with obstacles')
     parser.add_argument('-m', '--motions', action='store_true', help='Plans motions between each extrusion')
+    parser.add_argument('-t', '--max_time', default=120, type=int, help='The max time')
     parser.add_argument('-v', '--viewer', action='store_true', help='Enables the viewer during planning (slow!)')
     args = parser.parse_args()
     print('Arguments:', args)

@@ -32,6 +32,7 @@ DEFAULT_SCALE = 1e-3 # TODO: load different scales
 
 
 ##################################################
+
 def load_extrusion(extrusion_name):
     if extrusion_name not in EXTRUSION_FILENAMES:
         raise ValueError(extrusion_name)
@@ -217,3 +218,32 @@ CUSTOM_LIMITS = {
 
 def get_custom_limits(robot):
     return {joint_from_name(robot, joint): limits for joint, limits in CUSTOM_LIMITS.items()}
+
+##################################################
+
+class MotionTrajectory(object):
+    def __init__(self, robot, joints, path, attachments=[]):
+        self.robot = robot
+        self.joints = joints
+        self.path = path
+        self.attachments = attachments
+    def reverse(self):
+        return self.__class__(self.robot, self.joints, self.path[::-1], self.attachments)
+    def iterate(self):
+        for conf in self.path[1:]:
+            set_joint_positions(self.robot, self.joints, conf)
+            yield
+    def __repr__(self):
+        return 'm({},{})'.format(len(self.joints), len(self.path))
+
+
+class PrintTrajectory(object):
+    def __init__(self, robot, joints, path, element, reverse, colliding=set()):
+        self.robot = robot
+        self.joints = joints
+        self.path = path
+        self.n1, self.n2 = reversed(element) if reverse else element
+        self.element = element
+        self.colliding = colliding
+    def __repr__(self):
+        return '{}->{}'.format(self.n1, self.n2)

@@ -14,15 +14,16 @@ from collections import namedtuple
 
 import numpy as np
 
-from extrusion.run import MotionTrajectory
 from extrusion.extrusion_utils import get_disabled_collisions, parse_point, \
-    parse_transform, get_custom_limits
+    parse_transform, get_custom_limits, MotionTrajectory
+
 from examples.pybullet.utils.pybullet_tools.utils import get_movable_joints, link_from_name, set_pose, \
     multiply, invert, inverse_kinematics, plan_direct_joint_motion, Attachment, set_joint_positions, plan_joint_motion, \
     get_configuration, wait_for_interrupt, point_from_pose, HideOutput, load_pybullet, draw_pose, unit_quat, create_obj, \
     add_body_name, get_pose, pose_from_tform, connect, WorldSaver, get_sample_fn, \
     wait_for_duration, enable_gravity, enable_real_time, trajectory_controller, simulate_controller, \
-    add_fixed_constraint, remove_fixed_constraint, Pose, Euler, get_collision_fn, LockRenderer
+    add_fixed_constraint, remove_fixed_constraint, Pose, Euler, get_collision_fn, LockRenderer, user_input
+
 from pddlstream.algorithms.focused import solve_focused
 from pddlstream.language.constants import And, print_solution
 from pddlstream.language.generator import from_gen_fn, from_fn
@@ -33,7 +34,7 @@ try:
 except ImportError as e:
     print('\x1b[6;30;43m' + '{}, Using pybullet ik fn instead'.format(e) + '\x1b[0m')
     USE_IKFAST = False
-    input("Press Enter to continue...")
+    user_input("Press Enter to continue...")
 else:
     USE_IKFAST = True
 
@@ -194,10 +195,10 @@ def get_ik_gen_fn(robot, brick_from_index, obstacle_from_name, max_attempts=25):
             if (attach_conf is None) or collision_fn(attach_conf):
                 continue
             set_joint_positions(robot, movable_joints, attach_conf)
-            if USE_IKFAST:
-                approach_conf = sample_tool_ik(robot, approach_pose, nearby_conf=attach_conf)
-            else:
-                approach_conf = inverse_kinematics(robot, tool_link, approach_pose)
+            #if USE_IKFAST:
+            #    approach_conf = sample_tool_ik(robot, approach_pose, nearby_conf=attach_conf)
+            #else:
+            approach_conf = inverse_kinematics(robot, tool_link, approach_pose)
             if (approach_conf is None) or collision_fn(approach_conf):
                 continue
             set_joint_positions(robot, movable_joints, approach_conf)
@@ -242,6 +243,7 @@ def get_motion_fn(robot, brick_from_index, obstacle_from_name, teleport=False):
             path = [conf1, conf2]
             traj = MotionTrajectory(robot, movable_joints, path)
             return traj,
+        # TODO: double check that collisions with movable obstacles are considered
         obstacles = list(obstacle_from_name.values())
         attachments = parse_fluents(robot, brick_from_index, fluents, obstacles)
         set_joint_positions(robot, movable_joints, conf1)

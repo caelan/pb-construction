@@ -89,8 +89,10 @@ def get_ik_fn(robot, fixed=[], teleport=False, num_attempts=10, self_collisions=
 def plan(robot, block, fixed, teleport):
     grasp_gen = get_grasp_gen(robot, 'bottom', get_tool_frame(ARM)) #'top'
     ik_fn = get_ik_fn(robot, fixed=fixed, teleport=teleport, self_collisions=ENABLE_SELF_COLLISION)
-    free_motion_fn = get_free_motion_gen(robot, fixed=([block] + fixed), teleport=teleport, self_collisions=ENABLE_SELF_COLLISION)
-    holding_motion_fn = get_holding_motion_gen(robot, fixed=fixed, teleport=teleport, self_collisions=ENABLE_SELF_COLLISION)
+    free_motion_fn = get_free_motion_gen(robot, fixed=([block] + fixed), teleport=teleport,
+                                         self_collisions=ENABLE_SELF_COLLISION)
+    holding_motion_fn = get_holding_motion_gen(robot, fixed=fixed, teleport=teleport,
+                                               self_collisions=ENABLE_SELF_COLLISION)
 
     torso_arm = get_torso_arm_joints(robot, ARM)
 
