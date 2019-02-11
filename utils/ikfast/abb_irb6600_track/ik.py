@@ -7,19 +7,18 @@ from examples.pybullet.utils.pybullet_tools.utils import multiply, get_link_pose
 
 BASE_FRAME = 'linear_axis_base_link'
 IK_FRAME = 'robot_tool0'
-TOOL_FRAME = 'eef_tcp_frame'
-# TOOL_FRAME = 'eef_tcp_frame' #robot_tool0 | eef_tcp_frame
+TOOL_FRAME = 'eef_tcp_frame'  #robot_tool0 | eef_tcp_frame
 
 TRACK_JOINT = ['linear_axis_actuation_joint']
-ARM_JOINTS = ['robot_joint_1', 'robot_joint_2', 'robot_joint_3', 'robot_joint_4', 'robot_joint_5', 'robot_joint_6']
+ARM_JOINTS = ['robot_joint_{}'.format(1+i) for i in range(6)]
 TRACK_ARM_JOINT = TRACK_JOINT + ARM_JOINTS
 
 
 def get_track_arm_joints(robot):
     return joints_from_names(robot, TRACK_ARM_JOINT)
 
-
 #####################################
+
 def get_tool_pose(robot):
     from .ikfast_abb_irb6600_track import get_fk
     ik_joints = get_track_arm_joints(robot)
@@ -30,8 +29,8 @@ def get_tool_pose(robot):
     world_from_base = get_link_pose(robot, link_from_name(robot, BASE_FRAME))
     return multiply(world_from_base, base_from_tool)
 
-
 #####################################
+
 def is_ik_compiled():
     try:
         from .ikfast_abb_irb6600_track import ikfast_abb_irb6600_track

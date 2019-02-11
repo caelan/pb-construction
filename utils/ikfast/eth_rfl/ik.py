@@ -25,7 +25,6 @@ def get_tool_pose(robot, arm):
     # TODO: this should be linked to ikfast's get numOfJoint junction
     base_from_ik = compute_forward_kinematics(get_fk, conf)
     base_from_tool = multiply(base_from_ik, invert(get_tool_from_ik(robot, arm)))
-
     world_from_base = get_link_pose(robot, link_from_name(robot, IK_BASE_FRAMES[arm]))
     return multiply(world_from_base, base_from_tool)
 
@@ -39,14 +38,12 @@ def is_ik_compiled():
         return False
 
 
-def get_ik_generator(robot, arm, tool_pose, gantry_z_limits=False):
+def get_ik_generator(robot, arm, tool_pose, **kwargs):
     from .ikfast_eth_rfl import get_ik
     world_from_base = get_link_pose(robot, link_from_name(robot, IK_BASE_FRAMES[arm]))
     base_from_tool = multiply(invert(world_from_base), tool_pose)
     base_from_ik = multiply(base_from_tool, get_tool_from_ik(robot, arm))
-
-    sampled_limits = get_ik_limits(robot, get_torso_joint(robot, arm), gantry_z_limits)
-
+    sampled_limits = get_ik_limits(robot, get_torso_joint(robot, arm), **kwargs)
     while True:
         sampled_values = [random.uniform(*sampled_limits)]
         ik_joints = get_torso_arm_joints(robot, arm)

@@ -11,22 +11,31 @@ from examples.pybullet.utils.pybullet_tools.kuka_primitives import BodyPose, Bod
 from examples.pybullet.utils.pybullet_tools.utils import WorldSaver, connect, dump_world, \
     set_pose, Pose, Point, BLOCK_URDF, load_model, wait_for_interrupt, disconnect, user_input, update_state, \
     disable_real_time, load_pybullet, set_joint_positions, enable_gravity, end_effector_from_body, \
-    approach_from_grasp, inverse_kinematics, pairwise_collision, get_sample_fn, plan_direct_joint_motion, draw_pose
+    approach_from_grasp, inverse_kinematics, pairwise_collision, get_sample_fn, plan_direct_joint_motion, \
+    draw_pose, dump_body, LockRenderer, HideOutput, get_camera, set_camera, link_from_name, get_aabb, unit_pose, \
+    get_link_pose, multiply, invert, get_joint_position, joint_from_name, point_from_pose, \
+    set_joint_position, get_joint_positions, joints_from_names
 
-from utils.ikfast.eth_rfl.ik import sample_tool_ik, get_tool_pose
-from utils.eth_rfl_utils import get_torso_arm_joints, get_tool_frame
+from utils.ikfast.eth_rfl.ik import sample_tool_ik, get_tool_pose, IK_BASE_FRAMES
+from utils.eth_rfl_utils import get_torso_arm_joints, get_tool_frame, prefix_from_arm, get_arm_joint_names
 from utils.pick_primitives import get_grasp_gen
 
 USE_IKFAST = True
 DEBUG_FAILURE = True
 ENABLE_SELF_COLLISION = False
 
-ARM = 'right'  # 'left'
+ARM = 'left'  # left | right
+ETH_RFL_URDF = "../models/eth_rfl/urdf/eth_rfl.urdf"
 
+SIGN_FROM_ARM = {
+    'left': -1,
+    'right': +1,
+}
 
 def get_ik_fn(robot, fixed=[], teleport=False, num_attempts=10, self_collisions=True):
     # movable_joints = get_movable_joints(robot)
     torso_arm = get_torso_arm_joints(robot, ARM)
+    arm_joints = joints_from_names(robot, get_arm_joint_names(ARM))
     sample_fn = get_sample_fn(robot, torso_arm)
 
     def fn(body, pose, grasp):
@@ -41,26 +50,36 @@ def get_ik_fn(robot, fixed=[], teleport=False, num_attempts=10, self_collisions=
         # print(torso_arm)
         # wait_for_interrupt()
 
+        # TODO: gantry_x_joint
+        # TODO: proper inverse reachability
+        base_link = link_from_name(robot, IK_BASE_FRAMES[ARM])
+        base_pose = get_link_pose(robot, base_link)
+        body_point_in_base = point_from_pose(multiply(invert(base_pose), pose.pose))
+        y_joint = joint_from_name(robot, '{}_gantry_y_joint'.format(prefix_from_arm(ARM)))
+        initial_y = get_joint_position(robot, y_joint)
+        ik_y = initial_y + SIGN_FROM_ARM[ARM]*body_point_in_base[1]
+        set_joint_position(robot, y_joint, ik_y)
+
         for _ in range(num_attempts):
             if USE_IKFAST:
                 q_approach = sample_tool_ik(robot, ARM, approach_pose)
+                if q_approach is not None:
+                    set_joint_positions(robot, torso_arm, q_approach)
             else:
                 set_joint_positions(robot, torso_arm, sample_fn()) # Random seed
                 q_approach = inverse_kinematics(robot, grasp.link, approach_pose)
-
             if (q_approach is None) or any(pairwise_collision(robot, b) for b in obstacles):
                 print('- ik for approaching fails!')
                 continue
-
-            # set_joint_positions(robot, movable_joints, q_approach) # Random seed
-            conf = BodyConf(robot, q_approach, torso_arm)
+            conf = BodyConf(robot, joints=arm_joints)
 
             if USE_IKFAST:
                 q_grasp = sample_tool_ik(robot, ARM, gripper_pose, nearby_conf=q_approach)
+                if q_grasp is not None:
+                    set_joint_positions(robot, torso_arm, q_grasp)
             else:
                 conf.assign()
                 q_grasp = inverse_kinematics(robot, grasp.link, gripper_pose)
-
             if (q_grasp is None) or any(pairwise_collision(robot, b) for b in obstacles):
                 print('- ik for grasp fails!')
                 continue
@@ -72,10 +91,11 @@ def get_ik_fn(robot, fixed=[], teleport=False, num_attempts=10, self_collisions=
                 #direction, _ = grasp.approach_pose
                 #path = workspace_trajectory(robot, grasp.link, point_from_pose(approach_pose), -direction,
                 #                                   quat_from_pose(approach_pose))
-                path = plan_direct_joint_motion(robot, conf.joints, q_grasp, obstacles=obstacles, \
+                path = plan_direct_joint_motion(robot, torso_arm, q_grasp, obstacles=obstacles,
                                                 self_collisions=self_collisions)
                 if path is None:
-                    if DEBUG_FAILURE: print('Approach motion failed')
+                    if DEBUG_FAILURE:
+                        print('Approach motion failed')
                     continue
             command = Command([BodyPath(robot, path, joints=torso_arm),
                                Attach(body, robot, grasp.link),
@@ -94,17 +114,18 @@ def plan(robot, block, fixed, teleport):
     holding_motion_fn = get_holding_motion_gen(robot, fixed=fixed, teleport=teleport,
                                                self_collisions=ENABLE_SELF_COLLISION)
 
-    torso_arm = get_torso_arm_joints(robot, ARM)
+    #arm_joints = get_torso_arm_joints(robot, ARM)
+    arm_joints = joints_from_names(robot, get_arm_joint_names(ARM))
 
     pose0 = BodyPose(block)
-    conf0 = BodyConf(robot, joints=torso_arm)
+    conf0 = BodyConf(robot, joints=arm_joints)
     saved_world = WorldSaver()
     for grasp, in grasp_gen(block):
         saved_world.restore()
         result1 = ik_fn(block, pose0, grasp)
         if result1 is None:
             print('ik fn fails!')
-            # continue
+            continue
         conf1, path2 = result1
         pose0.assign()
         result2 = free_motion_fn(conf0, conf1)
@@ -124,21 +145,23 @@ def plan(robot, block, fixed, teleport):
 
 
 def main(display='execute'): # control | execute | step
-    root_directory = os.path.dirname(os.path.abspath(__file__))
-
     connect(use_gui=True)
+    set_camera(yaw=-90, pitch=-40, distance=10, target_position=(0, 7.5, 0))
+    draw_pose(unit_pose(), length=1.0)
     disable_real_time()
 
-    ETH_RFL_URDF = "../models/eth_rfl/urdf/eth_rfl.urdf"
-    robot = load_pybullet(os.path.join(root_directory, ETH_RFL_URDF), fixed_base=True)
+    with HideOutput():
+        root_directory = os.path.dirname(os.path.abspath(__file__))
+        robot = load_pybullet(os.path.join(root_directory, ETH_RFL_URDF), fixed_base=True)
     # floor = load_model('models/short_floor.urdf')
     block = load_model(BLOCK_URDF, fixed_base=False)
+    #link = link_from_name(robot, 'gantry_base_link')
+    #print(get_aabb(robot, link))
 
     block_x = -0.2
-    if ARM == 'right':
-        block_y = 1
-    else:
-        block_y = 13.5
+    #block_y = 1 if ARM == 'right' else 13.5
+    #block_x = 10
+    block_y = 5.
 
     # set_pose(floor, Pose(Point(x=floor_x, y=1, z=1.3)))
     # set_pose(block, Pose(Point(x=floor_x, y=0.6, z=stable_z(block, floor))))
@@ -146,21 +169,20 @@ def main(display='execute'): # control | execute | step
     # set_default_camera()
     dump_world()
 
-    print('Change camera view, it is a big scene...')
-    wait_for_interrupt()
-
+    #print(get_camera())
     saved_world = WorldSaver()
-    command = plan(robot, block, fixed=[], teleport=False) # fixed=[floor],
+    with LockRenderer():
+        command = plan(robot, block, fixed=[], teleport=False) # fixed=[floor],
     if (command is None) or (display is None):
-        print('Unable to find a plan!')
-        print('Quit?')
+        print('Unable to find a plan! Quit?')
         wait_for_interrupt()
         disconnect()
-        # return
+        return
 
     saved_world.restore()
     update_state()
-    user_input('{}?'.format(display))
+    print('{}?'.format(display))
+    wait_for_interrupt()
     if display == 'control':
         enable_gravity()
         command.control(real_time=False, dt=0)
