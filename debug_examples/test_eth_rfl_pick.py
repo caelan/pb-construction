@@ -145,6 +145,7 @@ def plan(robot, block, fixed, teleport):
 
 
 def main(display='execute'): # control | execute | step
+    # One of the arm's gantry carriage is fixed when the other is moving.
     connect(use_gui=True)
     set_camera(yaw=-90, pitch=-40, distance=10, target_position=(0, 7.5, 0))
     draw_pose(unit_pose(), length=1.0)

@@ -32,6 +32,13 @@ except ImportError as e:
 else:
     USE_IKFAST = True
 
+USE_CONMECH = True
+try:
+    import conmech_py
+except ImportError as e:
+    print('\x1b[6;30;43m' + '{}, Not using conmech'.format(e) + '\x1b[0m')
+    USE_CONMECH = False
+
 SUPPORT_THETA = np.math.radians(10)  # Support polygon
 SELF_COLLISIONS = True
 JOINT_WEIGHTS = [0.3078557810844393, 0.443600199302506, 0.23544367607317915,
@@ -59,7 +66,8 @@ def get_supported_orders(elements, node_points):
     orders = set()
     for node in node_neighbors:
         supporters = {e for e in node_neighbors[node] if element_supports(e, node, node_points)}
-        printers = {e for e in node_neighbors[node] if is_start_node(node, e, node_points) and not doubly_printable(e, node_points)}
+        printers = {e for e in node_neighbors[node] if is_start_node(node, e, node_points)
+                    and not doubly_printable(e, node_points)}
         orders.update((e1, e2) for e1 in supporters for e2 in printers)
     return orders
 
@@ -189,11 +197,14 @@ def optimize_angle(robot, link, element_pose, translation, direction, reverse, i
         set_joint_positions(robot, movable_joints, initial_conf)
 
         if USE_IKFAST:
-            conf = sample_tool_ik(robot, target_pose, nearby_conf=initial_conf)
+            # TODO: randomly sample the initial configuration
+            bias_conf = initial_conf
+            #bias_conf = None # Randomizes solutions
+            conf = sample_tool_ik(robot, target_pose, nearby_conf=bias_conf)
         else:
             # note that the conf get assigned inside this ik fn right away!
             conf = inverse_kinematics(robot, link, target_pose)
-        if conf is None:
+        if conf is None: # TODO(caelan): this is suspect
             conf = get_joint_positions(robot, movable_joints)
         #if pairwise_collision(robot, robot):
 
@@ -236,7 +247,7 @@ def compute_direction_path(robot, length, reverse, element_body, direction, coll
     initial_angles = [wrap_angle(angle) for angle in np.random.uniform(0, 2*np.pi, num_initial)]
     movable_joints = get_movable_joints(robot)
 
-    if ~USE_IKFAST:
+    if not USE_IKFAST:
         # randomly sample and set joint conf for the pybullet ik fn
         sample_fn = get_sample_fn(robot, movable_joints)
         set_joint_positions(robot, movable_joints, sample_fn())
@@ -347,17 +358,17 @@ def get_wild_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_
         for t, in gen_fn(node1, element):
             outputs = [(t,)]
             facts = [('Collision', t, e2) for e2 in t.colliding] if collisions else []
-            #outputs = []
-            #facts.append(('PrintAction', node1, element, t))
             yield WildOutput(outputs, facts)
     return wild_gen_fn
 
 def test_stiffness(fluents=[]):
     assert all(fact[0] == 'printed' for fact in fluents)
-    elements = {fact[1] for fact in fluents}
+    if not USE_CONMECH:
+       return True
     # https://github.com/yijiangh/conmech
     # TODO: to use the non-skeleton focused algorithm, need to remove the negative axiom upon success
-    #import conmech_py
+    import conmech_py
+    elements = {fact[1] for fact in fluents}
     #print(elements)
     return True
 
@@ -375,15 +386,6 @@ def sample_trajectories(robot, obstacles, node_points, element_bodies, ground_no
                 trajectories.append(traj)
         all_trajectories.extend(trajectories)
         if not trajectories:
-            #if has_gui():
-            #    for e, body in element_bodies.items():
-            #        if e == element:
-            #            set_color(body, (0, 1, 0, 1))
-            #        elif e in element_neighbors[e]:
-            #            set_color(body, (1, 0, 0, 1))
-            #        else:
-            #            set_color(body, (1, 0, 0, 0))
-            #    wait_for_interrupt()
             return None
     return all_trajectories
 
@@ -494,13 +496,13 @@ def debug_elements(robot, node_points, node_order, elements):
 
 ##################################################
 
-def main(precompute=True):
+def main(precompute=False):
     parser = argparse.ArgumentParser()
     # djmm_test_block | mars_bubble | sig_artopt-bunny | topopt-100 | topopt-205 | topopt-310 | voronoi
     parser.add_argument('-p', '--problem', default='simple_frame', help='The name of the problem to solve')
     parser.add_argument('-c', '--cfree', action='store_true', help='Disables collisions with obstacles')
     parser.add_argument('-m', '--motions', action='store_true', help='Plans motions between each extrusion')
-    parser.add_argument('-t', '--max_time', default=120, type=int, help='The max time')
+    parser.add_argument('-t', '--max_time', default=300, type=int, help='The max time')
     parser.add_argument('-v', '--viewer', action='store_true', help='Enables the viewer during planning (slow!)')
     args = parser.parse_args()
     print('Arguments:', args)
@@ -536,17 +538,11 @@ def main(precompute=True):
     element_bodies = dict(zip(elements, create_elements(node_points, elements)))
 
     with LockRenderer():
+        trajectories = []
         if precompute:
-            pr = cProfile.Profile()
-            pr.enable()
             trajectories = sample_trajectories(robot, obstacles, node_points, element_bodies, ground_nodes)
-            pr.disable()
-            pstats.Stats(pr).sort_stats('tottime').print_stats(10)
-            user_input('Continue?')
-        else:
-            trajectories = []
         plan = plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
-                             trajectories=trajectories, collisions=not args.cfree)
+                             trajectories=trajectories, collisions=not args.cfree, max_time=args.max_time)
         if args.motions:
             plan = compute_motions(robot, obstacles, element_bodies, initial_conf, plan)
 
