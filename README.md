@@ -20,6 +20,9 @@ For other robots, replace `kuka_kr6_r900` with the following supported robots:
 - `eth_rfl`
 - `abb_irb6600_track`
 
+Construction Sequencing Structural Analysis
+* https://github.com/yijiangh/conmech
+
 ## Examples
 
 * `$ python -m extrusion.run`
@@ -27,7 +30,5 @@ For other robots, replace `kuka_kr6_r900` with the following supported robots:
 
 ## Testing new IKFast modules
 
-
 * `$ python -m debug_examples.test_eth_rfl_pick`
 * `$ python -m debug_examples.test_irb6600_track_pick`
-
