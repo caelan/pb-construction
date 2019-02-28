@@ -1,8 +1,10 @@
 import numpy as np
+import random
 
 from examples.pybullet.utils.pybullet_tools.utils import get_movable_joints, get_joint_positions, multiply, invert, \
     set_joint_positions, inverse_kinematics, get_link_pose, get_distance, point_from_pose, wrap_angle, get_sample_fn, \
-    link_from_name, get_pose, get_collision_fn
+    link_from_name, get_pose, get_collision_fn, dump_body, get_link_subtree, wait_for_user, clone_body, \
+    get_all_links, set_color, set_pose, pairwise_collision
 from extrusion.extrusion_utils import get_grasp_pose, TOOL_NAME, get_disabled_collisions, get_node_neighbors, \
     sample_direction, check_trajectory_collision, PrintTrajectory, retrace_supporters, get_supported_orders
 #from extrusion.run import USE_IKFAST, get_supported_orders, retrace_supporters, SELF_COLLISIONS, USE_CONMECH
@@ -26,46 +28,54 @@ except ImportError as e:
     USE_CONMECH = False
 
 SELF_COLLISIONS = True
+TOOL_ROOT = 'eef_base_link' # robot_tool0
 
-def optimize_angle(robot, link, element_pose, translation, direction, reverse, initial_angles,
-                   collision_fn, max_error=1e-2):
+def optimize_angle(robot, tool, tool_from_root, tool_link, element_pose,
+                   translation, direction, reverse, candidate_angles,
+                   obstacles, collision_fn, nearby=True, max_error=1e-2):
+
     movable_joints = get_movable_joints(robot)
     best_error, best_angle, best_conf = max_error, None, None
     initial_conf = get_joint_positions(robot, movable_joints)
-    for i, angle in enumerate(initial_angles):
+    for angle in candidate_angles:
         grasp_pose = get_grasp_pose(translation, direction, angle, reverse)
         # Pose_{world,EE} = Pose_{world,element} * Pose_{element,EE}
         #                 = Pose_{world,element} * (Pose_{EE,element})^{-1}
         target_pose = multiply(element_pose, invert(grasp_pose))
-        set_joint_positions(robot, movable_joints, initial_conf)
+        set_pose(tool, multiply(target_pose, tool_from_root))
+        if any(pairwise_collision(tool, obst) for obst in obstacles):
+            # TODO: sort by angle with smallest violation
+            # TODO: apply for the whole sequence
+            continue
 
+        if nearby:
+            set_joint_positions(robot, movable_joints, initial_conf)
         if USE_IKFAST:
-            # TODO: randomly sample the initial configuration
-            bias_conf = initial_conf
-            #bias_conf = None # Randomizes solutions
-            conf = sample_tool_ik(robot, target_pose, nearby_conf=bias_conf)
+            conf = sample_tool_ik(robot, target_pose, closest_only=nearby)
         else:
+            if not nearby:
+                # randomly sample and set joint conf for the pybullet ik fn
+                sample_fn = get_sample_fn(robot, movable_joints)
+                set_joint_positions(robot, movable_joints, sample_fn())
             # note that the conf get assigned inside this ik fn right away!
-            conf = inverse_kinematics(robot, link, target_pose)
-        if conf is None: # TODO(caelan): this is suspect
-            conf = get_joint_positions(robot, movable_joints)
-        #if pairwise_collision(robot, robot):
-
-        if not collision_fn(conf):
-            link_pose = get_link_pose(robot, link)
-            error = get_distance(point_from_pose(target_pose), point_from_pose(link_pose))
-            if error < best_error:  # TODO: error a function of direction as well
-                best_error, best_angle, best_conf = error, angle, conf
-            # wait_for_interrupt()
-    #print(best_error, translation, direction, best_angle)
+            conf = inverse_kinematics(robot, tool_link, target_pose)
+        if (conf is None) or collision_fn(conf):
+            continue
+        set_joint_positions(robot, movable_joints, conf)
+        link_pose = get_link_pose(robot, tool_link)
+        error = get_distance(point_from_pose(target_pose), point_from_pose(link_pose))
+        if error < best_error: # TODO: error a function of direction as well
+            best_error, best_angle, best_conf = error, angle, conf
+            #break
     if best_conf is not None:
         set_joint_positions(robot, movable_joints, best_conf)
-        #wait_for_interrupt()
     return best_angle, best_conf
 
 ##################################################
 
-def compute_direction_path(robot, length, reverse, element_body, direction, collision_fn):
+def compute_direction_path(robot, tool, tool_from_root,
+                           length, reverse, element_body, direction,
+                           obstacles, collision_fn):
     """
     :param robot:
     :param length: element's length
@@ -78,37 +88,32 @@ def compute_direction_path(robot, length, reverse, element_body, direction, coll
     :return: feasible PrintTrajectory if found, None otherwise
     """
     step_size = 0.0025 # 0.005
-    #angle_step_size = np.pi / 128
-    angle_step_size = np.math.radians(0.25)
-    angle_deltas = [-angle_step_size, 0, angle_step_size]
-    #num_initial = 12
-    num_initial = 1
-
-    steps = np.append(np.arange(-length / 2, length / 2, step_size), [length / 2])
-    #print('Length: {} | Steps: {}'.format(length, len(steps)))
+    #angle_step_size = np.math.radians(0.25) # np.pi / 128
+    #angle_deltas = [-angle_step_size, 0, angle_step_size]
+    angle_deltas = [0]
+    num_initial = 1 # 12
+    translation_steps = np.append(np.arange(-length / 2, length / 2, step_size), [length / 2])
 
     #initial_angles = [wrap_angle(angle) for angle in np.linspace(0, 2*np.pi, num_initial, endpoint=False)]
-    initial_angles = [wrap_angle(angle) for angle in np.random.uniform(0, 2*np.pi, num_initial)]
-    movable_joints = get_movable_joints(robot)
+    initial_angles = list(map(wrap_angle, np.random.uniform(0, 2*np.pi, num_initial)))
 
-    if not USE_IKFAST:
-        # randomly sample and set joint conf for the pybullet ik fn
-        sample_fn = get_sample_fn(robot, movable_joints)
-        set_joint_positions(robot, movable_joints, sample_fn())
-    link = link_from_name(robot, TOOL_NAME)
+    tool_link = link_from_name(robot, TOOL_NAME)
     element_pose = get_pose(element_body)
-    current_angle, current_conf = optimize_angle(robot, link, element_pose,
-                                                 steps[0], direction, reverse, initial_angles, collision_fn)
+    current_angle, current_conf = optimize_angle(robot, tool, tool_from_root, tool_link, element_pose,
+                                                 translation_steps[0], direction, reverse, initial_angles,
+                                                 obstacles, collision_fn, nearby=False)
     if current_conf is None:
         return None
     # TODO: constrain maximum conf displacement
     # TODO: alternating minimization for just position and also orientation
     trajectory = [current_conf]
-    for translation in steps[1:]:
+    for translation in translation_steps[1:]:
         #set_joint_positions(robot, movable_joints, current_conf)
-        initial_angles = [wrap_angle(current_angle + delta) for delta in angle_deltas]
-        current_angle, current_conf = optimize_angle(
-            robot, link, element_pose, translation, direction, reverse, initial_angles, collision_fn)
+        candidate_angles = [wrap_angle(current_angle + delta) for delta in angle_deltas]
+        random.shuffle(candidate_angles)
+        current_angle, current_conf = optimize_angle(robot, tool, tool_from_root, tool_link, element_pose,
+                                                     translation, direction, reverse, candidate_angles,
+                                                     obstacles, collision_fn, nearby=True)
         if current_conf is None:
             return None
         trajectory.append(current_conf)
@@ -130,6 +135,17 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
     # TODO: print on full sphere and just check for collisions with the printed element
     # TODO: can slide a component of the element down
     # TODO: prioritize choices that don't collide with too many edges
+
+    #dump_body(robot)
+    root_link = link_from_name(robot, TOOL_ROOT)
+    tool_links = get_link_subtree(robot, root_link)
+    tool_body = clone_body(robot, links=tool_links, visual=False, collision=True)
+    #for link in get_all_links(tool_body):
+    #    set_color(tool_body, np.zeros(4), link)
+
+    tool_link = link_from_name(robot, TOOL_NAME)
+    tool_from_root = multiply(invert(get_link_pose(robot, tool_link)),
+                              get_link_pose(robot, root_link))
 
     def gen_fn(node1, element): # fluents=[]):
         reverse = (node1 != element[0])
@@ -153,7 +169,8 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
         trajectories = []
         for num in irange(max_trajectories):
             for attempt in range(max_attempts):
-                path = compute_direction_path(robot, length, reverse, element_body, sample_direction(), collision_fn)
+                path = compute_direction_path(robot, tool_body, tool_from_root,
+                                              length, reverse, element_body, sample_direction(), obstacles, collision_fn)
                 if path is None:
                     continue
                 if check_collisions:
@@ -173,6 +190,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                     sorted(len(t.colliding) for t in trajectories)))
                 yield (print_traj,)
                 if not colliding:
+                    print('Reevaluated already non-colliding trajectory!')
                     return
             else:
                 print('{}) {}->{} ({}) | {} | Max attempts exceeded!'.format(

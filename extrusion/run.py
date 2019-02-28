@@ -15,8 +15,7 @@ from extrusion.extrusion_utils import create_elements, \
     get_supported_orders, element_supports, is_start_node, doubly_printable, retrace_supporters
 from examples.pybullet.utils.pybullet_tools.utils import connect, disconnect, wait_for_interrupt, \
     get_movable_joints, set_joint_positions, link_from_name, add_line, get_link_pose, wait_for_duration, add_text, \
-    plan_joint_motion, \
-    point_from_pose, get_joint_positions, LockRenderer
+    plan_joint_motion, point_from_pose, get_joint_positions, LockRenderer
 from extrusion.stream import get_print_gen_fn, get_wild_print_gen_fn, test_stiffness, SELF_COLLISIONS
 
 
@@ -286,7 +285,7 @@ def main(precompute=False):
     #debug_elements(robot, node_points, node_order, elements)
     element_bodies = dict(zip(elements, create_elements(node_points, elements)))
 
-    with LockRenderer():
+    with LockRenderer(False):
         trajectories = []
         if precompute:
             trajectories = sample_trajectories(robot, obstacles, node_points, element_bodies, ground_nodes)
@@ -304,15 +303,14 @@ if __name__ == '__main__':
     main()
 
 """
-   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
-  2568280  158.181    0.000  158.181    0.000 {pybullet.getClosestPoints}
- 13586760   42.924    0.000   78.596    0.000 pddlstream/pddlstream/algorithms/scheduling/recover_axioms.py:132(is_useful_atom)
-     2844   37.479    0.013   46.247    0.016 pddlstream/pddlstream/algorithms/scheduling/recover_axioms.py:88(get_achieving_axioms)
-     7107   16.440    0.002   16.440    0.002 {method 'read' of 'file' objects}
- 13100059   14.246    0.000   15.782    0.000 /Users/caelan/Programs/LIS/git/collaborations/pb-construction/pddlstream/pddlstream/algorithms/../../FastDownward/builds/release64/bin/translate/pddl/conditions.py:226(__init__)
-  9785439   12.672    0.000   38.681    0.000 pddlstream/pddlstream/algorithms/downward.py:365(literal_holds)
-  9780687   11.766    0.000   63.793    0.000 pddlstream/pddlstream/algorithms/scheduling/plan_streams.py:110(<lambda>)
- 55357785   11.722    0.000   11.722    0.000 /Users/caelan/Programs/LIS/git/collaborations/pb-construction/pddlstream/pddlstream/algorithms/../../FastDownward/builds/release64/bin/translate/pddl/conditions.py:14(__hash__)
- 19561374   10.463    0.000   49.126    0.000 pddlstream/pddlstream/algorithms/scheduling/plan_streams.py:110(<genexpr>)
- 10959470   10.140    0.000   10.140    0.000 /Users/caelan/Programs/LIS/git/collaborations/pb-construction/pddlstream/pddlstream/algorithms/../../FastDownward/builds/release64/bin/translate/pddl/conditions.py:230(__eq__)
+  2721754  146.061    0.000  146.061    0.000 {pybullet.getClosestPoints}
+     1051   24.323    0.023   30.077    0.029 pddlstream/pddlstream/algorithms/scheduling/recover_axioms.py:88(get_achieving_axioms)
+  6900704    8.132    0.000    9.013    0.000 /Users/caelan/Programs/LIS/git/collaborations/pb-construction/pddlstream/pddlstream/algorithms/../../FastDownward/builds/release64/bin/translate/pddl/conditions.py:226(__init__)
+  5685218    7.961    0.000   24.806    0.000 pddlstream/pddlstream/algorithms/downward.py:365(literal_holds)
+ 32883115    7.453    0.000    7.453    0.000 /Users/caelan/Programs/LIS/git/collaborations/pb-construction/pddlstream/pddlstream/algorithms/../../FastDownward/builds/release64/bin/translate/pddl/conditions.py:14(__hash__)
+  5685218    7.425    0.000   40.749    0.000 pddlstream/pddlstream/algorithms/scheduling/plan_streams.py:110(<lambda>)
+ 11370436    6.661    0.000   31.467    0.000 pddlstream/pddlstream/algorithms/scheduling/plan_streams.py:110(<genexpr>)
+  6330071    6.475    0.000    6.475    0.000 /Users/caelan/Programs/LIS/git/collaborations/pb-construction/pddlstream/pddlstream/algorithms/../../FastDownward/builds/release64/bin/translate/pddl/conditions.py:230(__eq__)
+     1188    5.011    0.004    5.723    0.005 pddlstream/pddlstream/algorithms/scheduling/negative.py:102(<setcomp>)
+  5865360    4.794    0.000   12.307    0.000 /Users/caelan/Programs/LIS/git/collaborations/pb-construction/pddlstream/pddlstream/algorithms/../../FastDownward/builds/release64/bin/translate/pddl/conditions.py:293(negate)
 """
