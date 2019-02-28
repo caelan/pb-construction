@@ -9,9 +9,8 @@ import numpy as np
 
 from examples.pybullet.utils.pybullet_tools.utils import add_line, create_cylinder, set_point, Euler, quat_from_euler, \
     set_quat, get_movable_joints, set_joint_positions, pairwise_collision, Pose, multiply, Point, load_model, \
-    HideOutput, load_pybullet, link_from_name, has_link, joint_from_name
+    HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between
 
-#EXTRUSION_DIRECTORY = 'spatial_extrusion/'
 EXTRUSION_DIRECTORY = 'json/'
 EXTRUSION_FILENAMES = {
     'djmm_test_block': 'djmm_test_block_S1.0_09-17-2018.json',
@@ -247,3 +246,61 @@ class PrintTrajectory(object):
         self.colliding = colliding
     def __repr__(self):
         return '{}->{}'.format(self.n1, self.n2)
+
+##################################################
+
+def get_other_node(node1, element):
+    assert node1 in element
+    return element[node1 == element[0]]
+
+
+def is_ground(element, ground_nodes):
+    return any(n in ground_nodes for n in element)
+
+
+def draw_model(elements, node_points, ground_nodes):
+    handles = []
+    for element in elements:
+        color = (0, 0, 1) if is_ground(element, ground_nodes) else (1, 0, 0)
+        handles.append(draw_element(node_points, element, color=color))
+    return handles
+
+
+def get_supported_orders(elements, node_points):
+    node_neighbors = get_node_neighbors(elements)
+    orders = set()
+    for node in node_neighbors:
+        supporters = {e for e in node_neighbors[node] if element_supports(e, node, node_points)}
+        printers = {e for e in node_neighbors[node] if is_start_node(node, e, node_points)
+                    and not doubly_printable(e, node_points)}
+        orders.update((e1, e2) for e1 in supporters for e2 in printers)
+    return orders
+
+SUPPORT_THETA = np.math.radians(10)  # Support polygon
+
+def element_supports(e, n1, node_points): # A property of nodes
+    # TODO: support polygon (ZMP heuristic)
+    # TODO: recursively apply as well
+    # TODO: end-effector force
+    # TODO: allow just a subset to support
+    # TODO: construct using only upwards
+    n2 = get_other_node(n1, e)
+    delta = node_points[n2] - node_points[n1]
+    theta = angle_between(delta, [0, 0, -1])
+    return theta < (np.pi / 2 - SUPPORT_THETA)
+
+
+def is_start_node(n1, e, node_points):
+    return not element_supports(e, n1, node_points)
+
+
+def doubly_printable(e, node_points):
+    return all(is_start_node(n, e, node_points) for n in e)
+
+
+def retrace_supporters(element, incoming_edges, supporters):
+    for element2 in incoming_edges[element]:
+        if element2 not in supporters:
+            retrace_supporters(element2, incoming_edges, supporters=supporters)
+            supporters.append(element2)
+

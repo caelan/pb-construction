@@ -38,4 +38,5 @@ def get_ik_generator(robot, tool_pose):
 
 def sample_tool_ik(robot, tool_pose, **kwargs):
     generator = get_ik_generator(robot, tool_pose)
-    return select_solution(next(generator), **kwargs)
+    ik_joints = get_movable_joints(robot)
+    return select_solution(robot, ik_joints, next(generator), **kwargs)
