@@ -14,8 +14,8 @@ from collections import namedtuple
 
 import numpy as np
 
-from extrusion.extrusion_utils import get_disabled_collisions, parse_point, \
-    parse_transform, get_custom_limits, MotionTrajectory
+from extrusion.extrusion_utils import get_disabled_collisions, get_custom_limits, MotionTrajectory
+from extrusion.parsing import parse_point, parse_transform
 
 from examples.pybullet.utils.pybullet_tools.utils import get_movable_joints, link_from_name, set_pose, \
     multiply, invert, inverse_kinematics, plan_direct_joint_motion, Attachment, set_joint_positions, plan_joint_motion, \

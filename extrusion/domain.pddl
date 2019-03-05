@@ -27,8 +27,13 @@
   (:action print
     :parameters (?n ?e ?t)
     :precondition (and (PrintAction ?n ?e ?t) (Printed ?e) ; (Stiff)
-                       (forall (?e2) (imply (Supports ?e2 ?n) (Printed ?e2)))
-                       (forall (?e2) (imply (Collision ?t ?e2) (Removed ?e2))))
+                       ; This way of writing Supports allows the removal of an edge that others depend on
+                       ; The delete relaxation heuristics are necessary for detecting dead-ends
+                       (forall (?e2) (imply (Supports ?e2 ?n) (Printed ?e2))) ; ?e2 != ?e
+                       ; TODO: negative axiom for enforcing a state constraint
+                       ; (forall (?n2) (imply (Supports ?e ?n2) (Free ?n2)))
+                       (forall (?e2) (imply (Collision ?t ?e2) (Removed ?e2)))
+                  )
 
                        ; (Connected ?n)
                        ; (Supported ?n)
@@ -39,6 +44,7 @@
                        ;(forall (?e2) (imply (Element ?e2)
                        ;                     (or (CFree ?t ?e2) (Removed ?e2)))))
     :effect (and (Removed ?e)
+                 ; TODO: conditional effect that disable supported for the dependent objects
                  (not (Printed ?e)))
   )
 

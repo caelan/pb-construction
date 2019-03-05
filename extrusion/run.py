@@ -9,10 +9,10 @@ import pstats
 import numpy as np
 import argparse
 
-from extrusion.extrusion_utils import create_elements, \
-    load_extrusion, TOOL_NAME, load_world, \
-    get_node_neighbors, draw_element, get_disabled_collisions, MotionTrajectory, PrintTrajectory, is_ground, \
+from extrusion.extrusion_utils import TOOL_NAME, load_world, \
+    get_node_neighbors, get_disabled_collisions, MotionTrajectory, PrintTrajectory, is_ground, \
     get_supported_orders, element_supports, is_start_node, doubly_printable, retrace_supporters
+from extrusion.parsing import load_extrusion, draw_element, create_elements
 from examples.pybullet.utils.pybullet_tools.utils import connect, disconnect, wait_for_interrupt, \
     get_movable_joints, set_joint_positions, link_from_name, add_line, get_link_pose, wait_for_duration, add_text, \
     plan_joint_motion, point_from_pose, get_joint_positions, LockRenderer
@@ -54,12 +54,20 @@ def get_pddlstream(robot, obstacles, node_points, element_bodies, ground_nodes,
     init = []
     for n in ground_nodes:
         init.append(('Grounded', n))
+
+    nodes = set()
     for e in element_bodies:
         for n in e:
             if element_supports(e, n, node_points):
                 init.append(('Supports', e, n))
             if is_start_node(n, e, node_points):
                 init.append(('StartNode', n, e))
+        #if e[0] not in nodes:
+        #    add_text(e[0], position=(0, 0, -0.02), parent=element_bodies[e])
+        #if e[1] not in nodes:
+        #    add_text(e[1], position=(0, 0, 0.02), parent=element_bodies[e])
+        #nodes.update(e)
+
     for e in element_bodies:
         n1, n2 = e
         init.extend([
@@ -90,7 +98,7 @@ def get_pddlstream(robot, obstacles, node_points, element_bodies, ground_nodes,
 
 def plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
                   trajectories=[], collisions=True,
-                  debug=True, max_time=30):
+                  debug=False, max_time=30):
     if trajectories is None:
         return None
     # TODO: iterated search using random restarts
@@ -106,7 +114,10 @@ def plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
         'sample-print': StreamInfo(PartialInputs(unique=True)),
     }
     #planner = 'ff-ehc'
-    planner = 'ff-lazy-tiebreak' # Branching factor becomes large. Rely on preferred. Preferred should also be cheaper
+    #planner = 'ff-lazy-tiebreak' # Branching factor becomes large. Rely on preferred. Preferred should also be cheaper
+    planner = 'ff-eager-tiebreak' # Need to use a eager search, otherwise doesn't incorporate new cost
+    #planner = 'max-astar'
+    # TODO: limit the branching factor if necessary
     solution = solve_focused(pddlstream_problem, stream_info=stream_info, max_time=max_time,
                              effort_weight=1, unit_efforts=True, max_skeletons=None, unit_costs=True, bind=False,
                              planner=planner, max_planner_time=15, debug=debug, reorder=False)
@@ -114,7 +125,7 @@ def plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
     # Infeasibility from the start means disconnected or collision
     print_solution(solution)
     pr.disable()
-    pstats.Stats(pr).sort_stats('tottime').print_stats(10)
+    pstats.Stats(pr).sort_stats('tottime').print_stats(25)
     plan, _, _ = solution
     if plan is None:
         return None
@@ -302,15 +313,38 @@ def main(precompute=False):
 if __name__ == '__main__':
     main()
 
+# TODO: only consider axioms that could be relevant
+
 """
-  2721754  146.061    0.000  146.061    0.000 {pybullet.getClosestPoints}
-     1051   24.323    0.023   30.077    0.029 pddlstream/pddlstream/algorithms/scheduling/recover_axioms.py:88(get_achieving_axioms)
-  6900704    8.132    0.000    9.013    0.000 /Users/caelan/Programs/LIS/git/collaborations/pb-construction/pddlstream/pddlstream/algorithms/../../FastDownward/builds/release64/bin/translate/pddl/conditions.py:226(__init__)
-  5685218    7.961    0.000   24.806    0.000 pddlstream/pddlstream/algorithms/downward.py:365(literal_holds)
- 32883115    7.453    0.000    7.453    0.000 /Users/caelan/Programs/LIS/git/collaborations/pb-construction/pddlstream/pddlstream/algorithms/../../FastDownward/builds/release64/bin/translate/pddl/conditions.py:14(__hash__)
-  5685218    7.425    0.000   40.749    0.000 pddlstream/pddlstream/algorithms/scheduling/plan_streams.py:110(<lambda>)
- 11370436    6.661    0.000   31.467    0.000 pddlstream/pddlstream/algorithms/scheduling/plan_streams.py:110(<genexpr>)
-  6330071    6.475    0.000    6.475    0.000 /Users/caelan/Programs/LIS/git/collaborations/pb-construction/pddlstream/pddlstream/algorithms/../../FastDownward/builds/release64/bin/translate/pddl/conditions.py:230(__eq__)
-     1188    5.011    0.004    5.723    0.005 pddlstream/pddlstream/algorithms/scheduling/negative.py:102(<setcomp>)
-  5865360    4.794    0.000   12.307    0.000 /Users/caelan/Programs/LIS/git/collaborations/pb-construction/pddlstream/pddlstream/algorithms/../../FastDownward/builds/release64/bin/translate/pddl/conditions.py:293(negate)
+         68709602 function calls (68262747 primitive calls) in 180.144 seconds
+
+   Ordered by: internal time
+   List reduced from 1127 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+  1516416  108.096    0.000  108.096    0.000 {pybullet.getClosestPoints}
+    47800    6.891    0.000    6.891    0.000 {method 'read' of 'file' objects}
+     1584    6.602    0.004    7.578    0.005 pddlstream/pddlstream/algorithms/scheduling/reinstantiate.py:39(<setcomp>)
+  1204889    1.687    0.000  105.177    0.000 pddlstream/examples/pybullet/utils/pybullet_tools/utils.py:1894(pairwise_collision)
+ 15748555    1.530    0.000    1.549    0.000 {isinstance}
+  1270191    1.456    0.000    1.611    0.000 /Users/caelan/Programs/LIS/git/collaborations/pb-construction/pddlstream/pddlstream/algorithms/../../FastDownward/builds/release64/bin/translate/pddl/conditions.py:226(__init__)
+      490    1.305    0.003   95.069    0.194 extrusion/extrusion_utils.py:124(check_trajectory_collision)
+       19    1.266    0.067    7.197    0.379 /Users/caelan/Programs/LIS/git/collaborations/pb-construction/pddlstream/pddlstream/algorithms/../../FastDownward/builds/release64/bin/translate/build_model.py:301(compute_model)
+   119409    1.211    0.000    1.211    0.000 {method 'items' of 'dict' objects}
+   973714    1.126    0.000    2.522    0.000 /Users/caelan/Programs/LIS/git/collaborations/pb-construction/pddlstream/pddlstream/algorithms/../../FastDownward/builds/release64/bin/translate/pddl/axioms.py:69(__lt__)
+   758168    1.052    0.000    1.052    0.000 {zip}
+  1632164    1.049    0.000    1.049    0.000 {built-in method __new__ of type object at 0x10acb3bf8}
+  1513755    1.024    0.000    1.024    0.000 /Users/caelan/Programs/LIS/git/collaborations/pb-construction/pddlstream/pddlstream/algorithms/../../FastDownward/builds/release64/bin/translate/pddl/conditions.py:230(__eq__)
+   283632    0.973    0.000    3.267    0.000 /Users/caelan/Programs/LIS/git/collaborations/pb-construction/pddlstream/pddlstream/algorithms/../../FastDownward/builds/release64/bin/translate/build_model.py:100(fire)
+   275864    0.972    0.000    0.972    0.000 {pybullet.resetJointState}
+   378836    0.851    0.000    1.407    0.000 /Users/caelan/Programs/LIS/git/collaborations/pb-construction/pddlstream/pddlstream/algorithms/../../FastDownward/builds/release64/bin/translate/build_model.py:56(prepare_effect)
+       19    0.850    0.045    7.464    0.393 /Users/caelan/Programs/LIS/git/collaborations/pb-construction/pddlstream/pddlstream/algorithms/../../FastDownward/builds/release64/bin/translate/instantiate.py:40(instantiate)
+   670857    0.819    0.000    2.216    0.000 pddlstream/examples/pybullet/utils/pybullet_tools/utils.py:1025(get_joint_info)
+   200445    0.779    0.000    1.323    0.000 {_heapq.heappop}
+       12    0.764    0.064    9.330    0.777 pddlstream/pddlstream/algorithms/scheduling/negative.py:60(recover_negative_axioms)
+       31    0.727    0.023    3.323    0.107 pddlstream/pddlstream/algorithms/scheduling/recover_streams.py:19(get_achieving_streams)
+163300/149706    0.706    0.000    3.562    0.000 {sorted}
+   349532    0.672    0.000    0.852    0.000 /Users/caelan/Programs/LIS/git/collaborations/pb-construction/pddlstream/pddlstream/algorithms/../../FastDownward/builds/release64/bin/translate/build_model.py:184(unify)
+   295457    0.667    0.000    1.044    0.000 /Users/caelan/Programs/LIS/git/collaborations/pb-construction/pddlstream/pddlstream/algorithms/../../FastDownward/builds/release64/bin/translate/build_model.py:290(push)
+   277407    0.642    0.000    2.024    0.000 pddlstream/pddlstream/algorithms/downward.py:204(fd_from_evaluation)
 """

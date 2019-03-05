@@ -43,10 +43,6 @@ def optimize_angle(robot, tool, tool_from_root, tool_link, element_pose,
         #                 = Pose_{world,element} * (Pose_{EE,element})^{-1}
         target_pose = multiply(element_pose, invert(grasp_pose))
         set_pose(tool, multiply(target_pose, tool_from_root))
-        if any(pairwise_collision(tool, obst) for obst in obstacles):
-            # TODO: sort by angle with smallest violation
-            # TODO: apply for the whole sequence
-            continue
 
         if nearby:
             set_joint_positions(robot, movable_joints, initial_conf)
@@ -73,6 +69,17 @@ def optimize_angle(robot, tool, tool_from_root, tool_link, element_pose,
 
 ##################################################
 
+def check_tool_path(tool, tool_from_root, element_pose, translation_path, direction, angle, reverse, obstacles):
+    # TODO: allow sampling in the full sphere by checking collision with an element while sliding
+    for translation in translation_path:
+        grasp_pose = get_grasp_pose(translation, direction, angle, reverse)
+        target_pose = multiply(element_pose, invert(grasp_pose))
+        set_pose(tool, multiply(target_pose, tool_from_root))
+        if any(pairwise_collision(tool, obst) for obst in obstacles):
+            # TODO: sort by angle with smallest violation
+            return True
+    return False
+
 def compute_direction_path(robot, tool, tool_from_root,
                            length, reverse, element_body, direction,
                            obstacles, collision_fn):
@@ -92,22 +99,24 @@ def compute_direction_path(robot, tool, tool_from_root,
     #angle_deltas = [-angle_step_size, 0, angle_step_size]
     angle_deltas = [0]
     num_initial = 1 # 12
-    translation_steps = np.append(np.arange(-length / 2, length / 2, step_size), [length / 2])
+    translation_path = np.append(np.arange(-length / 2, length / 2, step_size), [length / 2])
+    element_pose = get_pose(element_body)
 
     #initial_angles = [wrap_angle(angle) for angle in np.linspace(0, 2*np.pi, num_initial, endpoint=False)]
     initial_angles = list(map(wrap_angle, np.random.uniform(0, 2*np.pi, num_initial)))
+    initial_angles = [angle for angle in initial_angles if not check_tool_path(
+        tool, tool_from_root, element_pose, translation_path, direction, angle, reverse, obstacles)]
 
     tool_link = link_from_name(robot, TOOL_NAME)
-    element_pose = get_pose(element_body)
     current_angle, current_conf = optimize_angle(robot, tool, tool_from_root, tool_link, element_pose,
-                                                 translation_steps[0], direction, reverse, initial_angles,
+                                                 translation_path[0], direction, reverse, initial_angles,
                                                  obstacles, collision_fn, nearby=False)
     if current_conf is None:
         return None
     # TODO: constrain maximum conf displacement
     # TODO: alternating minimization for just position and also orientation
     trajectory = [current_conf]
-    for translation in translation_steps[1:]:
+    for translation in translation_path[1:]:
         #set_joint_positions(robot, movable_joints, current_conf)
         candidate_angles = [wrap_angle(current_angle + delta) for delta in angle_deltas]
         random.shuffle(candidate_angles)
@@ -190,7 +199,9 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                     sorted(len(t.colliding) for t in trajectories)))
                 yield (print_traj,)
                 if not colliding:
+                    print(num, n1, n2)
                     print('Reevaluated already non-colliding trajectory!')
+                    wait_for_user()
                     return
             else:
                 print('{}) {}->{} ({}) | {} | Max attempts exceeded!'.format(
