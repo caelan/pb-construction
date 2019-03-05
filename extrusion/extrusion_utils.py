@@ -8,7 +8,7 @@ import numpy as np
 
 from examples.pybullet.utils.pybullet_tools.utils import set_point, Euler, get_movable_joints, set_joint_positions, \
     pairwise_collision, Pose, multiply, Point, load_model, \
-    HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between
+    HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, set_pose
 
 KUKA_PATH = '../models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
 TOOL_NAME = 'eef_tcp_frame'
@@ -28,17 +28,27 @@ SUPPORT_THETA = np.math.radians(10)  # Support polygon
 
 ##################################################
 
-def check_trajectory_collision(robot, trajectory, bodies):
+def check_trajectory_collision(tool_body, tool_from_root, trajectory, bodies):
     # TODO: each new addition makes collision checking more expensive
     #offset = 4
-    movable_joints = get_movable_joints(robot)
-    #for q in trajectory[offset:-offset]:
-    collisions = [False for _ in range(len(bodies))] # TODO: batch collision detection
-    for q in trajectory:
-        set_joint_positions(robot, movable_joints, q)
+    #for robot_conf in trajectory[offset:-offset]:
+    collisions = [False for _ in range(len(bodies))]
+    indices = list(range(len(trajectory.path)))
+    random.shuffle(indices) # TODO: bisect
+
+    # TODO: separate into another method. Sort paths by tool poses first
+    for k in indices:
+        tool_pose = trajectory.tool_path[k]
+        set_pose(tool_body, multiply(tool_pose, tool_from_root))
         for i, body in enumerate(bodies):
             if not collisions[i]:
-                collisions[i] |= pairwise_collision(robot, body)
+                collisions[i] |= pairwise_collision(tool_body, body)
+    for k in indices:
+        robot_conf = trajectory.path[k]
+        set_joint_positions(trajectory.robot, trajectory.joints, robot_conf)
+        for i, body in enumerate(bodies):
+            if not collisions[i]:
+                collisions[i] |= pairwise_collision(trajectory.robot, body)
     return collisions
 
 
@@ -132,10 +142,12 @@ class MotionTrajectory(object):
 
 
 class PrintTrajectory(object):
-    def __init__(self, robot, joints, path, element, reverse, colliding=set()):
+    def __init__(self, robot, joints, path, tool_path, element, reverse, colliding=set()):
         self.robot = robot
         self.joints = joints
         self.path = path
+        self.tool_path = tool_path
+        assert len(self.path) == len(self.tool_path)
         self.n1, self.n2 = reversed(element) if reverse else element
         self.element = element
         self.colliding = colliding

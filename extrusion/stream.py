@@ -6,7 +6,7 @@ from examples.pybullet.utils.pybullet_tools.utils import get_movable_joints, get
     link_from_name, get_pose, get_collision_fn, dump_body, get_link_subtree, wait_for_user, clone_body, \
     get_all_links, set_color, set_pose, pairwise_collision
 from extrusion.extrusion_utils import get_grasp_pose, TOOL_NAME, get_disabled_collisions, get_node_neighbors, \
-    sample_direction, check_trajectory_collision, PrintTrajectory, retrace_supporters, get_supported_orders
+    sample_direction, check_trajectory_collision, PrintTrajectory, retrace_supporters, get_supported_orders, prune_dominated
 #from extrusion.run import USE_IKFAST, get_supported_orders, retrace_supporters, SELF_COLLISIONS, USE_CONMECH
 from pddlstream.language.stream import WildOutput
 from pddlstream.utils import neighbors_from_orders, irange, user_input
@@ -30,9 +30,29 @@ except ImportError as e:
 SELF_COLLISIONS = True
 TOOL_ROOT = 'eef_base_link' # robot_tool0
 
+##################################################
+
+def compute_tool_path(element_pose, translation_path, direction, angle, reverse):
+    tool_path = []
+    for translation in translation_path:
+        grasp_pose = get_grasp_pose(translation, direction, angle, reverse)
+        tool_path.append(multiply(element_pose, invert(grasp_pose)))
+    return tool_path
+
+def check_tool_path(tool, tool_from_root, element_pose, translation_path, direction, angle, reverse, obstacles):
+    # TODO: allow sampling in the full sphere by checking collision with an element while sliding
+    for tool_pose in compute_tool_path(element_pose, translation_path, direction, angle, reverse):
+        set_pose(tool, multiply(tool_pose, tool_from_root))
+        if any(pairwise_collision(tool, obst) for obst in obstacles):
+            # TODO: sort by angle with smallest violation
+            return True
+    return False
+
+##################################################
+
 def optimize_angle(robot, tool, tool_from_root, tool_link, element_pose,
                    translation, direction, reverse, candidate_angles,
-                   obstacles, collision_fn, nearby=True, max_error=1e-2):
+                   collision_fn, nearby=True, max_error=1e-2):
 
     movable_joints = get_movable_joints(robot)
     best_error, best_angle, best_conf = max_error, None, None
@@ -69,25 +89,14 @@ def optimize_angle(robot, tool, tool_from_root, tool_link, element_pose,
 
 ##################################################
 
-def check_tool_path(tool, tool_from_root, element_pose, translation_path, direction, angle, reverse, obstacles):
-    # TODO: allow sampling in the full sphere by checking collision with an element while sliding
-    for translation in translation_path:
-        grasp_pose = get_grasp_pose(translation, direction, angle, reverse)
-        target_pose = multiply(element_pose, invert(grasp_pose))
-        set_pose(tool, multiply(target_pose, tool_from_root))
-        if any(pairwise_collision(tool, obst) for obst in obstacles):
-            # TODO: sort by angle with smallest violation
-            return True
-    return False
-
 def compute_direction_path(robot, tool, tool_from_root,
-                           length, reverse, element_body, direction,
+                           length, reverse, element_bodies, element, direction,
                            obstacles, collision_fn):
     """
     :param robot:
     :param length: element's length
     :param reverse: True if element end id tuple needs to be reversed
-    :param element_body: the considered element's pybullet body
+    :param element: the considered element's pybullet body
     :param direction: a sampled Pose (v \in unit sphere)
     :param collision_fn: collision checker (pybullet_tools.utils.get_collision_fn)
     note that all the static objs + elements in the support set of the considered element
@@ -100,7 +109,7 @@ def compute_direction_path(robot, tool, tool_from_root,
     angle_deltas = [0]
     num_initial = 1 # 12
     translation_path = np.append(np.arange(-length / 2, length / 2, step_size), [length / 2])
-    element_pose = get_pose(element_body)
+    element_pose = get_pose(element_bodies[element])
 
     #initial_angles = [wrap_angle(angle) for angle in np.linspace(0, 2*np.pi, num_initial, endpoint=False)]
     initial_angles = list(map(wrap_angle, np.random.uniform(0, 2*np.pi, num_initial)))
@@ -108,31 +117,33 @@ def compute_direction_path(robot, tool, tool_from_root,
         tool, tool_from_root, element_pose, translation_path, direction, angle, reverse, obstacles)]
 
     tool_link = link_from_name(robot, TOOL_NAME)
-    current_angle, current_conf = optimize_angle(robot, tool, tool_from_root, tool_link, element_pose,
+    initial_angle, current_conf = optimize_angle(robot, tool, tool_from_root, tool_link, element_pose,
                                                  translation_path[0], direction, reverse, initial_angles,
-                                                 obstacles, collision_fn, nearby=False)
+                                                 collision_fn, nearby=False)
     if current_conf is None:
         return None
     # TODO: constrain maximum conf displacement
     # TODO: alternating minimization for just position and also orientation
-    trajectory = [current_conf]
+    current_angle = initial_angle
+    robot_path = [current_conf]
     for translation in translation_path[1:]:
         #set_joint_positions(robot, movable_joints, current_conf)
         candidate_angles = [wrap_angle(current_angle + delta) for delta in angle_deltas]
         random.shuffle(candidate_angles)
         current_angle, current_conf = optimize_angle(robot, tool, tool_from_root, tool_link, element_pose,
                                                      translation, direction, reverse, candidate_angles,
-                                                     obstacles, collision_fn, nearby=True)
+                                                     collision_fn, nearby=True)
         if current_conf is None:
             return None
-        trajectory.append(current_conf)
-    return trajectory
+        robot_path.append(current_conf)
+    tool_path = compute_tool_path(element_pose, translation_path, direction, initial_angle, reverse)
+    return PrintTrajectory(robot, get_movable_joints(robot), robot_path, tool_path, element, reverse)
 
 ##################################################
 
 def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground_nodes):
     max_attempts = 300 # 150 | 300
-    max_trajectories = 10
+    max_trajectories = 25
     check_collisions = True
     # 50 doesn't seem to be enough
 
@@ -158,7 +169,6 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
 
     def gen_fn(node1, element): # fluents=[]):
         reverse = (node1 != element[0])
-        element_body = element_bodies[element]
         n1, n2 = reversed(element) if reverse else element
         delta = node_points[n2] - node_points[n1]
         # if delta[2] < 0:
@@ -169,7 +179,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
         supporters = []
         retrace_supporters(element, incoming_supporters, supporters)
         elements_order = [e for e in element_bodies if (e != element) and (e not in supporters)]
-        bodies_order = [element_bodies[e] for e in elements_order]
+        bodies_order = [element_bodies[e] for e in elements_order] if check_collisions else []
         obstacles = fixed_obstacles + [element_bodies[e] for e in supporters]
         collision_fn = get_collision_fn(robot, movable_joints, obstacles,
                                         attachments=[], self_collisions=SELF_COLLISIONS,
@@ -178,35 +188,30 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
         trajectories = []
         for num in irange(max_trajectories):
             for attempt in range(max_attempts):
-                path = compute_direction_path(robot, tool_body, tool_from_root,
-                                              length, reverse, element_body, sample_direction(), obstacles, collision_fn)
-                if path is None:
+                direction = sample_direction()
+                traj = compute_direction_path(robot, tool_body, tool_from_root,
+                                              length, reverse, element_bodies, element,
+                                              direction, obstacles, collision_fn)
+                if traj is None:
                     continue
-                if check_collisions:
-                    collisions = check_trajectory_collision(robot, path, bodies_order)
-                    colliding = {e for k, e in enumerate(elements_order) if (element != e) and collisions[k]}
-                else:
-                    colliding = set()
-                if (node_neighbors[n1] <= colliding) and not any(n in ground_nodes for n in element):
+                collisions = check_trajectory_collision(tool_body, tool_from_root, traj, bodies_order)
+                traj.colliding = {e for k, e in enumerate(elements_order) if (element != e) and collisions[k]}
+                if (node_neighbors[n1] <= traj.colliding) and not any(n in ground_nodes for n in element):
                     continue
-                print_traj = PrintTrajectory(robot, movable_joints, path, element, reverse, colliding)
-                trajectories.append(print_traj)
-                # TODO: need to prune dominated trajectories
-                if print_traj not in trajectories:
+                trajectories.append(traj)
+                prune_dominated(trajectories)
+                if traj not in trajectories:
                     continue
                 print('{}) {}->{} ({}) | {} | {} | {}'.format(
                     num, n1, n2, len(supporters), attempt, len(trajectories),
                     sorted(len(t.colliding) for t in trajectories)))
-                yield (print_traj,)
-                if not colliding:
-                    print(num, n1, n2)
+                yield (traj,)
+                if not traj.colliding:
                     print('Reevaluated already non-colliding trajectory!')
-                    wait_for_user()
                     return
             else:
                 print('{}) {}->{} ({}) | {} | Max attempts exceeded!'.format(
                     num, len(supporters), n1, n2, max_attempts))
-                user_input('Continue?')
                 return
     return gen_fn
 
