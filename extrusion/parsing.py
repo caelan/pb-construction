@@ -7,7 +7,7 @@ from examples.pybullet.utils.pybullet_tools.utils import add_line, create_cylind
     quat_from_euler, Euler
 from extrusion.extrusion_utils import is_ground
 
-EXTRUSION_DIRECTORY = 'json/'
+EXTRUSION_DIRECTORY = os.path.join('..', 'assembly_instances', 'extrusion')
 EXTRUSION_FILENAMES = {
     'djmm_test_block': 'djmm_test_block_S1.0_09-17-2018.json',
     'mars_bubble': 'mars_bubble_S1.0_09-17-2018.json',

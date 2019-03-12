@@ -12,7 +12,7 @@ from pddlstream.language.stream import WildOutput
 from pddlstream.utils import neighbors_from_orders, irange, user_input
 
 try:
-    from utils.ikfast.kuka_kr6_r900.ik import sample_tool_ik
+    from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import sample_tool_ik
 except ImportError as e:
     print('\x1b[6;30;43m' + '{}, Using pybullet ik fn instead'.format(e) + '\x1b[0m')
     USE_IKFAST = False
