@@ -53,6 +53,7 @@ def check_tool_path(tool, tool_from_root, element_pose, translation_path, direct
 def optimize_angle(robot, tool, tool_from_root, tool_link, element_pose,
                    translation, direction, reverse, candidate_angles,
                    collision_fn, nearby=True, max_error=1e-2):
+    # TODO: lazily sample tool pose before full trajectory
 
     movable_joints = get_movable_joints(robot)
     best_error, best_angle, best_conf = max_error, None, None

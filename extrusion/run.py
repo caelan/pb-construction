@@ -257,7 +257,14 @@ def debug_elements(robot, node_points, node_order, elements):
 
 def main(precompute=False):
     parser = argparse.ArgumentParser()
-    # djmm_test_block | mars_bubble | sig_artopt-bunny | topopt-100 | topopt-205 | topopt-310 | voronoi
+    # simple_frame | Nodes: 12 | Ground: 4 | Elements: 19
+    # topopt-100 | Nodes: 88 | Ground: 20 | Elements: 132
+    # topopt-205 | Nodes: 89 | Ground: 19 | Elements: 164
+    # mars-bubble | Nodes: 97 | Ground: 11 | Elements: 225
+    # djmm_test_block | Nodes: 76 | Ground: 13 | Elements: 253
+    # voronoi | Nodes: 162 | Ground: 14 | Elements: 306
+    # topopt-310 | Nodes: 160 | Ground: 39 | Elements: 310
+    # sig_artopt-bunny | Nodes: 219 | Ground: 14 | Elements: 418
     parser.add_argument('-p', '--problem', default='simple_frame', help='The name of the problem to solve')
     parser.add_argument('-c', '--cfree', action='store_true', help='Disables collisions with obstacles')
     parser.add_argument('-m', '--motions', action='store_true', help='Plans motions between each extrusion')
