@@ -10,10 +10,11 @@ from examples.pybullet.utils.pybullet_tools.utils import set_point, Euler, get_m
     pairwise_collision, Pose, multiply, Point, load_model, \
     HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, set_pose
 
-KUKA_PATH = '../models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
+KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
 TOOL_NAME = 'eef_tcp_frame'
 # [u'base_frame_in_rob_base', u'element_list', u'node_list', u'assembly_type', u'model_type', u'unit']
 
+# TODO: import from SRDF
 DISABLED_COLLISIONS = [
     # ('robot_link_1', 'workspace_objects'),
     # ('robot_link_2', 'workspace_objects'),

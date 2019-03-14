@@ -1,3 +1,10 @@
 [submodule "pddlstream"]
 	path = pddlstream
 	url = https://github.com/caelan/pddlstream
+
+[submodule "assembly_instances"]
+	path = assembly_instances
+	url = https://github.com/yijiangh/assembly_instances.git
+[submodule "conrob_pybullet"]
+	path = conrob_pybullet
+	url = https://github.com/yijiangh/conrob_pybullet.git

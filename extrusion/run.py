@@ -269,7 +269,6 @@ def main(precompute=False):
     # TODO: setCollisionFilterGroupMask
     # TODO: fail if wild stream produces unexpected facts
     # TODO: try search at different cost levels (i.e. w/ and w/o abstract)
-    # TODO: submodule in https://github.mit.edu/yijiangh/assembly-instances
 
     elements, node_points, ground_nodes = load_extrusion(args.problem)
     node_order = list(range(len(node_points)))

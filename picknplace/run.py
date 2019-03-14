@@ -22,7 +22,8 @@ from examples.pybullet.utils.pybullet_tools.utils import get_movable_joints, lin
     get_configuration, wait_for_interrupt, point_from_pose, HideOutput, load_pybullet, draw_pose, unit_quat, create_obj, \
     add_body_name, get_pose, pose_from_tform, connect, WorldSaver, get_sample_fn, \
     wait_for_duration, enable_gravity, enable_real_time, trajectory_controller, simulate_controller, \
-    add_fixed_constraint, remove_fixed_constraint, Pose, Euler, get_collision_fn, LockRenderer, user_input
+    add_fixed_constraint, remove_fixed_constraint, Pose, Euler, get_collision_fn, LockRenderer, user_input, has_gui, \
+    disconnect
 
 from pddlstream.algorithms.focused import solve_focused
 from pddlstream.language.constants import And, print_solution
@@ -30,7 +31,7 @@ from pddlstream.language.generator import from_gen_fn, from_fn
 from pddlstream.utils import read, get_file_path
 
 try:
-    from utils.ikfast.kuka_kr6_r900.ik import sample_tool_ik
+    from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import sample_tool_ik
 except ImportError as e:
     print('\x1b[6;30;43m' + '{}, Using pybullet ik fn instead'.format(e) + '\x1b[0m')
     USE_IKFAST = False
@@ -38,8 +39,7 @@ except ImportError as e:
 else:
     USE_IKFAST = True
 
-#PICKNPLACE_DIRECTORY = 'picknplace/'
-PICKNPLACE_DIRECTORY = ''
+PICKNPLACE_DIRECTORY = os.path.join('..', 'assembly_instances', 'picknplace')
 PICKNPLACE_FILENAMES = {
     #'choreo_brick_demo': 'choreo_brick_demo.json',
     'choreo_brick_demo': 'json/brick_demo.json',
@@ -88,7 +88,7 @@ def load_pick_and_place(extrusion_name, scale=MILLIMETER, max_bricks=6):
     with open(os.path.join(bricks_directory, PICKNPLACE_FILENAMES[extrusion_name]), 'r') as f:
         json_data = json.loads(f.read())
 
-    kuka_urdf = '../models/kuka_kr6_r900/urdf/kuka_kr6_r900_mit_suction_gripper.urdf'
+    kuka_urdf = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_mit_suction_gripper.urdf'
     obj_directory = os.path.join(bricks_directory, 'meshes', 'collision')
     with HideOutput():
         #world = load_pybullet(os.path.join(bricks_directory, 'urdf', 'brick_demo.urdf'))
@@ -270,8 +270,8 @@ def get_collision_test(robot, brick_from_index, collisions=True):
 ##################################################
 
 def get_pddlstream(robot, brick_from_index, obstacle_from_name, collisions=True, teleport=False):
-    domain_pddl = read(get_file_path(__file__, os.path.join(PICKNPLACE_DIRECTORY, 'domain.pddl')))
-    stream_pddl = read(get_file_path(__file__, os.path.join(PICKNPLACE_DIRECTORY, 'stream.pddl')))
+    domain_pddl = read(get_file_path(__file__, 'domain.pddl'))
+    stream_pddl = read(get_file_path(__file__, 'stream.pddl'))
     constant_map = {}
 
     conf = np.array(get_configuration(robot))
@@ -417,7 +417,11 @@ def main():
     plan, _, _ = solution
     if plan is None:
         return
-    step_plan(plan, time_step=(np.inf if args.teleport else 0.1))
+
+    if not has_gui():
+        connect(use_gui=True)
+        _ = load_pick_and_place(args.problem)
+    step_plan(plan, time_step=(np.inf if args.teleport else 0.01))
     #simulate_plan(plan)
 
 
