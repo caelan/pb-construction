@@ -32,3 +32,10 @@ Construction Sequencing Structural Analysis
 
 * `$ python -m debug_examples.test_eth_rfl_pick`
 * `$ python -m debug_examples.test_irb6600_track_pick`
+
+## Related Repos
+
+* https://github.com/yijiangh/pychoreo
+* https://github.com/yijiangh/assembly_instances
+* https://github.com/yijiangh/conmech
+* https://github.com/yijiangh/conrob_pybullet
