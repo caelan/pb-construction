@@ -12,7 +12,7 @@ $ ./pddlstream/FastDownward/build.py
 
 To build ikfast modules:
 ```bash
-$ cd utils/ikfast/kuka_kr6_r900/
+$ cd conrob_pybullet/utils/ikfast/kuka_kr6_r900/
 $ python setup.py build
 ```
 
@@ -20,7 +20,7 @@ For other robots, replace `kuka_kr6_r900` with the following supported robots:
 - `eth_rfl`
 - `abb_irb6600_track`
 
-Construction Sequencing Structural Analysis
+Construction Sequencing Structural Analysis (for frame structures)
 * https://github.com/yijiangh/conmech
 
 ## Examples
@@ -30,8 +30,8 @@ Construction Sequencing Structural Analysis
 
 ## Testing new IKFast modules
 
-* `$ python -m debug_examples.test_eth_rfl_pick`
-* `$ python -m debug_examples.test_irb6600_track_pick`
+* `$ python -m conrob_pybullet.debug_examples.test_eth_rfl_pick`
+* `$ python -m conrob_pybullet.debug_examples.test_irb6600_track_pick`
 
 ## Related Repos
 
