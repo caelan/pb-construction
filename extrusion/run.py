@@ -336,6 +336,33 @@ def downsample_nodes(elements, node_points, ground_nodes, n=None):
                 if all(n in node_order for n in element)]
     return elements, ground_nodes
 
+def heuristic_planner(robot, obstacles, node_points, element_bodies, ground_nodes, **kwargs):
+    print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
+                                    precompute_collisions=False, **kwargs)
+    node_neighbors = get_node_neighbors(element_bodies)
+    extruded_elements = set()
+    planned_trajectories = []
+    connected_nodes = set(ground_nodes)
+    print(node_points)
+    # Using max does not work at this point because of tiebreaking
+    for element in sorted(element_bodies, key=lambda e: min(node_points[n][2] for n in e)): # TODO: tiebreak by angle or x:
+        # TODO: select from actually applicable
+        # TODO: handle tiebreaking in a nice way
+        print(element, connected_nodes)
+        print([node_points[n] for n in element])
+        node = random.choice([n for n in element if n in connected_nodes])
+        try:
+            trajectory, = next(print_gen_fn(node, element, extruded=extruded_elements))
+        except StopIteration:
+            print('Failure!')
+            break
+        planned_trajectories.append(trajectory)
+        extruded_elements.add(element)
+        connected_nodes.update(element)
+    return planned_trajectories
+
+##################################################
+
 def main(precompute=False):
     parser = argparse.ArgumentParser()
     # simple_frame | Nodes: 12 | Ground: 4 | Elements: 19
@@ -382,21 +409,21 @@ def main(precompute=False):
         trajectories = []
         if precompute:
             trajectories = sample_trajectories(robot, obstacles, node_points, element_bodies, ground_nodes)
-        planned_trajectories = plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
-                             trajectories=trajectories, collisions=not args.cfree, disable=args.disable, max_time=args.max_time)
+        #planned_trajectories = plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
+        #                     trajectories=trajectories, collisions=not args.cfree, disable=args.disable, max_time=args.max_time)
+        planned_trajectories = heuristic_planner(robot, obstacles, node_points, element_bodies, ground_nodes, disable=args.disable)
         planned_elements = [traj.element for traj in planned_trajectories]
         if args.motions:
             planned_trajectories = compute_motions(robot, obstacles, element_bodies, initial_conf, planned_trajectories)
     disconnect()
 
     #random.shuffle(planned_elements)
-    planned_elements = sorted(elements, key=lambda e: max(node_points[n][2] for n in e)) # TODO: tiebreak by angle or x
-    # TODO: check whether this sequence can actually be printed
+    #planned_elements = sorted(elements, key=lambda e: max(node_points[n][2] for n in e)) # TODO: tiebreak by angle or x
 
-    connect(use_gui=True)
-    floor, robot = load_world()
-    print(check_stiffness(args.problem, planned_elements))
-    #display_trajectories(ground_nodes, planned_trajectories)
+    #connect(use_gui=True)
+    #floor, robot = load_world()
+    #print(check_stiffness(args.problem, planned_elements))
+    display_trajectories(ground_nodes, planned_trajectories)
     # TODO: collisions at the ends of elements?
 
     # TODO: slow down automatically near endpoints

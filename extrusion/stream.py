@@ -183,7 +183,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
         #supporters = {e for e in node_neighbors[n1] if element_supports(e, n1, node_points)}
         supporters = []
         retrace_supporters(element, incoming_supporters, supporters)
-        obstacles = set(fixed_obstacles + [element_bodies[e] for e in supporters + extruded])
+        obstacles = set(fixed_obstacles + [element_bodies[e] for e in supporters + list(extruded)])
 
         elements_order = [e for e in element_bodies if (e != element) and (element_bodies[e] not in obstacles)]
         collision_fn = get_collision_fn(robot, movable_joints, obstacles,
