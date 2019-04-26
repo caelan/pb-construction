@@ -33,7 +33,10 @@
                        ; TODO: negative axiom for enforcing a state constraint
                        ; (forall (?n2) (imply (Supports ?e ?n2) (Free ?n2)))
                        (forall (?e2) (imply (Collision ?t ?e2) (Removed ?e2)))
-                  )
+
+                       ; Distinction is edge partial ordering rather than node/edge
+                       ; (forall (?e2) (imply (Above ?e2 ?e) (Removed ?e2)))
+                       ; (forall (?e2) (imply (Above ?e ?e2) (Printed ?e2)))
 
                        ; (Connected ?n)
                        ; (Supported ?n)
@@ -43,7 +46,9 @@
                        ;                     (or (Connected ?e2) (Removed ?e2))))
                        ;(forall (?e2) (imply (Element ?e2)
                        ;                     (or (CFree ?t ?e2) (Removed ?e2)))))
+                  )
     :effect (and (Removed ?e)
+                 ; Conditional effect that updates whether a node is still fully supported
                  ; TODO: conditional effect that disable supported for the dependent objects
                  (not (Printed ?e)))
   )

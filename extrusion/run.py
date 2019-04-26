@@ -9,14 +9,17 @@ import pstats
 import numpy as np
 import argparse
 import time
+import random
+
+from itertools import permutations
 
 from extrusion.extrusion_utils import TOOL_NAME, load_world, \
     get_node_neighbors, get_disabled_collisions, MotionTrajectory, PrintTrajectory, is_ground, \
-    get_supported_orders, element_supports, is_start_node, doubly_printable, retrace_supporters
-from extrusion.parsing import load_extrusion, draw_element, create_elements
+    get_supported_orders, element_supports, is_start_node, doubly_printable, retrace_supporters, get_element_neighbors, get_other_node
+from extrusion.parsing import load_extrusion, draw_element, create_elements, get_extrusion_path, draw_model
 from examples.pybullet.utils.pybullet_tools.utils import connect, disconnect, wait_for_interrupt, \
     get_movable_joints, set_joint_positions, link_from_name, add_line, get_link_pose, wait_for_duration, add_text, \
-    plan_joint_motion, point_from_pose, get_joint_positions, LockRenderer
+    plan_joint_motion, point_from_pose, get_joint_positions, LockRenderer, wait_for_user, has_gui, remove_all_debug
 from extrusion.stream import get_print_gen_fn, get_wild_print_gen_fn, test_stiffness, SELF_COLLISIONS
 
 
@@ -24,7 +27,7 @@ from pddlstream.algorithms.focused import solve_focused
 from pddlstream.language.constants import PDDLProblem, And, print_solution
 from pddlstream.language.generator import from_test
 from pddlstream.language.stream import StreamInfo, PartialInputs
-from pddlstream.utils import read, get_file_path, user_input, neighbors_from_orders, INF, elapsed_time
+from pddlstream.utils import read, get_file_path, user_input, neighbors_from_orders, INF, elapsed_time, get_connected_components
 
 
 JOINT_WEIGHTS = [0.3078557810844393, 0.443600199302506, 0.23544367607317915,
@@ -33,8 +36,7 @@ JOINT_WEIGHTS = [0.3078557810844393, 0.443600199302506, 0.23544367607317915,
 
 ##################################################
 
-def get_pddlstream(robot, obstacles, node_points, element_bodies, ground_nodes,
-                   trajectories=[], collisions=True):
+def get_pddlstream(robot, obstacles, node_points, element_bodies, ground_nodes, trajectories=[], **kwargs):
     # TODO: instantiation slowness is due to condition effects
     # Regression works well here because of the fixed goal state
     # TODO: plan for the end-effector first
@@ -46,8 +48,7 @@ def get_pddlstream(robot, obstacles, node_points, element_bodies, ground_nodes,
     stream_map = {
         #'test-cfree': from_test(get_test_cfree(element_bodies)),
         #'sample-print': from_gen_fn(get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes)),
-        'sample-print': get_wild_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                              collisions=collisions),
+        'sample-print': get_wild_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes, **kwargs),
         'test-stiffness': from_test(test_stiffness),
     }
 
@@ -68,6 +69,19 @@ def get_pddlstream(robot, obstacles, node_points, element_bodies, ground_nodes,
         #if e[1] not in nodes:
         #    add_text(e[1], position=(0, 0, 0.02), parent=element_bodies[e])
         #nodes.update(e)
+
+    # Really there are 3 types of elements with respect to a node
+    # 1) Elements that directly support the node (are below)
+    # 2) Elements that stabilize the node (are parallel to the ground)
+    # 3) Elements that extend from the node
+    # 1 < 2 < 3
+
+    #for n, neighbors in get_node_neighbors(element_bodies).items():
+    #    for e1, e2 in permutations(neighbors, 2):
+    #        p1 = node_points[get_other_node(n, e1)]
+    #        p2 = node_points[get_other_node(n, e2)]
+    #        if p1[2] - p2[2] > 0.01:
+    #            init.append(('Above', e1, e2))
 
     for e in element_bodies:
         n1, n2 = e
@@ -98,7 +112,7 @@ def get_pddlstream(robot, obstacles, node_points, element_bodies, ground_nodes,
 
 
 def plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
-                  trajectories=[], collisions=True,
+                  trajectories=[], collisions=True, disable=False,
                   debug=False, max_time=30):
     if trajectories is None:
         return None
@@ -107,13 +121,14 @@ def plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
     # TODO: NEGATIVE_SUFFIX to make axioms easier
     pr = cProfile.Profile()
     pr.enable()
-    pddlstream_problem = get_pddlstream(robot, obstacles, node_points, element_bodies,
-                                        ground_nodes, trajectories=trajectories, collisions=collisions)
+    pddlstream_problem = get_pddlstream(robot, obstacles, node_points, element_bodies, ground_nodes,
+                                        trajectories=trajectories, collisions=collisions, disable=disable)
     #solution = solve_incremental(pddlstream_problem, planner='add-random-lazy', max_time=600,
     #                             max_planner_time=300, debug=True)
     stream_info = {
         'sample-print': StreamInfo(PartialInputs(unique=True)),
     }
+    # TODO: goal serialization
     #planner = 'ff-ehc'
     #planner = 'ff-lazy-tiebreak' # Branching factor becomes large. Rely on preferred. Preferred should also be cheaper
     planner = 'ff-eager-tiebreak' # Need to use a eager search, otherwise doesn't incorporate new cost
@@ -258,6 +273,69 @@ def debug_elements(robot, node_points, node_order, elements):
 
 ##################################################
 
+def get_connected_structures(elements):
+    edges = {(e1, e2) for e1, neighbors in get_element_neighbors(elements).items() for e2 in neighbors}
+    return get_connected_components(elements, edges)
+
+def check_stiffness(extrusion_name, planned_elements):
+    import conmech_py as cm
+    #import pyconmech as cm
+
+    extrusion_path = get_extrusion_path(extrusion_name)
+    element_from_id, node_points, ground_nodes = load_extrusion(extrusion_name)
+    id_from_element = {e: i for i, e in element_from_id.items()}
+
+    #sc = cm.stiffness_checker(json_file_path=extrusion_path, verbose=True)
+    #sc.set_self_weight_load(True)
+    #sc.set_nodal_displacement_tol(transl_tol=1e-3, rot_tol=3 * (3.14 / 360))
+    #sc.solve()
+
+    sc = cm.stiffness_checker(json_file_path=extrusion_path, verbose=False)
+    # each row represents a nodal load
+    # entry 0 = node's id (specifed in the json fle),
+    # entry 1 - 7 = [Fx, Fy, Fz, Mx, My, Mz] (N, N-mm) in global coordinates.
+    ext_load = np.zeros([1, 7])
+    ext_load[0, 0] = 3
+    ext_load[0, 3] = -500 * 1e3
+
+    sc.set_nodal_load(nodal_forces=ext_load, include_self_weight=False)
+    #sc.set_self_weight_nodal_load()
+
+    # TODO: construct the structure in different ways (random, connected,
+
+    handles = []
+    all_connected = True
+    all_stiff = True
+    extruded_elements = set()
+    connected_nodes = set(ground_nodes)
+    for element in planned_elements:
+        is_connected = any(n in connected_nodes for n in element)
+        extruded_elements.add(element)
+        connected_nodes.update(element)
+        structures = get_connected_structures(extruded_elements)
+        extruded_ids = sorted(id_from_element[e] for e in extruded_elements)
+        is_stiff = sc.solve(exist_element_ids=extruded_ids, if_cond_num=True) # TODO: check each component individually
+        all_stiff &= is_stiff
+        print('Elements: {} | Structures: {} | Connected: {} | Stiff: {}'.format(
+            len(extruded_elements), len(structures), is_connected, is_stiff))
+        handles.append(draw_element(node_points, element))
+        if not (is_connected and is_stiff) and has_gui():
+            wait_for_user()
+    return all_connected and all_stiff
+
+def downsample_nodes(elements, node_points, ground_nodes, n=None):
+    node_order = list(range(len(node_points)))
+    # np.random.shuffle(node_order)
+    node_order = sorted(node_order, key=lambda n: node_points[n][2])
+    elements = sorted(elements, key=lambda e: min(node_points[n][2] for n in e))
+
+    if n is not None:
+        node_order = node_order[:n]
+    ground_nodes = [n for n in ground_nodes if n in node_order]
+    elements = [element for element in elements
+                if all(n in node_order for n in element)]
+    return elements, ground_nodes
+
 def main(precompute=False):
     parser = argparse.ArgumentParser()
     # simple_frame | Nodes: 12 | Ground: 4 | Elements: 19
@@ -271,6 +349,7 @@ def main(precompute=False):
     parser.add_argument('-p', '--problem', default='simple_frame', help='The name of the problem to solve')
     parser.add_argument('-c', '--cfree', action='store_true', help='Disables collisions with obstacles')
     parser.add_argument('-m', '--motions', action='store_true', help='Plans motions between each extrusion')
+    parser.add_argument('-d', '--disable', action='store_true', help='Disables trajectory planning')
     parser.add_argument('-t', '--max_time', default=INF, type=int, help='The max time')
     parser.add_argument('-v', '--viewer', action='store_true', help='Enables the viewer during planning (slow!)')
     args = parser.parse_args()
@@ -279,16 +358,10 @@ def main(precompute=False):
     # TODO: setCollisionFilterGroupMask
     # TODO: fail if wild stream produces unexpected facts
     # TODO: try search at different cost levels (i.e. w/ and w/o abstract)
+    element_from_id, node_points, ground_nodes = load_extrusion(args.problem)
+    elements = list(element_from_id.values())
+    elements, ground_nodes = downsample_nodes(elements, node_points, ground_nodes)
 
-    elements, node_points, ground_nodes = load_extrusion(args.problem)
-    node_order = list(range(len(node_points)))
-    #np.random.shuffle(node_order)
-    node_order = sorted(node_order, key=lambda n: node_points[n][2])
-    elements = sorted(elements, key=lambda e: min(node_points[n][2] for n in e))
-
-    #node_order = node_order[:100]
-    ground_nodes = [n for n in ground_nodes if n in node_order]
-    elements = [element for element in elements if all(n in node_order for n in element)]
     #plan = plan_sequence_test(node_points, elements, ground_nodes)
 
     connect(use_gui=args.viewer)
@@ -309,13 +382,21 @@ def main(precompute=False):
         trajectories = []
         if precompute:
             trajectories = sample_trajectories(robot, obstacles, node_points, element_bodies, ground_nodes)
-        plan = plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
-                             trajectories=trajectories, collisions=not args.cfree, max_time=args.max_time)
+        planned_trajectories = plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
+                             trajectories=trajectories, collisions=not args.cfree, disable=args.disable, max_time=args.max_time)
+        planned_elements = [traj.element for traj in planned_trajectories]
         if args.motions:
-            plan = compute_motions(robot, obstacles, element_bodies, initial_conf, plan)
-
+            planned_trajectories = compute_motions(robot, obstacles, element_bodies, initial_conf, planned_trajectories)
     disconnect()
-    display_trajectories(ground_nodes, plan)
+
+    #random.shuffle(planned_elements)
+    planned_elements = sorted(elements, key=lambda e: max(node_points[n][2] for n in e)) # TODO: tiebreak by angle or x
+    # TODO: check whether this sequence can actually be printed
+
+    connect(use_gui=True)
+    floor, robot = load_world()
+    print(check_stiffness(args.problem, planned_elements))
+    #display_trajectories(ground_nodes, planned_trajectories)
     # TODO: collisions at the ends of elements?
 
     # TODO: slow down automatically near endpoints

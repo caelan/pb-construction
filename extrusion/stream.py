@@ -31,10 +31,9 @@ SELF_COLLISIONS = True
 TOOL_ROOT = 'eef_base_link' # robot_tool0
 
 STEP_SIZE = 0.0025  # 0.005
+# 50 doesn't seem to be enough
 MAX_ATTEMPTS = 1000  # 150 | 300
 MAX_TRAJECTORIES = INF
-CHECK_COLLISIONS = True
-# 50 doesn't seem to be enough
 
 ##################################################
 
@@ -147,7 +146,8 @@ def compute_direction_path(robot, tool, tool_from_root,
 
 ##################################################
 
-def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground_nodes):
+def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground_nodes,
+                     precompute_collisions=True, disable=False):
     movable_joints = get_movable_joints(robot)
     disabled_collisions = get_disabled_collisions(robot)
     #element_neighbors = get_element_neighbors(element_bodies)
@@ -168,8 +168,12 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
     tool_from_root = multiply(invert(get_link_pose(robot, tool_link)),
                               get_link_pose(robot, root_link))
 
-    def gen_fn(node1, element): # fluents=[]):
+    def gen_fn(node1, element, extruded=[]): # fluents=[]):
         reverse = (node1 != element[0])
+        if disable:
+            traj = PrintTrajectory(robot, get_movable_joints(robot), [], [], element, reverse)
+            yield (traj,)
+            return
         n1, n2 = reversed(element) if reverse else element
         delta = node_points[n2] - node_points[n1]
         # if delta[2] < 0:
@@ -179,9 +183,9 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
         #supporters = {e for e in node_neighbors[n1] if element_supports(e, n1, node_points)}
         supporters = []
         retrace_supporters(element, incoming_supporters, supporters)
-        elements_order = [e for e in element_bodies if (e != element) and (e not in supporters)]
-        bodies_order = [element_bodies[e] for e in elements_order] if CHECK_COLLISIONS else []
-        obstacles = fixed_obstacles + [element_bodies[e] for e in supporters]
+        obstacles = set(fixed_obstacles + [element_bodies[e] for e in supporters + extruded])
+
+        elements_order = [e for e in element_bodies if (e != element) and (element_bodies[e] not in obstacles)]
         collision_fn = get_collision_fn(robot, movable_joints, obstacles,
                                         attachments=[], self_collisions=SELF_COLLISIONS,
                                         disabled_collisions=disabled_collisions,
@@ -195,8 +199,10 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                                               direction, obstacles, collision_fn)
                 if traj is None:
                     continue
-                collisions = check_trajectory_collision(tool_body, tool_from_root, traj, bodies_order)
-                traj.colliding = {e for k, e in enumerate(elements_order) if (element != e) and collisions[k]}
+                if precompute_collisions:
+                    bodies_order = [element_bodies[e] for e in elements_order]
+                    collisions = check_trajectory_collision(tool_body, tool_from_root, traj, bodies_order)
+                    traj.colliding = {e for k, e in enumerate(elements_order) if collisions[k]}
                 if (node_neighbors[n1] <= traj.colliding) and not any(n in ground_nodes for n in element):
                     continue
                 trajectories.append(traj)
@@ -218,8 +224,8 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
 
 ##################################################
 
-def get_wild_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes, collisions=True):
-    gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes)
+def get_wild_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes, collisions=True, **kwargs):
+    gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes, **kwargs)
     def wild_gen_fn(node1, element):
         for t, in gen_fn(node1, element):
             outputs = [(t,)]

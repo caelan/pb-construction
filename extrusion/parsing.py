@@ -3,9 +3,12 @@ import os
 
 import numpy as np
 
+from collections import namedtuple, OrderedDict
 from examples.pybullet.utils.pybullet_tools.utils import add_line, create_cylinder, set_point, set_quat, \
     quat_from_euler, Euler
 from extrusion.extrusion_utils import is_ground
+
+Element = namedtuple('Element', ['id', 'layer', 'nodes'])
 
 EXTRUSION_DIRECTORY = os.path.join('..', 'assembly_instances', 'extrusion')
 EXTRUSION_FILENAMES = {
@@ -22,25 +25,28 @@ EXTRUSION_FILENAMES = {
 }
 DEFAULT_SCALE = 1e-3 # TODO: load different scales
 
-
-def load_extrusion(extrusion_name):
+def get_extrusion_path(extrusion_name):
     if extrusion_name not in EXTRUSION_FILENAMES:
         raise ValueError(extrusion_name)
     root_directory = os.path.dirname(os.path.abspath(__file__))
-    extrusion_path = os.path.join(root_directory, EXTRUSION_DIRECTORY, EXTRUSION_FILENAMES[extrusion_name])
+    return os.path.join(root_directory, EXTRUSION_DIRECTORY, EXTRUSION_FILENAMES[extrusion_name])
+
+def load_extrusion(extrusion_name):
+    extrusion_path = get_extrusion_path(extrusion_name)
     print('Name: {}'.format(extrusion_name))
     print('Path: {}'.format(extrusion_path))
     with open(extrusion_path, 'r') as f:
         json_data = json.loads(f.read())
 
     elements = parse_elements(json_data)
+    element_from_id = OrderedDict((element.id, element.nodes) for element in elements)
     node_points = parse_node_points(json_data)
     ground_nodes = parse_ground_nodes(json_data)
     print('Assembly: {} | Model: {} | Unit: {}'.format(
         json_data['assembly_type'], json_data['model_type'], json_data['unit'])) # extrusion, spatial_frame, millimeter
     print('Nodes: {} | Ground: {} | Elements: {}'.format(
         len(node_points), len(ground_nodes), len(elements)))
-    return elements, node_points, ground_nodes
+    return element_from_id, node_points, ground_nodes
 
 
 def parse_point(json_point, scale=DEFAULT_SCALE):
@@ -60,8 +66,8 @@ def parse_origin(json_data):
 
 
 def parse_elements(json_data):
-    return [tuple(json_element['end_node_ids'])
-            for json_element in json_data['element_list']] # 'layer_id
+    return [Element(json_element.get('element_id', i), json_element.get('layer', None), tuple(json_element['end_node_ids']))
+            for i, json_element in enumerate(json_data['element_list'])] # 'layer_id
 
 
 def parse_node_points(json_data):

@@ -104,11 +104,10 @@ def get_node_neighbors(elements):
         node_neighbors[n2].add(e)
     return node_neighbors
 
-
-def get_element_neighbors(element_bodies):
-    node_neighbors = get_node_neighbors(element_bodies)
+def get_element_neighbors(elements):
+    node_neighbors = get_node_neighbors(elements)
     element_neighbors = defaultdict(set)
-    for e in element_bodies:
+    for e in elements:
         n1, n2 = e
         element_neighbors[e].update(node_neighbors[n1])
         element_neighbors[e].update(node_neighbors[n2])
