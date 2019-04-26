@@ -9,7 +9,7 @@ from extrusion.extrusion_utils import get_grasp_pose, TOOL_NAME, get_disabled_co
     sample_direction, check_trajectory_collision, PrintTrajectory, retrace_supporters, get_supported_orders, prune_dominated
 #from extrusion.run import USE_IKFAST, get_supported_orders, retrace_supporters, SELF_COLLISIONS, USE_CONMECH
 from pddlstream.language.stream import WildOutput
-from pddlstream.utils import neighbors_from_orders, irange, user_input
+from pddlstream.utils import neighbors_from_orders, irange, user_input, INF
 
 try:
     from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import sample_tool_ik
@@ -29,6 +29,12 @@ except ImportError as e:
 
 SELF_COLLISIONS = True
 TOOL_ROOT = 'eef_base_link' # robot_tool0
+
+STEP_SIZE = 0.0025  # 0.005
+MAX_ATTEMPTS = 1000  # 150 | 300
+MAX_TRAJECTORIES = INF
+CHECK_COLLISIONS = True
+# 50 doesn't seem to be enough
 
 ##################################################
 
@@ -104,12 +110,11 @@ def compute_direction_path(robot, tool, tool_from_root,
     are accounted in the collision fn
     :return: feasible PrintTrajectory if found, None otherwise
     """
-    step_size = 0.0025 # 0.005
     #angle_step_size = np.math.radians(0.25) # np.pi / 128
     #angle_deltas = [-angle_step_size, 0, angle_step_size]
     angle_deltas = [0]
     num_initial = 1 # 12
-    translation_path = np.append(np.arange(-length / 2, length / 2, step_size), [length / 2])
+    translation_path = np.append(np.arange(-length / 2, length / 2, STEP_SIZE), [length / 2])
     element_pose = get_pose(element_bodies[element])
 
     #initial_angles = [wrap_angle(angle) for angle in np.linspace(0, 2*np.pi, num_initial, endpoint=False)]
@@ -143,11 +148,6 @@ def compute_direction_path(robot, tool, tool_from_root,
 ##################################################
 
 def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground_nodes):
-    max_attempts = 300 # 150 | 300
-    max_trajectories = 25
-    check_collisions = True
-    # 50 doesn't seem to be enough
-
     movable_joints = get_movable_joints(robot)
     disabled_collisions = get_disabled_collisions(robot)
     #element_neighbors = get_element_neighbors(element_bodies)
@@ -180,15 +180,15 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
         supporters = []
         retrace_supporters(element, incoming_supporters, supporters)
         elements_order = [e for e in element_bodies if (e != element) and (e not in supporters)]
-        bodies_order = [element_bodies[e] for e in elements_order] if check_collisions else []
+        bodies_order = [element_bodies[e] for e in elements_order] if CHECK_COLLISIONS else []
         obstacles = fixed_obstacles + [element_bodies[e] for e in supporters]
         collision_fn = get_collision_fn(robot, movable_joints, obstacles,
                                         attachments=[], self_collisions=SELF_COLLISIONS,
                                         disabled_collisions=disabled_collisions,
                                         custom_limits={}) # TODO: get_custom_limits
         trajectories = []
-        for num in irange(max_trajectories):
-            for attempt in range(max_attempts):
+        for num in irange(MAX_TRAJECTORIES):
+            for attempt in irange(MAX_ATTEMPTS):
                 direction = sample_direction()
                 traj = compute_direction_path(robot, tool_body, tool_from_root,
                                               length, reverse, element_bodies, element,
@@ -212,7 +212,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                     return
             else:
                 print('{}) {}->{} ({}) | {} | Max attempts exceeded!'.format(
-                    num, len(supporters), n1, n2, max_attempts))
+                    num, len(supporters), n1, n2, MAX_ATTEMPTS))
                 return
     return gen_fn
 
