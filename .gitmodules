@@ -8,3 +8,6 @@
 [submodule "conrob_pybullet"]
 	path = conrob_pybullet
 	url = https://github.com/yijiangh/conrob_pybullet.git
+[submodule "conmech"]
+	path = conmech
+	url = https://github.com/yijiangh/conmech
