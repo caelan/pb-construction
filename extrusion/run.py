@@ -351,7 +351,7 @@ def heuristic_planner(robot, obstacles, node_points, element_bodies, ground_node
         connected_nodes.add(node)
         for element in node_neighbors[node]:
             if element not in queued:
-                score = max(node_points[n][2] for n in element)
+                score = (max(node_points[n][2] for n in element), random.random())
                 heapq.heappush(queue, (score, element))
                 queued.add(element)
 
@@ -362,10 +362,16 @@ def heuristic_planner(robot, obstacles, node_points, element_bodies, ground_node
     while queue:
         _, element = heapq.heappop(queue)
         # TODO: tiebreak by angle or x
-        node = random.choice([n for n in element if n in connected_nodes])
-        try:
-            trajectory, = next(print_gen_fn(node, element, extruded=extruded_elements))
-        except StopIteration:
+        for node in element:
+            try:
+                trajectory, = next(print_gen_fn(node, element, extruded=extruded_elements))
+                planned_trajectories.append(trajectory)
+                extruded_elements.add(element)
+                break
+            except StopIteration:
+                pass
+        else:
+            # Failing because a bad choice of the start node
             client = connect(use_gui=True)
             with ClientSaver(client):
                 floor, robot = load_world()
@@ -375,9 +381,7 @@ def heuristic_planner(robot, obstacles, node_points, element_bodies, ground_node
                 handles.append(draw_element(node_points, element, color=(1, 0, 0)))
                 print('Failure!')
                 wait_for_user()
-            break
-        planned_trajectories.append(trajectory)
-        extruded_elements.add(element)
+            return None
         for node in element:
             add_node(node)
     return planned_trajectories
@@ -451,6 +455,15 @@ def main(precompute=False):
     # TODO: heuristic that orders elements by angle
     # TODO: check that both teh start and end satisfy
     # TODO: return to start when done
+
+    # Can greedily print
+    # four-frame, simple_frame, voronoi
+
+    # Cannot greedily print
+    # topopt-100
+    # mars_bubble
+    # djmm_bridge
+    # djmm_test_block
 
 
 if __name__ == '__main__':
