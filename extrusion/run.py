@@ -12,9 +12,10 @@ from extrusion.motion import compute_motions, display_trajectories
 from extrusion.sorted import heuristic_planner
 from extrusion.stripstream import plan_sequence
 from extrusion.utils import load_world, \
-    get_element_neighbors, downsample_nodes
+    get_element_neighbors, downsample_nodes, check_connected
 from extrusion.parsing import load_extrusion, draw_element, create_elements, get_extrusion_path
 from extrusion.stream import get_print_gen_fn
+from extrusion.greedy import greedy_algorithm
 
 from examples.pybullet.utils.pybullet_tools.utils import connect, disconnect, get_movable_joints, add_text, \
     get_joint_positions, LockRenderer, wait_for_user, has_gui
@@ -40,7 +41,8 @@ def sample_trajectories(robot, obstacles, node_points, element_bodies, ground_no
 ##################################################
 
 def get_connected_structures(elements):
-    edges = {(e1, e2) for e1, neighbors in get_element_neighbors(elements).items() for e2 in neighbors}
+    edges = {(e1, e2) for e1, neighbors in get_element_neighbors(elements).items()
+             for e2 in neighbors}
     return get_connected_components(elements, edges)
 
 def check_stiffness(extrusion_name, planned_elements):
@@ -73,11 +75,9 @@ def check_stiffness(extrusion_name, planned_elements):
     all_connected = True
     all_stiff = True
     extruded_elements = set()
-    connected_nodes = set(ground_nodes)
     for element in planned_elements:
-        is_connected = any(n in connected_nodes for n in element)
+        is_connected = check_connected(ground_nodes, planned_elements)
         extruded_elements.add(element)
-        connected_nodes.update(element)
         structures = get_connected_structures(extruded_elements)
         extruded_ids = sorted(id_from_element[e] for e in extruded_elements)
         is_stiff = sc.solve(exist_element_ids=extruded_ids, if_cond_num=True) # TODO: check each component individually
@@ -145,8 +145,12 @@ def main(precompute=False):
             planned_trajectories = plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
                                                  trajectories=trajectories, collisions=not args.cfree,
                                                  disable=args.disable, max_time=args.max_time)
+        elif args.algorithm == 'greedy':
+            planned_trajectories = greedy_algorithm(robot, obstacles, node_points, element_bodies, ground_nodes,
+                                                    disable=args.disable)
         elif args.algorithm == 'heuristic':
-            planned_trajectories = heuristic_planner(robot, obstacles, node_points, element_bodies, ground_nodes, disable=args.disable)
+            planned_trajectories = heuristic_planner(robot, obstacles, node_points, element_bodies, ground_nodes,
+                                                     disable=args.disable)
         else:
             raise ValueError(args.algorithm)
         planned_elements = [traj.element for traj in planned_trajectories]

@@ -7,6 +7,9 @@ from extrusion.parsing import draw_element
 from extrusion.stream import get_print_gen_fn
 
 
+def get_z(node_points, element):
+    return max(node_points[n][2] for n in element)
+
 def heuristic_planner(robot, obstacles, node_points, element_bodies, ground_nodes, **kwargs):
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                     precompute_collisions=False, **kwargs)
@@ -19,7 +22,7 @@ def heuristic_planner(robot, obstacles, node_points, element_bodies, ground_node
         connected_nodes.add(node)
         for element in node_neighbors[node]:
             if element not in queued:
-                score = (max(node_points[n][2] for n in element), random.random())
+                score = (get_z(node_points, element), random.random())
                 heapq.heappush(queue, (score, element))
                 queued.add(element)
 
@@ -39,7 +42,7 @@ def heuristic_planner(robot, obstacles, node_points, element_bodies, ground_node
             except StopIteration:
                 pass
         else:
-            # Failing because a bad choice of the start node
+            #return None
             client = connect(use_gui=True)
             with ClientSaver(client):
                 floor, robot = load_world()

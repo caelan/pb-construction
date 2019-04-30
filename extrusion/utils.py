@@ -228,3 +228,13 @@ def downsample_nodes(elements, node_points, ground_nodes, n=None):
     elements = [element for element in elements
                 if all(n in node_order for n in element)]
     return elements, ground_nodes
+
+
+def check_connected(ground_nodes, planned_elements):
+    # Assumes elements are ordered
+    connected_nodes = set(ground_nodes)
+    for element in planned_elements:
+        if not any(n in connected_nodes for n in element):
+            return False
+        connected_nodes.update(element)
+    return True
