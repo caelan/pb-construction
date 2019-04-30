@@ -10,6 +10,7 @@ import argparse
 
 from extrusion.motion import compute_motions, display_trajectories
 from extrusion.sorted import heuristic_planner
+from extrusion.stripstream import plan_sequence
 from extrusion.utils import load_world, \
     get_element_neighbors, downsample_nodes
 from extrusion.parsing import load_extrusion, draw_element, create_elements, get_extrusion_path
@@ -101,6 +102,9 @@ def main(precompute=False):
     # voronoi | Nodes: 162 | Ground: 14 | Elements: 306
     # topopt-310 | Nodes: 160 | Ground: 39 | Elements: 310
     # sig_artopt-bunny | Nodes: 219 | Ground: 14 | Elements: 418
+    # djmm_bridge | Nodes: 1548 | Ground: 258 | Elements: 6427
+    # djmm_test_block | Nodes: 76 | Ground: 13 | Elements: 253
+    parser.add_argument('-a', '--algorithm', default='stripstream', help='Which algorithm to use')
     parser.add_argument('-p', '--problem', default='simple_frame', help='The name of the problem to solve')
     parser.add_argument('-c', '--cfree', action='store_true', help='Disables collisions with obstacles')
     parser.add_argument('-m', '--motions', action='store_true', help='Plans motions between each extrusion')
@@ -137,9 +141,14 @@ def main(precompute=False):
         trajectories = []
         if precompute:
             trajectories = sample_trajectories(robot, obstacles, node_points, element_bodies, ground_nodes)
-        #planned_trajectories = plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
-        #                     trajectories=trajectories, collisions=not args.cfree, disable=args.disable, max_time=args.max_time)
-        planned_trajectories = heuristic_planner(robot, obstacles, node_points, element_bodies, ground_nodes, disable=args.disable)
+        if args.algorithm == 'stripstream':
+            planned_trajectories = plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
+                                                 trajectories=trajectories, collisions=not args.cfree,
+                                                 disable=args.disable, max_time=args.max_time)
+        elif args.algorithm == 'heuristic':
+            planned_trajectories = heuristic_planner(robot, obstacles, node_points, element_bodies, ground_nodes, disable=args.disable)
+        else:
+            raise ValueError(args.algorithm)
         planned_elements = [traj.element for traj in planned_trajectories]
         if args.motions:
             planned_trajectories = compute_motions(robot, obstacles, element_bodies, initial_conf, planned_trajectories)

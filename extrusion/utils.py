@@ -29,29 +29,29 @@ SUPPORT_THETA = np.math.radians(10)  # Support polygon
 
 ##################################################
 
-def check_trajectory_collision(tool_body, tool_from_root, trajectory, bodies):
+def check_command_collision(tool_body, tool_from_root, command, bodies):
     # TODO: each new addition makes collision checking more expensive
     #offset = 4
     #for robot_conf in trajectory[offset:-offset]:
     collisions = [False for _ in range(len(bodies))]
-    indices = list(range(len(trajectory.path)))
-    random.shuffle(indices) # TODO: bisect
 
     # TODO: separate into another method. Sort paths by tool poses first
-    for k in indices:
-        tool_pose = trajectory.tool_path[k]
-        set_pose(tool_body, multiply(tool_pose, tool_from_root))
-        for i, body in enumerate(bodies):
-            if not collisions[i]:
-                collisions[i] |= pairwise_collision(tool_body, body)
-    for k in indices:
-        robot_conf = trajectory.path[k]
-        set_joint_positions(trajectory.robot, trajectory.joints, robot_conf)
-        for i, body in enumerate(bodies):
-            if not collisions[i]:
-                collisions[i] |= pairwise_collision(trajectory.robot, body)
+    for trajectory in command.trajectories:
+        indices = list(range(len(trajectory.path)))
+        random.shuffle(indices)  # TODO: bisect
+        for k in indices:
+            tool_pose = trajectory.tool_path[k]
+            set_pose(tool_body, multiply(tool_pose, tool_from_root))
+            for i, body in enumerate(bodies):
+                if not collisions[i]:
+                    collisions[i] |= pairwise_collision(tool_body, body)
+        for k in indices:
+            robot_conf = trajectory.path[k]
+            set_joint_positions(trajectory.robot, trajectory.joints, robot_conf)
+            for i, body in enumerate(bodies):
+                if not collisions[i]:
+                    collisions[i] |= pairwise_collision(trajectory.robot, body)
     return collisions
-
 
 #def get_grasp_rotation(direction, angle):
     #return Pose(euler=Euler(roll=np.pi / 2, pitch=direction, yaw=angle))
@@ -145,7 +145,7 @@ class MotionTrajectory(object):
 
 
 class PrintTrajectory(object):
-    def __init__(self, robot, joints, path, tool_path, element, reverse, colliding=set()):
+    def __init__(self, robot, joints, path, tool_path, element, reverse):
         self.robot = robot
         self.joints = joints
         self.path = path
@@ -153,9 +153,22 @@ class PrintTrajectory(object):
         assert len(self.path) == len(self.tool_path)
         self.n1, self.n2 = reversed(element) if reverse else element
         self.element = element
-        self.colliding = colliding
     def __repr__(self):
         return '{}->{}'.format(self.n1, self.n2)
+
+class Command(object):
+    def __init__(self, trajectories=[], colliding=set()):
+        self.trajectories = tuple(trajectories)
+        self.colliding = set(colliding)
+    def reverse(self):
+        return self.__class__([traj.reverse() for traj in reversed(self.trajectories)],
+                              colliding=self.colliding)
+    def iterate(self):
+        for trajectory in self.trajectories:
+            for output in trajectory.iterate():
+                yield output
+    def __repr__(self):
+        return 'c[{}]'.format(','.format(map(str, self.trajectories)))
 
 ##################################################
 

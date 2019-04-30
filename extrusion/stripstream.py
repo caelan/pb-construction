@@ -119,4 +119,5 @@ def plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
     plan, _, _ = solution
     if plan is None:
         return None
-    return [t for _, (n1, e, t) in reversed(plan)]
+    return [t for _, (n1, e, c) in reversed(plan)
+            for t in c.trajectories]

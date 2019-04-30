@@ -6,7 +6,8 @@ from examples.pybullet.utils.pybullet_tools.utils import get_movable_joints, get
     link_from_name, get_pose, get_collision_fn, dump_body, get_link_subtree, wait_for_user, clone_body, \
     get_all_links, set_color, set_pose, pairwise_collision
 from extrusion.utils import get_grasp_pose, TOOL_NAME, get_disabled_collisions, get_node_neighbors, \
-    sample_direction, check_trajectory_collision, PrintTrajectory, retrace_supporters, get_supported_orders, prune_dominated
+    sample_direction, PrintTrajectory, retrace_supporters, \
+    get_supported_orders, prune_dominated, Command, check_command_collision
 #from extrusion.run import USE_IKFAST, get_supported_orders, retrace_supporters, SELF_COLLISIONS, USE_CONMECH
 from pddlstream.language.stream import WildOutput
 from pddlstream.utils import neighbors_from_orders, irange, user_input, INF
@@ -142,7 +143,8 @@ def compute_direction_path(robot, tool, tool_from_root,
             return None
         robot_path.append(current_conf)
     tool_path = compute_tool_path(element_pose, translation_path, direction, initial_angle, reverse)
-    return PrintTrajectory(robot, get_movable_joints(robot), robot_path, tool_path, element, reverse)
+    print_traj = PrintTrajectory(robot, get_movable_joints(robot), robot_path, tool_path, element, reverse)
+    return Command([print_traj])
 
 ##################################################
 
@@ -172,7 +174,8 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
         reverse = (node1 != element[0])
         if disable:
             traj = PrintTrajectory(robot, get_movable_joints(robot), [], [], element, reverse)
-            yield (traj,)
+            command = Command([traj])
+            yield (command,)
             return
         n1, n2 = reversed(element) if reverse else element
         delta = node_points[n2] - node_points[n1]
@@ -194,26 +197,27 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
         for num in irange(MAX_TRAJECTORIES):
             for attempt in irange(MAX_ATTEMPTS):
                 direction = sample_direction()
-                traj = compute_direction_path(robot, tool_body, tool_from_root,
-                                              length, reverse, element_bodies, element,
-                                              direction, obstacles, collision_fn)
-                if traj is None:
+                command = compute_direction_path(robot, tool_body, tool_from_root,
+                                                 length, reverse, element_bodies, element,
+                                                 direction, obstacles, collision_fn)
+                if command is None:
                     continue
                 if precompute_collisions:
                     bodies_order = [element_bodies[e] for e in elements_order]
-                    collisions = check_trajectory_collision(tool_body, tool_from_root, traj, bodies_order)
-                    traj.colliding = {e for k, e in enumerate(elements_order) if collisions[k]}
-                if (node_neighbors[n1] <= traj.colliding) and not any(n in ground_nodes for n in element):
+                    collisions = check_command_collision(tool_body, tool_from_root, command, bodies_order)
+                    command.colliding = {e for k, e in enumerate(elements_order) if collisions[k]}
+                if (node_neighbors[n1] <= command.colliding) and \
+                        not any(n in ground_nodes for n in element):
                     continue
-                trajectories.append(traj)
+                trajectories.append(command)
                 prune_dominated(trajectories)
-                if traj not in trajectories:
+                if command not in trajectories:
                     continue
                 print('{}) {}->{} ({}) | {} | {} | {}'.format(
                     num, n1, n2, len(supporters), attempt, len(trajectories),
                     sorted(len(t.colliding) for t in trajectories)))
-                yield (traj,)
-                if not traj.colliding:
+                yield (command,)
+                if not command.colliding:
                     print('Reevaluated already non-colliding trajectory!')
                     return
             else:
