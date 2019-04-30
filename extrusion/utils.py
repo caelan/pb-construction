@@ -2,9 +2,9 @@ from __future__ import print_function
 
 import os
 import random
-from collections import defaultdict
-
 import numpy as np
+
+from collections import defaultdict
 
 from examples.pybullet.utils.pybullet_tools.utils import set_point, Euler, get_movable_joints, set_joint_positions, \
     pairwise_collision, Pose, multiply, Point, load_model, \
@@ -90,7 +90,8 @@ def load_world():
 def prune_dominated(trajectories):
     start_len = len(trajectories)
     for traj1 in list(trajectories):
-        if any((traj1 != traj2) and (traj2.colliding <= traj1.colliding) for traj2 in trajectories):
+        if any((traj1 != traj2) and (traj2.colliding <= traj1.colliding)
+               for traj2 in trajectories):
             trajectories.remove(traj1)
     return len(trajectories) == start_len
 
@@ -117,11 +118,13 @@ def get_element_neighbors(elements):
 ##################################################
 
 def get_disabled_collisions(robot):
-    return {tuple(link_from_name(robot, link) for link in pair if has_link(robot, link))
+    return {tuple(link_from_name(robot, link)
+                  for link in pair if has_link(robot, link))
                   for pair in DISABLED_COLLISIONS}
 
 def get_custom_limits(robot):
-    return {joint_from_name(robot, joint): limits for joint, limits in CUSTOM_LIMITS.items()}
+    return {joint_from_name(robot, joint): limits
+            for joint, limits in CUSTOM_LIMITS.items()}
 
 ##################################################
 
@@ -156,14 +159,20 @@ class PrintTrajectory(object):
 
 ##################################################
 
+def is_start_node(n1, e, node_points):
+    return not element_supports(e, n1, node_points)
+
+def doubly_printable(e, node_points):
+    return all(is_start_node(n, e, node_points) for n in e)
+
 def get_other_node(node1, element):
     assert node1 in element
     return element[node1 == element[0]]
 
-
 def is_ground(element, ground_nodes):
     return any(n in ground_nodes for n in element)
 
+##################################################
 
 def get_supported_orders(elements, node_points):
     node_neighbors = get_node_neighbors(elements)
@@ -186,18 +195,23 @@ def element_supports(e, n1, node_points): # A property of nodes
     theta = angle_between(delta, [0, 0, -1])
     return theta < (np.pi / 2 - SUPPORT_THETA)
 
-
-def is_start_node(n1, e, node_points):
-    return not element_supports(e, n1, node_points)
-
-
-def doubly_printable(e, node_points):
-    return all(is_start_node(n, e, node_points) for n in e)
-
-
 def retrace_supporters(element, incoming_edges, supporters):
     for element2 in incoming_edges[element]:
         if element2 not in supporters:
             retrace_supporters(element2, incoming_edges, supporters=supporters)
             supporters.append(element2)
 
+##################################################
+
+def downsample_nodes(elements, node_points, ground_nodes, n=None):
+    node_order = list(range(len(node_points)))
+    # np.random.shuffle(node_order)
+    node_order = sorted(node_order, key=lambda n: node_points[n][2])
+    elements = sorted(elements, key=lambda e: min(node_points[n][2] for n in e))
+
+    if n is not None:
+        node_order = node_order[:n]
+    ground_nodes = [n for n in ground_nodes if n in node_order]
+    elements = [element for element in elements
+                if all(n in node_order for n in element)]
+    return elements, ground_nodes

@@ -6,7 +6,7 @@ import numpy as np
 from collections import namedtuple, OrderedDict
 from examples.pybullet.utils.pybullet_tools.utils import add_line, create_cylinder, set_point, set_quat, \
     quat_from_euler, Euler
-from extrusion.extrusion_utils import is_ground
+from extrusion.utils import is_ground
 
 Element = namedtuple('Element', ['id', 'layer', 'nodes'])
 

@@ -8,10 +8,13 @@ from examples.pybullet.construction.extrusion.utils import TOOL_NAME, create_ele
 from examples.pybullet.utils.pybullet_tools.utils import get_movable_joints, get_joint_name, get_sample_fn, \
     set_joint_positions, wait_for_interrupt, link_from_name, inverse_kinematics, get_link_pose, Pose, Euler, Point, \
     multiply, set_pose, get_pose, invert, draw_pose
+from extrusion.utils import doubly_printable, get_node_neighbors, element_supports, get_supported_orders, \
+    retrace_supporters
+from extrusion.parsing import draw_element
 from pddlstream.algorithms.incremental import solve_exhaustive
 from pddlstream.language.constants import And, PDDLProblem, print_solution
 from pddlstream.language.generator import from_test
-from pddlstream.utils import read, get_file_path, user_input
+from pddlstream.utils import read, get_file_path, user_input, neighbors_from_orders
 
 
 def test_confs(robot, num_samples=10):
@@ -198,3 +201,36 @@ def read_minizinc_data(path):
     #orientations = random.sample(orientations, 10)
 
     return g_data, a_data, t_data
+
+
+def debug_elements(robot, node_points, node_order, elements):
+    #test_grasps(robot, node_points, elements)
+    #test_print(robot, node_points, elements)
+    #return
+
+    for element in elements:
+       color = (0, 0, 1) if doubly_printable(element, node_points) else (1, 0, 0)
+       draw_element(node_points, element, color=color)
+    wait_for_interrupt('Continue?')
+
+    # TODO: topological sort
+    node = node_order[40]
+    node_neighbors = get_node_neighbors(elements)
+    for element in node_neighbors[node]:
+       color = (0, 1, 0) if element_supports(element, node, node_points) else (1, 0, 0)
+       draw_element(node_points, element, color)
+
+    element = elements[-1]
+    draw_element(node_points, element, (0, 1, 0))
+    incoming_edges, _ = neighbors_from_orders(get_supported_orders(elements, node_points))
+    supporters = []
+    retrace_supporters(element, incoming_edges, supporters)
+    for e in supporters:
+       draw_element(node_points, e, (1, 0, 0))
+    wait_for_interrupt('Continue?')
+
+    #for name, args in plan:
+    #   n1, e, n2 = args
+    #   draw_element(node_points, e)
+    #   user_input('Continue?')
+    #test_ik(robot, node_order, node_points)

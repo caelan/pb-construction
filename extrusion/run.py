@@ -2,155 +2,24 @@
 from __future__ import print_function
 
 import sys
+
 sys.path.append('pddlstream/')
 
-import cProfile
-import pstats
 import numpy as np
 import argparse
-import time
-import random
-import heapq
 
-from itertools import permutations
+from extrusion.motion import compute_motions, display_trajectories
+from extrusion.sorted import heuristic_planner
+from extrusion.utils import load_world, \
+    get_element_neighbors, downsample_nodes
+from extrusion.parsing import load_extrusion, draw_element, create_elements, get_extrusion_path
+from extrusion.stream import get_print_gen_fn
 
-from extrusion.extrusion_utils import TOOL_NAME, load_world, \
-    get_node_neighbors, get_disabled_collisions, MotionTrajectory, PrintTrajectory, is_ground, \
-    get_supported_orders, element_supports, is_start_node, doubly_printable, retrace_supporters, get_element_neighbors, \
-    get_other_node
-from extrusion.parsing import load_extrusion, draw_element, create_elements, get_extrusion_path, draw_model
-from examples.pybullet.utils.pybullet_tools.utils import connect, disconnect, wait_for_interrupt, \
-    get_movable_joints, set_joint_positions, link_from_name, add_line, get_link_pose, wait_for_duration, add_text, \
-    plan_joint_motion, point_from_pose, get_joint_positions, LockRenderer, wait_for_user, has_gui, \
-    remove_all_debug, ClientSaver
-from extrusion.stream import get_print_gen_fn, get_wild_print_gen_fn, test_stiffness, SELF_COLLISIONS
+from examples.pybullet.utils.pybullet_tools.utils import connect, disconnect, get_movable_joints, add_text, \
+    get_joint_positions, LockRenderer, wait_for_user, has_gui
 
-from pddlstream.algorithms.focused import solve_focused
-from pddlstream.language.constants import PDDLProblem, And, print_solution
-from pddlstream.language.generator import from_test
-from pddlstream.language.stream import StreamInfo, PartialInputs
-from pddlstream.utils import read, get_file_path, user_input, neighbors_from_orders, INF, \
-    elapsed_time, get_connected_components
+from pddlstream.utils import INF, get_connected_components
 
-
-JOINT_WEIGHTS = [0.3078557810844393, 0.443600199302506, 0.23544367607317915,
-                 0.03637161028426032, 0.04644626184081511, 0.015054267683041092]
-
-
-##################################################
-
-def get_pddlstream(robot, obstacles, node_points, element_bodies, ground_nodes, trajectories=[], **kwargs):
-    # TODO: instantiation slowness is due to condition effects
-    # Regression works well here because of the fixed goal state
-    # TODO: plan for the end-effector first
-
-    domain_pddl = read(get_file_path(__file__, 'domain.pddl'))
-    constant_map = {}
-
-    stream_pddl = read(get_file_path(__file__, 'stream.pddl'))
-    stream_map = {
-        #'test-cfree': from_test(get_test_cfree(element_bodies)),
-        #'sample-print': from_gen_fn(get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes)),
-        'sample-print': get_wild_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes, **kwargs),
-        'test-stiffness': from_test(test_stiffness),
-    }
-
-    # TODO: assert that all elements have some support
-    init = []
-    for n in ground_nodes:
-        init.append(('Grounded', n))
-
-    nodes = set()
-    for e in element_bodies:
-        for n in e:
-            if element_supports(e, n, node_points):
-                init.append(('Supports', e, n))
-            if is_start_node(n, e, node_points):
-                init.append(('StartNode', n, e))
-        #if e[0] not in nodes:
-        #    add_text(e[0], position=(0, 0, -0.02), parent=element_bodies[e])
-        #if e[1] not in nodes:
-        #    add_text(e[1], position=(0, 0, 0.02), parent=element_bodies[e])
-        #nodes.update(e)
-
-    # Really there are 3 types of elements with respect to a node
-    # 1) Elements that directly support the node (are below)
-    # 2) Elements that stabilize the node (are parallel to the ground)
-    # 3) Elements that extend from the node
-    # 1 < 2 < 3
-
-    #for n, neighbors in get_node_neighbors(element_bodies).items():
-    #    for e1, e2 in permutations(neighbors, 2):
-    #        p1 = node_points[get_other_node(n, e1)]
-    #        p2 = node_points[get_other_node(n, e2)]
-    #        if p1[2] - p2[2] > 0.01:
-    #            init.append(('Above', e1, e2))
-
-    for e in element_bodies:
-        n1, n2 = e
-        init.extend([
-            ('Node', n1),
-            ('Node', n2),
-            ('Element', e),
-            ('Printed', e),
-            ('Edge', n1, e, n2),
-            ('Edge', n2, e, n1),
-            #('StartNode', n1, e),
-            #('StartNode', n2, e),
-        ])
-        #if is_ground(e, ground_nodes):
-        #    init.append(('Grounded', e))
-    #for e1, neighbors in get_element_neighbors(element_bodies).items():
-    #    for e2 in neighbors:
-    #        init.append(('Supports', e1, e2))
-    for t in trajectories:
-        init.extend([
-            ('Traj', t),
-            ('PrintAction', t.n1, t.element, t),
-        ])
-
-    goal = And(*[('Removed', e) for e in element_bodies])
-
-    return PDDLProblem(domain_pddl, constant_map, stream_pddl, stream_map, init, goal)
-
-
-def plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
-                  trajectories=[], collisions=True, disable=False,
-                  debug=False, max_time=30):
-    if trajectories is None:
-        return None
-    # TODO: iterated search using random restarts
-    # TODO: most of the time seems to be spent extracting the stream plan
-    # TODO: NEGATIVE_SUFFIX to make axioms easier
-    pr = cProfile.Profile()
-    pr.enable()
-    pddlstream_problem = get_pddlstream(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                        trajectories=trajectories, collisions=collisions, disable=disable)
-    #solution = solve_incremental(pddlstream_problem, planner='add-random-lazy', max_time=600,
-    #                             max_planner_time=300, debug=True)
-    stream_info = {
-        'sample-print': StreamInfo(PartialInputs(unique=True)),
-    }
-    # TODO: goal serialization
-    #planner = 'ff-ehc'
-    #planner = 'ff-lazy-tiebreak' # Branching factor becomes large. Rely on preferred. Preferred should also be cheaper
-    planner = 'ff-eager-tiebreak' # Need to use a eager search, otherwise doesn't incorporate new cost
-    #planner = 'max-astar'
-    # TODO: limit the branching factor if necessary
-    solution = solve_focused(pddlstream_problem, stream_info=stream_info, max_time=max_time,
-                             effort_weight=1, unit_efforts=True, max_skeletons=None, unit_costs=True, bind=False,
-                             planner=planner, max_planner_time=15, debug=debug, reorder=False)
-    # Reachability heuristics good for detecting dead-ends
-    # Infeasibility from the start means disconnected or collision
-    print_solution(solution)
-    pr.disable()
-    pstats.Stats(pr).sort_stats('tottime').print_stats(25)
-    plan, _, _ = solution
-    if plan is None:
-        return None
-    return [t for _, (n1, e, t) in reversed(plan)]
-
-##################################################
 
 def sample_trajectories(robot, obstacles, node_points, element_bodies, ground_nodes):
     gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes)
@@ -166,113 +35,6 @@ def sample_trajectories(robot, obstacles, node_points, element_bodies, ground_no
         if not trajectories:
             return None
     return all_trajectories
-
-def compute_motions(robot, fixed_obstacles, element_bodies, initial_conf, trajectories):
-    # TODO: can just plan to initial and then shortcut
-    # TODO: backoff motion
-    # TODO: reoptimize for the sequence that have the smallest movements given this
-    # TODO: sample trajectories
-    # TODO: more appropriate distance based on displacement/volume
-    if trajectories is None:
-        return None
-    start_time = time.time()
-    weights = np.array(JOINT_WEIGHTS)
-    resolutions = np.divide(0.005*np.ones(weights.shape), weights)
-    movable_joints = get_movable_joints(robot)
-    disabled_collisions = get_disabled_collisions(robot)
-    printed_elements = []
-    current_conf = initial_conf
-    all_trajectories = []
-    for i, print_traj in enumerate(trajectories):
-        set_joint_positions(robot, movable_joints, current_conf)
-        goal_conf = print_traj.path[0]
-        obstacles = fixed_obstacles + [element_bodies[e] for e in printed_elements]
-        path = plan_joint_motion(robot, movable_joints, goal_conf, obstacles=obstacles,
-                                 self_collisions=SELF_COLLISIONS, disabled_collisions=disabled_collisions,
-                                 weights=weights, resolutions=resolutions,
-                                 restarts=50, iterations=100, smooth=100)
-        if path is None:
-            print('Failed to find a motion plan!')
-            return None
-        motion_traj = MotionTrajectory(robot, movable_joints, path)
-        print('{}) {} | Time: {:.3f}'.format(i, motion_traj, elapsed_time(start_time)))
-        all_trajectories.append(motion_traj)
-        current_conf = print_traj.path[-1]
-        printed_elements.append(print_traj.element)
-        all_trajectories.append(print_traj)
-    # TODO: return to initial?
-    return all_trajectories
-
-##################################################
-
-def display_trajectories(ground_nodes, trajectories, time_step=0.05):
-    if trajectories is None:
-        return
-    connect(use_gui=True)
-    floor, robot = load_world()
-    wait_for_interrupt()
-    movable_joints = get_movable_joints(robot)
-    #element_bodies = dict(zip(elements, create_elements(node_points, elements)))
-    #for body in element_bodies.values():
-    #    set_color(body, (1, 0, 0, 0))
-    connected = set(ground_nodes)
-    print('Trajectories:', len(trajectories))
-    for i, trajectory in enumerate(trajectories):
-        if isinstance(trajectory, PrintTrajectory):
-            print(i, trajectory, trajectory.n1 in connected, trajectory.n2 in connected,
-                  is_ground(trajectory.element, ground_nodes), len(trajectory.path))
-            connected.add(trajectory.n2)
-        #wait_for_interrupt()
-        #set_color(element_bodies[element], (1, 0, 0, 1))
-        last_point = None
-        handles = []
-        for conf in trajectory.path:
-            set_joint_positions(robot, movable_joints, conf)
-            if isinstance(trajectory, PrintTrajectory):
-                current_point = point_from_pose(get_link_pose(robot, link_from_name(robot, TOOL_NAME)))
-                if last_point is not None:
-                    color = (0, 0, 1) if is_ground(trajectory.element, ground_nodes) else (1, 0, 0)
-                    handles.append(add_line(last_point, current_point, color=color))
-                last_point = current_point
-            wait_for_duration(time_step)
-        #wait_for_interrupt()
-    #user_input('Finish?')
-    wait_for_interrupt()
-    disconnect()
-
-##################################################
-
-def debug_elements(robot, node_points, node_order, elements):
-    #test_grasps(robot, node_points, elements)
-    #test_print(robot, node_points, elements)
-    #return
-
-    for element in elements:
-       color = (0, 0, 1) if doubly_printable(element, node_points) else (1, 0, 0)
-       draw_element(node_points, element, color=color)
-    wait_for_interrupt('Continue?')
-
-    # TODO: topological sort
-    node = node_order[40]
-    node_neighbors = get_node_neighbors(elements)
-    for element in node_neighbors[node]:
-       color = (0, 1, 0) if element_supports(element, node, node_points) else (1, 0, 0)
-       draw_element(node_points, element, color)
-
-    element = elements[-1]
-    draw_element(node_points, element, (0, 1, 0))
-    incoming_edges, _ = neighbors_from_orders(get_supported_orders(elements, node_points))
-    supporters = []
-    retrace_supporters(element, incoming_edges, supporters)
-    for e in supporters:
-       draw_element(node_points, e, (1, 0, 0))
-    wait_for_interrupt('Continue?')
-
-    #for name, args in plan:
-    #   n1, e, n2 = args
-    #   draw_element(node_points, e)
-    #   user_input('Continue?')
-    #test_ik(robot, node_order, node_points)
 
 ##################################################
 
@@ -326,65 +88,6 @@ def check_stiffness(extrusion_name, planned_elements):
             wait_for_user()
     return all_connected and all_stiff
 
-def downsample_nodes(elements, node_points, ground_nodes, n=None):
-    node_order = list(range(len(node_points)))
-    # np.random.shuffle(node_order)
-    node_order = sorted(node_order, key=lambda n: node_points[n][2])
-    elements = sorted(elements, key=lambda e: min(node_points[n][2] for n in e))
-
-    if n is not None:
-        node_order = node_order[:n]
-    ground_nodes = [n for n in ground_nodes if n in node_order]
-    elements = [element for element in elements
-                if all(n in node_order for n in element)]
-    return elements, ground_nodes
-
-def heuristic_planner(robot, obstacles, node_points, element_bodies, ground_nodes, **kwargs):
-    print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                    precompute_collisions=False, **kwargs)
-    node_neighbors = get_node_neighbors(element_bodies)
-
-    connected_nodes = set()
-    queue = []
-    queued = set()
-    def add_node(node):
-        connected_nodes.add(node)
-        for element in node_neighbors[node]:
-            if element not in queued:
-                score = (max(node_points[n][2] for n in element), random.random())
-                heapq.heappush(queue, (score, element))
-                queued.add(element)
-
-    for node in ground_nodes:
-        add_node(node)
-    extruded_elements = set()
-    planned_trajectories = []
-    while queue:
-        _, element = heapq.heappop(queue)
-        # TODO: tiebreak by angle or x
-        for node in element:
-            try:
-                trajectory, = next(print_gen_fn(node, element, extruded=extruded_elements))
-                planned_trajectories.append(trajectory)
-                extruded_elements.add(element)
-                break
-            except StopIteration:
-                pass
-        else:
-            # Failing because a bad choice of the start node
-            client = connect(use_gui=True)
-            with ClientSaver(client):
-                floor, robot = load_world()
-                handles = []
-                for e in extruded_elements:
-                    handles.append(draw_element(node_points, e, color=(0, 1, 0)))
-                handles.append(draw_element(node_points, element, color=(1, 0, 0)))
-                print('Failure!')
-                wait_for_user()
-            return None
-        for node in element:
-            add_node(node)
-    return planned_trajectories
 
 ##################################################
 

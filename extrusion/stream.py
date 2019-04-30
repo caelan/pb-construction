@@ -5,7 +5,7 @@ from examples.pybullet.utils.pybullet_tools.utils import get_movable_joints, get
     set_joint_positions, inverse_kinematics, get_link_pose, get_distance, point_from_pose, wrap_angle, get_sample_fn, \
     link_from_name, get_pose, get_collision_fn, dump_body, get_link_subtree, wait_for_user, clone_body, \
     get_all_links, set_color, set_pose, pairwise_collision
-from extrusion.extrusion_utils import get_grasp_pose, TOOL_NAME, get_disabled_collisions, get_node_neighbors, \
+from extrusion.utils import get_grasp_pose, TOOL_NAME, get_disabled_collisions, get_node_neighbors, \
     sample_direction, check_trajectory_collision, PrintTrajectory, retrace_supporters, get_supported_orders, prune_dominated
 #from extrusion.run import USE_IKFAST, get_supported_orders, retrace_supporters, SELF_COLLISIONS, USE_CONMECH
 from pddlstream.language.stream import WildOutput
