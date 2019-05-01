@@ -1,5 +1,6 @@
-import time
+from __future__ import print_function
 
+import time
 import numpy as np
 
 from examples.pybullet.utils.pybullet_tools.utils import get_movable_joints, set_joint_positions, plan_joint_motion, \

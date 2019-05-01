@@ -10,11 +10,11 @@ import argparse
 from extrusion.motion import compute_motions, display_trajectories
 from extrusion.sorted import heuristic_planner
 from extrusion.stripstream import plan_sequence
-from extrusion.utils import load_world, \
+from extrusion.utils import load_world, create_stiffness_checker, \
     downsample_nodes, check_connected, get_connected_structures, check_stiffness
 from extrusion.parsing import load_extrusion, draw_element, create_elements, get_extrusion_path
 from extrusion.stream import get_print_gen_fn
-from extrusion.greedy import greedy_algorithm
+from extrusion.greedy import regression, progression
 
 from examples.pybullet.utils.pybullet_tools.utils import connect, disconnect, get_movable_joints, add_text, \
     get_joint_positions, LockRenderer, wait_for_user, has_gui
@@ -40,14 +40,8 @@ def sample_trajectories(robot, obstacles, node_points, element_bodies, ground_no
 ##################################################
 
 def check_plan(extrusion_name, planned_elements):
-    import pyconmech as cm
-
-    extrusion_path = get_extrusion_path(extrusion_name)
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_name)
-
-    sc = cm.stiffness_checker(json_file_path=extrusion_path, verbose=False)
-    sc.set_self_weight_load(True)
-    sc.set_nodal_displacement_tol(transl_tol=1e-3, rot_tol=3 * (3.14 / 360))
+    checker = create_stiffness_checker(extrusion_name)
 
     # TODO: construct the structure in different ways (random, connected)
     handles = []
@@ -58,7 +52,7 @@ def check_plan(extrusion_name, planned_elements):
         extruded_elements.add(element)
         is_connected = check_connected(ground_nodes, extruded_elements)
         structures = get_connected_structures(extruded_elements)
-        is_stiff = check_stiffness(sc, element_from_id, extruded_elements)
+        is_stiff = check_stiffness(checker, element_from_id, extruded_elements)
         all_stiff &= is_stiff
         print('Elements: {} | Structures: {} | Connected: {} | Stiff: {}'.format(
             len(extruded_elements), len(structures), is_connected, is_stiff))
@@ -126,14 +120,15 @@ def main(precompute=False):
             planned_trajectories = plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
                                                  trajectories=trajectories, collisions=not args.cfree,
                                                  disable=args.disable, max_time=args.max_time)
-        elif args.algorithm == 'greedy':
-            planned_trajectories = greedy_algorithm(robot, obstacles, element_bodies, args.problem, disable=args.disable)
+        elif args.algorithm == 'regression':
+            planned_trajectories = regression(robot, obstacles, element_bodies, args.problem, disable=args.disable)
+        elif args.algorithm == 'progression':
+            planned_trajectories = progression(robot, obstacles, element_bodies, args.problem, disable=args.disable)
         elif args.algorithm == 'heuristic':
             planned_trajectories = heuristic_planner(robot, obstacles, node_points, element_bodies,
                                                      ground_nodes, disable=args.disable)
         else:
             raise ValueError(args.algorithm)
-        print(planned_trajectories)
         planned_elements = [traj.element for traj in planned_trajectories]
         if args.motions:
             planned_trajectories = compute_motions(robot, obstacles, element_bodies, initial_conf, planned_trajectories)
@@ -142,9 +137,13 @@ def main(precompute=False):
     #random.shuffle(planned_elements)
     #planned_elements = sorted(elements, key=lambda e: max(node_points[n][2] for n in e)) # TODO: tiebreak by angle or x
 
-    #connect(use_gui=True)
-    #floor, robot = load_world()
+    connect(use_gui=True)
+    floor, robot = load_world()
     print(check_plan(args.problem, planned_elements))
+    if args.disable:
+        wait_for_user()
+        return
+    disconnect()
     display_trajectories(ground_nodes, planned_trajectories)
     # TODO: collisions at the ends of elements?
 

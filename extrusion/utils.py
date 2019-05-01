@@ -6,6 +6,8 @@ import numpy as np
 
 from collections import defaultdict, deque
 
+from pyconmech import stiffness_checker
+
 from examples.pybullet.utils.pybullet_tools.utils import set_point, Euler, get_movable_joints, set_joint_positions, \
     pairwise_collision, Pose, multiply, Point, load_model, \
     HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, set_pose
@@ -145,14 +147,22 @@ class MotionTrajectory(object):
         return 'm({},{})'.format(len(self.joints), len(self.path))
 
 class PrintTrajectory(object):
-    def __init__(self, robot, joints, path, tool_path, element, reverse):
+    def __init__(self, robot, joints, path, tool_path, element, is_reverse):
         self.robot = robot
         self.joints = joints
         self.path = path
         self.tool_path = tool_path
+        self.is_reverse = is_reverse
         assert len(self.path) == len(self.tool_path)
-        self.n1, self.n2 = reversed(element) if reverse else element
+        self.n1, self.n2 = reversed(element) if self.is_reverse else element
         self.element = element
+    def reverse(self):
+        return self.__class__(self.robot, self.joints, self.path[::-1],
+                              self.tool_path[::-1], self.element, self.is_reverse)
+    def iterate(self):
+        for conf in self.path[1:]:
+            set_joint_positions(self.robot, self.joints, conf)
+            yield
     def __repr__(self):
         return '{}->{}'.format(self.n1, self.n2)
 
@@ -251,6 +261,27 @@ def get_connected_structures(elements):
              for e2 in neighbors}
     return get_connected_components(elements, edges)
 
+##################################################
+
+def create_stiffness_checker(extrusion_name):
+    from extrusion.parsing import get_extrusion_path
+    # stiffness_checker.solve(existing_e_ids)
+    # max_t, max_r = stiffness_checker.get_max_nodal_deformation()
+    # t_tol, r_tol = stiffness_checker.get_nodal_deformation_tol()
+    # print("max_t: {0} / {1}, max_r: {2} / {3}".format(max_t, t_tol, max_r, r_tol))
+
+    extrusion_path = get_extrusion_path(extrusion_name)
+    checker = stiffness_checker(json_file_path=extrusion_path, verbose=False)
+    checker.set_self_weight_load(True)
+    checker.set_nodal_displacement_tol(transl_tol=0.003, rot_tol=5 * np.pi / 180)
+    # checker.set_nodal_displacement_tol(transl_tol=1e-3, rot_tol=3 * (np.pi / 360))
+
+    # checker.set_output_json(True)
+    # checker.set_output_json_path(file_path = cwd, file_name = "sf-test_result.json")
+
+    # orig_beam_shape = checker.get_original_shape(disc=disc, draw_full_shape=False)
+    # beam_disp = checker.get_deformed_shape(exagg_ratio=exagg_ratio, disc=disc)
+    return checker
 
 def check_stiffness(checker, element_from_id, elements):
     # TODO: check each component individually
