@@ -23,7 +23,7 @@ else:
 
 USE_CONMECH = True
 try:
-    import conmech_py
+    import pyconmech
 except ImportError as e:
     print('\x1b[6;30;43m' + '{}, Not using conmech'.format(e) + '\x1b[0m')
     USE_CONMECH = False
@@ -34,7 +34,6 @@ TOOL_ROOT = 'eef_base_link' # robot_tool0
 STEP_SIZE = 0.0025  # 0.005
 # 50 doesn't seem to be enough
 MAX_ATTEMPTS = 1000  # 150 | 300
-MAX_TRAJECTORIES = INF
 
 ##################################################
 
@@ -149,7 +148,7 @@ def compute_direction_path(robot, tool, tool_from_root,
 ##################################################
 
 def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground_nodes,
-                     precompute_collisions=True, disable=False):
+                     precompute_collisions=True, disable=False, max_attempts=MAX_ATTEMPTS):
     movable_joints = get_movable_joints(robot)
     disabled_collisions = get_disabled_collisions(robot)
     #element_neighbors = get_element_neighbors(element_bodies)
@@ -194,8 +193,8 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                                         disabled_collisions=disabled_collisions,
                                         custom_limits={}) # TODO: get_custom_limits
         trajectories = []
-        for num in irange(MAX_TRAJECTORIES):
-            for attempt in irange(MAX_ATTEMPTS):
+        for num in irange(INF):
+            for attempt in irange(max_attempts):
                 direction = sample_direction()
                 command = compute_direction_path(robot, tool_body, tool_from_root,
                                                  length, reverse, element_bodies, element,
@@ -222,7 +221,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                     return
             else:
                 print('{}) {}->{} ({}) | {} | Max attempts exceeded!'.format(
-                    num, len(supporters), n1, n2, MAX_ATTEMPTS))
+                    num, len(supporters), n1, n2, max_attempts))
                 return
     return gen_fn
 
@@ -244,7 +243,7 @@ def test_stiffness(fluents=[]):
        return True
     # https://github.com/yijiangh/conmech
     # TODO: to use the non-skeleton focused algorithm, need to remove the negative axiom upon success
-    import conmech_py
+    import pyconmech
     elements = {fact[1] for fact in fluents}
     #print(elements)
     return True

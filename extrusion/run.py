@@ -5,14 +5,13 @@ import sys
 
 sys.path.append('pddlstream/')
 
-import numpy as np
 import argparse
 
 from extrusion.motion import compute_motions, display_trajectories
 from extrusion.sorted import heuristic_planner
 from extrusion.stripstream import plan_sequence
 from extrusion.utils import load_world, \
-    get_element_neighbors, downsample_nodes, check_connected
+    downsample_nodes, check_connected, get_connected_structures, check_stiffness
 from extrusion.parsing import load_extrusion, draw_element, create_elements, get_extrusion_path
 from extrusion.stream import get_print_gen_fn
 from extrusion.greedy import greedy_algorithm
@@ -20,7 +19,7 @@ from extrusion.greedy import greedy_algorithm
 from examples.pybullet.utils.pybullet_tools.utils import connect, disconnect, get_movable_joints, add_text, \
     get_joint_positions, LockRenderer, wait_for_user, has_gui
 
-from pddlstream.utils import INF, get_connected_components
+from pddlstream.utils import INF
 
 
 def sample_trajectories(robot, obstacles, node_points, element_bodies, ground_nodes):
@@ -40,53 +39,35 @@ def sample_trajectories(robot, obstacles, node_points, element_bodies, ground_no
 
 ##################################################
 
-def get_connected_structures(elements):
-    edges = {(e1, e2) for e1, neighbors in get_element_neighbors(elements).items()
-             for e2 in neighbors}
-    return get_connected_components(elements, edges)
-
-def check_stiffness(extrusion_name, planned_elements):
-    import conmech_py as cm
-    #import pyconmech as cm
+def check_plan(extrusion_name, planned_elements):
+    import pyconmech as cm
 
     extrusion_path = get_extrusion_path(extrusion_name)
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_name)
-    id_from_element = {e: i for i, e in element_from_id.items()}
-
-    #sc = cm.stiffness_checker(json_file_path=extrusion_path, verbose=True)
-    #sc.set_self_weight_load(True)
-    #sc.set_nodal_displacement_tol(transl_tol=1e-3, rot_tol=3 * (3.14 / 360))
-    #sc.solve()
 
     sc = cm.stiffness_checker(json_file_path=extrusion_path, verbose=False)
-    # each row represents a nodal load
-    # entry 0 = node's id (specifed in the json fle),
-    # entry 1 - 7 = [Fx, Fy, Fz, Mx, My, Mz] (N, N-mm) in global coordinates.
-    ext_load = np.zeros([1, 7])
-    ext_load[0, 0] = 3
-    ext_load[0, 3] = -500 * 1e3
+    sc.set_self_weight_load(True)
+    sc.set_nodal_displacement_tol(transl_tol=1e-3, rot_tol=3 * (3.14 / 360))
 
-    sc.set_nodal_load(nodal_forces=ext_load, include_self_weight=False)
-    #sc.set_self_weight_nodal_load()
-
-    # TODO: construct the structure in different ways (random, connected,
-
+    # TODO: construct the structure in different ways (random, connected)
     handles = []
     all_connected = True
     all_stiff = True
     extruded_elements = set()
     for element in planned_elements:
-        is_connected = check_connected(ground_nodes, planned_elements)
         extruded_elements.add(element)
+        is_connected = check_connected(ground_nodes, extruded_elements)
         structures = get_connected_structures(extruded_elements)
-        extruded_ids = sorted(id_from_element[e] for e in extruded_elements)
-        is_stiff = sc.solve(exist_element_ids=extruded_ids, if_cond_num=True) # TODO: check each component individually
+        is_stiff = check_stiffness(sc, element_from_id, extruded_elements)
         all_stiff &= is_stiff
         print('Elements: {} | Structures: {} | Connected: {} | Stiff: {}'.format(
             len(extruded_elements), len(structures), is_connected, is_stiff))
-        handles.append(draw_element(node_points, element))
-        if not (is_connected and is_stiff) and has_gui():
-            wait_for_user()
+        is_stable = is_connected and is_stiff
+        if has_gui():
+            color = (0, 1, 0) if is_stable else (1, 0, 0)
+            handles.append(draw_element(node_points, element, color))
+            if not is_stable:
+                wait_for_user()
     return all_connected and all_stiff
 
 
@@ -146,13 +127,13 @@ def main(precompute=False):
                                                  trajectories=trajectories, collisions=not args.cfree,
                                                  disable=args.disable, max_time=args.max_time)
         elif args.algorithm == 'greedy':
-            planned_trajectories = greedy_algorithm(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                                    disable=args.disable)
+            planned_trajectories = greedy_algorithm(robot, obstacles, element_bodies, args.problem, disable=args.disable)
         elif args.algorithm == 'heuristic':
-            planned_trajectories = heuristic_planner(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                                     disable=args.disable)
+            planned_trajectories = heuristic_planner(robot, obstacles, node_points, element_bodies,
+                                                     ground_nodes, disable=args.disable)
         else:
             raise ValueError(args.algorithm)
+        print(planned_trajectories)
         planned_elements = [traj.element for traj in planned_trajectories]
         if args.motions:
             planned_trajectories = compute_motions(robot, obstacles, element_bodies, initial_conf, planned_trajectories)
@@ -163,7 +144,7 @@ def main(precompute=False):
 
     #connect(use_gui=True)
     #floor, robot = load_world()
-    #print(check_stiffness(args.problem, planned_elements))
+    print(check_plan(args.problem, planned_elements))
     display_trajectories(ground_nodes, planned_trajectories)
     # TODO: collisions at the ends of elements?
 

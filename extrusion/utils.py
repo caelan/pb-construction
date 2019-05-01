@@ -4,11 +4,12 @@ import os
 import random
 import numpy as np
 
-from collections import defaultdict
+from collections import defaultdict, deque
 
 from examples.pybullet.utils.pybullet_tools.utils import set_point, Euler, get_movable_joints, set_joint_positions, \
     pairwise_collision, Pose, multiply, Point, load_model, \
     HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, set_pose
+from pddlstream.utils import get_connected_components
 
 KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
 TOOL_NAME = 'eef_tcp_frame'
@@ -143,7 +144,6 @@ class MotionTrajectory(object):
     def __repr__(self):
         return 'm({},{})'.format(len(self.joints), len(self.path))
 
-
 class PrintTrajectory(object):
     def __init__(self, robot, joints, path, tool_path, element, reverse):
         self.robot = robot
@@ -168,7 +168,7 @@ class Command(object):
             for output in trajectory.iterate():
                 yield output
     def __repr__(self):
-        return 'c[{}]'.format(','.format(map(str, self.trajectories)))
+        return 'c[{}]'.format(','.join(map(repr, self.trajectories)))
 
 ##################################################
 
@@ -229,12 +229,33 @@ def downsample_nodes(elements, node_points, ground_nodes, n=None):
                 if all(n in node_order for n in element)]
     return elements, ground_nodes
 
+def check_connected(ground_nodes, elements):
+    if not elements:
+        return True
+    node_neighbors = get_node_neighbors(elements)
+    queue = deque(ground_nodes)
+    visited_nodes = set(ground_nodes)
+    visited_elements = set()
+    while queue:
+        node1 = queue.popleft()
+        for element in node_neighbors[node1]:
+            visited_elements.add(element)
+            node2 = get_other_node(node1, element)
+            if node2 not in visited_nodes:
+                queue.append(node2)
+                visited_nodes.add(node2)
+    return elements <= visited_elements
 
-def check_connected(ground_nodes, planned_elements):
-    # Assumes elements are ordered
-    connected_nodes = set(ground_nodes)
-    for element in planned_elements:
-        if not any(n in connected_nodes for n in element):
-            return False
-        connected_nodes.update(element)
-    return True
+def get_connected_structures(elements):
+    edges = {(e1, e2) for e1, neighbors in get_element_neighbors(elements).items()
+             for e2 in neighbors}
+    return get_connected_components(elements, edges)
+
+
+def check_stiffness(checker, element_from_id, elements):
+    # TODO: check each component individually
+    if not elements:
+        return True
+    id_from_element = {e: i for i, e in element_from_id.items()}
+    extruded_ids = sorted(id_from_element[e] for e in elements)
+    return checker.solve(exist_element_ids=extruded_ids, if_cond_num=True)
