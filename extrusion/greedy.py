@@ -56,7 +56,9 @@ def regression(robot, obstacles, element_bodies, extrusion_name, **kwargs):
         for element in sorted(printed, key=lambda e: -get_z(node_points, e)):
             num_remaining = len(printed) - 1
             assert 0 <= num_remaining
-            priority = (num_remaining, -get_z(node_points, element), random.random())
+            z = -get_z(node_points, element)
+            #z = 0
+            priority = (num_remaining, z, random.random())
             heapq.heappush(queue, (priority, printed, element))
 
     initial_printed = frozenset(element_bodies)
@@ -65,6 +67,12 @@ def regression(robot, obstacles, element_bodies, extrusion_name, **kwargs):
         return None
     visited[initial_printed] = Node(None, None)
     add_successors(initial_printed)
+
+    #N = 1000
+    #start_time = time.time() # 0.00717480421066
+    #for _ in range(N):
+    #    check_stiffness(checker, element_from_id, initial_printed)
+    #print(elapsed_time(start_time) / N)
 
     start_time = time.time()
     iteration = 0

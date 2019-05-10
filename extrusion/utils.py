@@ -273,6 +273,7 @@ def create_stiffness_checker(extrusion_name):
     extrusion_path = get_extrusion_path(extrusion_name)
     checker = stiffness_checker(json_file_path=extrusion_path, verbose=False)
     checker.set_self_weight_load(True)
+    #checker.set_nodal_displacement_tol(transl_tol=0.005, rot_tol=10 * np.pi / 180)
     checker.set_nodal_displacement_tol(transl_tol=0.003, rot_tol=5 * np.pi / 180)
     # checker.set_nodal_displacement_tol(transl_tol=1e-3, rot_tol=3 * (np.pi / 360))
 
@@ -283,10 +284,25 @@ def create_stiffness_checker(extrusion_name):
     # beam_disp = checker.get_deformed_shape(exagg_ratio=exagg_ratio, disc=disc)
     return checker
 
+def get_extructed_ids(element_from_id, elements):
+    id_from_element = {e: i for i, e in element_from_id.items()}
+    return sorted(id_from_element[e] for e in elements)
+
 def check_stiffness(checker, element_from_id, elements):
     # TODO: check each component individually
     if not elements:
         return True
-    id_from_element = {e: i for i, e in element_from_id.items()}
-    extruded_ids = sorted(id_from_element[e] for e in elements)
-    return checker.solve(exist_element_ids=extruded_ids, if_cond_num=True)
+    extruded_ids = get_extructed_ids(element_from_id, elements)
+
+    is_stiff = checker.solve(exist_element_ids=extruded_ids, if_cond_num=True)
+    trans_tol, rot_tol = checker.get_nodal_deformation_tol()
+    max_trans, max_rot, max_trans_vid, max_rot_vid = checker.get_max_nodal_deformation()
+    compliance = checker.get_complaince() # TODO: spelling error
+    # The inverse of stiffness is flexibility or compliance
+    print('Stiff: {} | Compliance: {}'.format(is_stiff, compliance))
+    print('max deformation: translation - {0} / tol {1}, at node #{2}'.format(
+        max_trans, trans_tol, max_trans_vid))
+    print('max deformation: rotation - {0} / tol {1}, at node #{2}'.format(
+        max_rot, rot_tol, max_rot_vid))
+
+    return is_stiff

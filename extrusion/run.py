@@ -165,6 +165,15 @@ def main(precompute=False):
 if __name__ == '__main__':
     main()
 
+# TODO: look at the actual violation of the stiffness
+# TODO: local search to reduce the violation
+# TODO: sort by deformation in the priority queue
+# TODO: identify the max violating node
+# TODO: compliance (work on the structure)
+# TODO: introduce support structures and then require that they be removed
+# Robot spiderweb printing weaving hook which may slide
+# Graph traversal (path within the graph): load
+
 # TODO: only consider axioms that could be relevant
 
 """
