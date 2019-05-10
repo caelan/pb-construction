@@ -12,12 +12,13 @@ from extrusion.sorted import heuristic_planner
 from extrusion.stripstream import plan_sequence
 from extrusion.utils import load_world, create_stiffness_checker, \
     downsample_nodes, check_connected, get_connected_structures, check_stiffness
-from extrusion.parsing import load_extrusion, draw_element, create_elements, get_extrusion_path
+from extrusion.parsing import load_extrusion, draw_element, create_elements, \
+    get_extrusion_path, draw_model
 from extrusion.stream import get_print_gen_fn
 from extrusion.greedy import regression, progression
 
 from examples.pybullet.utils.pybullet_tools.utils import connect, disconnect, get_movable_joints, add_text, \
-    get_joint_positions, LockRenderer, wait_for_user, has_gui
+    get_joint_positions, LockRenderer, wait_for_user, has_gui, wait_for_duration, wait_for_interrupt
 
 from pddlstream.utils import INF
 
@@ -41,7 +42,7 @@ def sample_trajectories(robot, obstacles, node_points, element_bodies, ground_no
 
 def check_plan(extrusion_name, planned_elements):
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_name)
-    checker = create_stiffness_checker(extrusion_name)
+    #checker = create_stiffness_checker(extrusion_name)
 
     # TODO: construct the structure in different ways (random, connected)
     handles = []
@@ -52,7 +53,7 @@ def check_plan(extrusion_name, planned_elements):
         extruded_elements.add(element)
         is_connected = check_connected(ground_nodes, extruded_elements)
         structures = get_connected_structures(extruded_elements)
-        is_stiff = check_stiffness(checker, element_from_id, extruded_elements)
+        is_stiff = check_stiffness(extrusion_name, element_from_id, extruded_elements)
         all_stiff &= is_stiff
         print('Elements: {} | Structures: {} | Connected: {} | Stiff: {}'.format(
             len(extruded_elements), len(structures), is_connected, is_stiff))
@@ -60,6 +61,7 @@ def check_plan(extrusion_name, planned_elements):
         if has_gui():
             color = (0, 1, 0) if is_stable else (1, 0, 0)
             handles.append(draw_element(node_points, element, color))
+            #wait_for_duration(0.5)
             if not is_stable:
                 wait_for_user()
     return all_connected and all_stiff
@@ -97,20 +99,21 @@ def main(precompute=False):
     elements, ground_nodes = downsample_nodes(elements, node_points, ground_nodes)
 
     #plan = plan_sequence_test(node_points, elements, ground_nodes)
+    # elements = elements[:50] # 10 | 50 | 100 | 150
 
     connect(use_gui=args.viewer)
-    floor, robot = load_world()
-    obstacles = [floor]
+    with LockRenderer():
+        floor, robot = load_world()
+        obstacles = [floor]
+        element_bodies = dict(zip(elements, create_elements(
+            node_points, elements, color=(0, 0, 0, 0))))
+    # joint_weights = compute_joint_weights(robot, num=1000)
     initial_conf = get_joint_positions(robot, get_movable_joints(robot))
-    #dump_body(robot)
-    #if has_gui():
-    #    draw_model(elements, node_points, ground_nodes)
-    #    wait_for_interrupt('Continue?')
-
-    #joint_weights = compute_joint_weights(robot, num=1000)
-    #elements = elements[:50] # 10 | 50 | 100 | 150
+    # dump_body(robot)
+    if has_gui():
+        draw_model(elements, node_points, ground_nodes)
+        wait_for_user()
     #debug_elements(robot, node_points, node_order, elements)
-    element_bodies = dict(zip(elements, create_elements(node_points, elements)))
 
     with LockRenderer(False):
         trajectories = []
@@ -129,6 +132,8 @@ def main(precompute=False):
                                                      ground_nodes, disable=args.disable)
         else:
             raise ValueError(args.algorithm)
+        if planned_trajectories is None:
+            return
         planned_elements = [traj.element for traj in planned_trajectories]
         if args.motions:
             planned_trajectories = compute_motions(robot, obstacles, element_bodies, initial_conf, planned_trajectories)
@@ -137,6 +142,8 @@ def main(precompute=False):
     #random.shuffle(planned_elements)
     #planned_elements = sorted(elements, key=lambda e: max(node_points[n][2] for n in e)) # TODO: tiebreak by angle or x
 
+    # Path heuristic
+    # Disable shadows
     connect(use_gui=True)
     floor, robot = load_world()
     print(check_plan(args.problem, planned_elements))

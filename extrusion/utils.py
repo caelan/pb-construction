@@ -3,13 +3,14 @@ from __future__ import print_function
 import os
 import random
 import numpy as np
+import time
 
 from collections import defaultdict, deque
 
 from pyconmech import stiffness_checker
 
 from examples.pybullet.utils.pybullet_tools.utils import set_point, Euler, get_movable_joints, set_joint_positions, \
-    pairwise_collision, Pose, multiply, Point, load_model, \
+    pairwise_collision, Pose, multiply, Point, load_model, elapsed_time, \
     HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, set_pose
 from pddlstream.utils import get_connected_components
 
@@ -270,12 +271,27 @@ def create_stiffness_checker(extrusion_name):
     # t_tol, r_tol = stiffness_checker.get_nodal_deformation_tol()
     # print("max_t: {0} / {1}, max_r: {2} / {3}".format(max_t, t_tol, max_r, r_tol))
 
+    #start_time = time.time()
+    #n = 1000
+    #for _ in range(n): # 0.00430833816528
     extrusion_path = get_extrusion_path(extrusion_name)
-    checker = stiffness_checker(json_file_path=extrusion_path, verbose=False)
+    with HideOutput():
+        checker = stiffness_checker(json_file_path=extrusion_path, verbose=False)
     checker.set_self_weight_load(True)
     #checker.set_nodal_displacement_tol(transl_tol=0.005, rot_tol=10 * np.pi / 180)
-    checker.set_nodal_displacement_tol(transl_tol=0.003, rot_tol=5 * np.pi / 180)
+    #checker.set_nodal_displacement_tol(transl_tol=0.003, rot_tol=5 * np.pi / 180)
+    checker.set_nodal_displacement_tol(transl_tol=0.0015, rot_tol=5 * np.pi / 180)
     # checker.set_nodal_displacement_tol(transl_tol=1e-3, rot_tol=3 * (np.pi / 360))
+    #print(elapsed_time(start_time) / n)
+
+
+    # Ignore rotation for now
+    #print("has stored results?: {0}".format(checker.has_stored_result()))
+    success, nD, fR, eR = checker.get_solved_results()
+    #print("pass criteria?\n {0}".format(success))
+    #print("nodal displacement?\n {0}".format(nD))
+    #print("fixities reaction?\n {0}".format(fR))
+    #print("element reaction?\n {0}".format(eR))
 
     # checker.set_output_json(True)
     # checker.set_output_json_path(file_path = cwd, file_name = "sf-test_result.json")
@@ -284,14 +300,37 @@ def create_stiffness_checker(extrusion_name):
     # beam_disp = checker.get_deformed_shape(exagg_ratio=exagg_ratio, disc=disc)
     return checker
 
+def get_id_from_element(element_from_id):
+    return {e: i for i, e in element_from_id.items()}
+
 def get_extructed_ids(element_from_id, elements):
-    id_from_element = {e: i for i, e in element_from_id.items()}
+    id_from_element = get_id_from_element(element_from_id)
     return sorted(id_from_element[e] for e in elements)
 
-def check_stiffness(checker, element_from_id, elements):
+def score_stiffness(extrusion_name, element_from_id, elements):
+    if not elements:
+        return True
+    checker = create_stiffness_checker(extrusion_name)
+    # Lower is better
+    extruded_ids = get_extructed_ids(element_from_id, elements)
+    checker.solve(exist_element_ids=extruded_ids, if_cond_num=True)
+    #compliance = checker.get_complaince() # TODO: spelling error
+    # TODO: use compliance?
+    trans_tol, rot_tol = checker.get_nodal_deformation_tol()
+    max_trans, max_rot, _, _ = checker.get_max_nodal_deformation()
+    relative_trans = max_trans / trans_tol
+    relative_rot = max_rot / rot_tol
+
+    #return max_trans
+    return max(relative_trans, relative_rot)
+    #return relative_trans + relative_rot
+
+def check_stiffness(extrusion_name, element_from_id, elements):
     # TODO: check each component individually
     if not elements:
         return True
+    #return True
+    checker = create_stiffness_checker(extrusion_name)
     extruded_ids = get_extructed_ids(element_from_id, elements)
 
     is_stiff = checker.solve(exist_element_ids=extruded_ids, if_cond_num=True)
@@ -304,5 +343,4 @@ def check_stiffness(checker, element_from_id, elements):
         max_trans, trans_tol, max_trans_vid))
     print('max deformation: rotation - {0} / tol {1}, at node #{2}'.format(
         max_rot, rot_tol, max_rot_vid))
-
     return is_stiff

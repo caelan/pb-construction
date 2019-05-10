@@ -3,11 +3,13 @@ import random
 import time
 from collections import namedtuple
 
-from examples.pybullet.utils.pybullet_tools.utils import elapsed_time
-from extrusion.parsing import load_extrusion
+from examples.pybullet.utils.pybullet_tools.utils import elapsed_time, \
+    remove_all_debug, wait_for_user, has_gui, LockRenderer
+from extrusion.parsing import load_extrusion, draw_element
 from extrusion.sorted import get_z
 from extrusion.stream import get_print_gen_fn
-from extrusion.utils import check_connected, check_stiffness, create_stiffness_checker
+from extrusion.utils import check_connected, check_stiffness, \
+    create_stiffness_checker, score_stiffness, get_id_from_element
 
 # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
 
@@ -38,6 +40,16 @@ def sample_extrusion(print_gen_fn, ground_nodes, printed, element):
 
 ##################################################
 
+def draw_action(node_points, printed, element):
+    if not has_gui():
+        return []
+    with LockRenderer():
+        remove_all_debug()
+        handles = [draw_element(node_points, element, color=(1, 0, 0))]
+        handles.extend(draw_element(node_points, e, color=(0, 1, 0)) for e in printed)
+    wait_for_user()
+    return handles
+
 def regression(robot, obstacles, element_bodies, extrusion_name, **kwargs):
     # Focused has the benefit of reusing prior work
     # Greedy has the benefit of conditioning on previous choices
@@ -48,7 +60,8 @@ def regression(robot, obstacles, element_bodies, extrusion_name, **kwargs):
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_name)
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                     precompute_collisions=False, max_attempts=500, **kwargs)
-    checker = create_stiffness_checker(extrusion_name)
+    #checker = create_stiffness_checker(extrusion_name)
+    id_from_element = get_id_from_element(element_from_id)
 
     queue = []
     visited = {}
@@ -56,14 +69,17 @@ def regression(robot, obstacles, element_bodies, extrusion_name, **kwargs):
         for element in sorted(printed, key=lambda e: -get_z(node_points, e)):
             num_remaining = len(printed) - 1
             assert 0 <= num_remaining
-            z = -get_z(node_points, element)
-            #z = 0
-            priority = (num_remaining, z, random.random())
+            bias = -get_z(node_points, element)
+            #bias = 0
+            #bias = score_stiffness(extrusion_name, element_from_id, printed - {element})
+            # TODO: penalize disconnected
+            #print(bias)
+            priority = (num_remaining, bias, random.random())
             heapq.heappush(queue, (priority, printed, element))
 
     initial_printed = frozenset(element_bodies)
     if not check_connected(ground_nodes, initial_printed) or \
-            not check_stiffness(checker, element_from_id, initial_printed):
+            not check_stiffness(extrusion_name, element_from_id, initial_printed):
         return None
     visited[initial_printed] = Node(None, None)
     add_successors(initial_printed)
@@ -78,12 +94,14 @@ def regression(robot, obstacles, element_bodies, extrusion_name, **kwargs):
     iteration = 0
     while queue:
         iteration += 1
-        _, printed, element = heapq.heappop(queue)
-        print('Iteration: {} | Printed: {} | Element: {} | Time: {:.3f}'.format(
-            iteration, len(printed), element, elapsed_time(start_time)))
+        priority, printed, element = heapq.heappop(queue)
+        print(priority)
+        print('Iteration: {} | Printed: {} | Element: {} | Index: {} | Time: {:.3f}'.format(
+            iteration, len(printed), element, id_from_element[element], elapsed_time(start_time)))
         next_printed = printed - {element}
+        draw_action(node_points, next_printed, element)
         if (next_printed in visited) or not check_connected(ground_nodes, next_printed) or \
-                not check_stiffness(checker, element_from_id, next_printed):
+                not check_stiffness(extrusion_name, element_from_id, next_printed):
             continue
         command = sample_extrusion(print_gen_fn, ground_nodes, next_printed, element)
         if command is None:

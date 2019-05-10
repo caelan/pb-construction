@@ -22,6 +22,12 @@ EXTRUSION_FILENAMES = {
     'voronoi':          'voronoi_S1_03-14-2019_w_layer.json',
     'simple_frame':     'simple_frame.json',
     'four-frame':       'four-frame.json',
+    'C': 'C_shape.json',
+    'duck': 'duck.json',
+    'klein': 'klein_bottle.json',
+    'knot': 'tre_foil_knot.json',
+    'david': 'david.json',
+    'fertility': 'fertility.json',
 }
 DEFAULT_SCALE = 1e-3 # TODO: load different scales
 
