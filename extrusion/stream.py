@@ -148,7 +148,7 @@ def compute_direction_path(robot, tool, tool_from_root,
 ##################################################
 
 def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground_nodes,
-                     precompute_collisions=True, disable=False, max_attempts=MAX_ATTEMPTS):
+                     precompute_collisions=True, collisions=True, disable=False, max_attempts=MAX_ATTEMPTS):
     movable_joints = get_movable_joints(robot)
     disabled_collisions = get_disabled_collisions(robot)
     #element_neighbors = get_element_neighbors(element_bodies)
@@ -176,6 +176,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
             command = Command([traj])
             yield (command,)
             return
+
         n1, n2 = reversed(element) if reverse else element
         delta = node_points[n2] - node_points[n1]
         # if delta[2] < 0:
@@ -186,6 +187,8 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
         supporters = []
         retrace_supporters(element, incoming_supporters, supporters)
         obstacles = set(fixed_obstacles + [element_bodies[e] for e in supporters + list(extruded)])
+        if not collisions:
+            obstacles = set()
 
         elements_order = [e for e in element_bodies if (e != element) and (element_bodies[e] not in obstacles)]
         collision_fn = get_collision_fn(robot, movable_joints, obstacles,
@@ -203,8 +206,8 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                     continue
                 if precompute_collisions:
                     bodies_order = [element_bodies[e] for e in elements_order]
-                    collisions = check_command_collision(tool_body, tool_from_root, command, bodies_order)
-                    command.colliding = {e for k, e in enumerate(elements_order) if collisions[k]}
+                    colliding = check_command_collision(tool_body, tool_from_root, command, bodies_order)
+                    command.colliding = {e for k, e in enumerate(elements_order) if colliding[k]}
                 if (node_neighbors[n1] <= command.colliding) and \
                         not any(n in ground_nodes for n in element):
                     continue
@@ -227,7 +230,8 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
 
 ##################################################
 
-def get_wild_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes, collisions=True, **kwargs):
+def get_wild_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
+                          collisions=True, **kwargs):
     gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes, **kwargs)
     def wild_gen_fn(node1, element):
         for t, in gen_fn(node1, element):

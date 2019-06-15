@@ -1,6 +1,9 @@
+from __future__ import print_function
+
 import heapq
 import random
 import time
+
 from collections import namedtuple
 
 from examples.pybullet.utils.pybullet_tools.utils import elapsed_time, \
@@ -95,7 +98,6 @@ def regression(robot, obstacles, element_bodies, extrusion_name, **kwargs):
     while queue:
         iteration += 1
         priority, printed, element = heapq.heappop(queue)
-        print(priority)
         print('Iteration: {} | Printed: {} | Element: {} | Index: {} | Time: {:.3f}'.format(
             iteration, len(printed), element, id_from_element[element], elapsed_time(start_time)))
         next_printed = printed - {element}

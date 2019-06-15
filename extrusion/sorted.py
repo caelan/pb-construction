@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import heapq
 import random
 import numpy as np
@@ -10,6 +12,17 @@ from extrusion.stream import get_print_gen_fn
 
 def get_z(node_points, element):
     return np.average([node_points[n][2] for n in element])
+
+def display_failure(node_points, extruded_elements, element):
+    client = connect(use_gui=True)
+    with ClientSaver(client):
+        floor, robot = load_world()
+        handles = []
+        for e in extruded_elements:
+            handles.append(draw_element(node_points, e, color=(0, 1, 0)))
+        handles.append(draw_element(node_points, element, color=(1, 0, 0)))
+        print('Failure!')
+        wait_for_user()
 
 def heuristic_planner(robot, obstacles, node_points, element_bodies, ground_nodes, **kwargs):
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
@@ -44,15 +57,7 @@ def heuristic_planner(robot, obstacles, node_points, element_bodies, ground_node
                 pass
         else:
             #return None
-            client = connect(use_gui=True)
-            with ClientSaver(client):
-                floor, robot = load_world()
-                handles = []
-                for e in extruded_elements:
-                    handles.append(draw_element(node_points, e, color=(0, 1, 0)))
-                handles.append(draw_element(node_points, element, color=(1, 0, 0)))
-                print('Failure!')
-                wait_for_user()
+            display_failure(node_points, extruded_elements, element)
             return None
         for node in element:
             add_node(node)

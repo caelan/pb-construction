@@ -10,7 +10,8 @@ from pddlstream.language.stream import StreamInfo, PartialInputs
 from pddlstream.utils import read, get_file_path
 
 
-def get_pddlstream(robot, obstacles, node_points, element_bodies, ground_nodes, trajectories=[], **kwargs):
+def get_pddlstream(robot, obstacles, node_points, element_bodies, ground_nodes,
+                   trajectories=[], **kwargs):
     # TODO: instantiation slowness is due to condition effects
     # Regression works well here because of the fixed goal state
     # TODO: plan for the end-effector first

@@ -12,22 +12,26 @@ Element = namedtuple('Element', ['id', 'layer', 'nodes'])
 
 EXTRUSION_DIRECTORY = os.path.join('..', 'assembly_instances', 'extrusion')
 EXTRUSION_FILENAMES = {
-    'djmm_bridge':      'DJMM_bridge.json',
-    'djmm_test_block':  'djmm_test_block_S1_03-14-2019_w_layer.json',
-    'mars_bubble':      'mars_bubble_S1_03-14-2019_w_layer.json',
-    'sig_artopt-bunny': 'sig_artopt-bunny_S1_03-14-2019_w_layer.json',
-    'topopt-100':       'topopt-100_S1_03-14-2019_w_layer.json',
-    'topopt-205':       'topopt-205_S0.7_03-14-2019_w_layer.json',
-    'topopt-310':       'topopt-310_S1_03-14-2019_w_layer.json',
-    'voronoi':          'voronoi_S1_03-14-2019_w_layer.json',
-    'simple_frame':     'simple_frame.json',
-    'four-frame':       'four-frame.json',
+    # bunny (3)
     'C': 'C_shape.json',
+    'david': 'david.json',
+    'djmm_bridge': 'DJMM_bridge.json',
+    'djmm_test_block': 'djmm_test_block_S1_03-14-2019_w_layer.json',
     'duck': 'duck.json',
+    'fandisk': 'fandisk.json',
+    'fertility': 'fertility.json',
+    'four-frame': 'four-frame.json',
     'klein': 'klein_bottle.json',
     'knot': 'tre_foil_knot.json',
-    'david': 'david.json',
-    'fertility': 'fertility.json',
+    'semi_sphere': 'semi_sphere.json',
+    'mars_bubble': 'mars_bubble_S1_03-14-2019_w_layer.json',
+    'sig_artopt-bunny': 'sig_artopt-bunny_S1_03-14-2019_w_layer.json',
+    'simple_frame': 'simple_frame.json',
+    'topopt-100': 'topopt-100_S1_03-14-2019_w_layer.json',
+    'topopt-205': 'topopt-205_S0.7_03-14-2019_w_layer.json',
+    'topopt-310':  'topopt-310_S1_03-14-2019_w_layer.json',
+    'voronoi': 'voronoi_S1_03-14-2019_w_layer.json',
+
 }
 DEFAULT_SCALE = 1e-3 # TODO: load different scales
 

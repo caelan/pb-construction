@@ -2,10 +2,9 @@
 from __future__ import print_function
 
 import sys
+import argparse
 
 sys.path.append('pddlstream/')
-
-import argparse
 
 from extrusion.motion import compute_motions, display_trajectories
 from extrusion.sorted import heuristic_planner
@@ -81,13 +80,20 @@ def main(precompute=False):
     # sig_artopt-bunny | Nodes: 219 | Ground: 14 | Elements: 418
     # djmm_bridge | Nodes: 1548 | Ground: 258 | Elements: 6427
     # djmm_test_block | Nodes: 76 | Ground: 13 | Elements: 253
-    parser.add_argument('-a', '--algorithm', default='stripstream', help='Which algorithm to use')
-    parser.add_argument('-p', '--problem', default='simple_frame', help='The name of the problem to solve')
-    parser.add_argument('-c', '--cfree', action='store_true', help='Disables collisions with obstacles')
-    parser.add_argument('-m', '--motions', action='store_true', help='Plans motions between each extrusion')
-    parser.add_argument('-d', '--disable', action='store_true', help='Disables trajectory planning')
-    parser.add_argument('-t', '--max_time', default=INF, type=int, help='The max time')
-    parser.add_argument('-v', '--viewer', action='store_true', help='Enables the viewer during planning (slow!)')
+    parser.add_argument('-a', '--algorithm', default='stripstream',
+                        help='Which algorithm to use')
+    parser.add_argument('-c', '--cfree', action='store_true',
+                        help='Disables collisions with obstacles')
+    parser.add_argument('-d', '--disable', action='store_true',
+                        help='Disables trajectory planning')
+    parser.add_argument('-m', '--motions', action='store_true',
+                        help='Plans motions between each extrusion')
+    parser.add_argument('-p', '--problem', default='simple_frame',
+                        help='The name of the problem to solve')
+    parser.add_argument('-t', '--max_time', default=INF, type=int,
+                        help='The max time')
+    parser.add_argument('-v', '--viewer', action='store_true',
+                        help='Enables the viewer during planning (slow!)')
     args = parser.parse_args()
     print('Arguments:', args)
 
@@ -115,6 +121,7 @@ def main(precompute=False):
         wait_for_user()
     #debug_elements(robot, node_points, node_order, elements)
 
+    # TODO: script to solve all of them and report results
     with LockRenderer(False):
         trajectories = []
         if precompute:
@@ -124,12 +131,14 @@ def main(precompute=False):
                                                  trajectories=trajectories, collisions=not args.cfree,
                                                  disable=args.disable, max_time=args.max_time)
         elif args.algorithm == 'regression':
-            planned_trajectories = regression(robot, obstacles, element_bodies, args.problem, disable=args.disable)
+            planned_trajectories = regression(robot, obstacles, element_bodies, args.problem,
+                                              collisions=not args.cfree, disable=args.disable)
         elif args.algorithm == 'progression':
-            planned_trajectories = progression(robot, obstacles, element_bodies, args.problem, disable=args.disable)
+            planned_trajectories = progression(robot, obstacles, element_bodies, args.problem,
+                                               collisions=not args.cfree, disable=args.disable)
         elif args.algorithm == 'heuristic':
-            planned_trajectories = heuristic_planner(robot, obstacles, node_points, element_bodies,
-                                                     ground_nodes, disable=args.disable)
+            planned_trajectories = heuristic_planner(robot, obstacles, node_points, element_bodies, ground_nodes,
+                                                     collisions=not args.cfree, disable=args.disable)
         else:
             raise ValueError(args.algorithm)
         if planned_trajectories is None:
@@ -144,16 +153,17 @@ def main(precompute=False):
 
     # Path heuristic
     # Disable shadows
-    connect(use_gui=True)
+    connect(use_gui=False)
     floor, robot = load_world()
-    print(check_plan(args.problem, planned_elements))
+    is_valid = check_plan(args.problem, planned_elements)
+    print('Valid:', is_valid)
     if args.disable:
         wait_for_user()
         return
     disconnect()
+
     display_trajectories(ground_nodes, planned_trajectories)
     # TODO: collisions at the ends of elements?
-
     # TODO: slow down automatically near endpoints
     # TODO: heuristic that orders elements by angle
     # TODO: check that both teh start and end satisfy

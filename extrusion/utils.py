@@ -325,7 +325,7 @@ def score_stiffness(extrusion_name, element_from_id, elements):
     return max(relative_trans, relative_rot)
     #return relative_trans + relative_rot
 
-def check_stiffness(extrusion_name, element_from_id, elements):
+def check_stiffness(extrusion_name, element_from_id, elements, verbose=False):
     # TODO: check each component individually
     if not elements:
         return True
@@ -338,9 +338,10 @@ def check_stiffness(extrusion_name, element_from_id, elements):
     max_trans, max_rot, max_trans_vid, max_rot_vid = checker.get_max_nodal_deformation()
     compliance = checker.get_complaince() # TODO: spelling error
     # The inverse of stiffness is flexibility or compliance
-    print('Stiff: {} | Compliance: {}'.format(is_stiff, compliance))
-    print('max deformation: translation - {0} / tol {1}, at node #{2}'.format(
-        max_trans, trans_tol, max_trans_vid))
-    print('max deformation: rotation - {0} / tol {1}, at node #{2}'.format(
-        max_rot, rot_tol, max_rot_vid))
+    if verbose:
+        print('Stiff: {} | Compliance: {}'.format(is_stiff, compliance))
+        print('max deformation: translation - {0} / tol {1}, at node #{2}'.format(
+            max_trans, trans_tol, max_trans_vid))
+        print('max deformation: rotation - {0} / tol {1}, at node #{2}'.format(
+            max_rot, rot_tol, max_rot_vid))
     return is_stiff

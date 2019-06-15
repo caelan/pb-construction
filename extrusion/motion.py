@@ -66,8 +66,9 @@ def display_trajectories(ground_nodes, trajectories, time_step=0.05):
     print('Trajectories:', len(trajectories))
     for i, trajectory in enumerate(trajectories):
         if isinstance(trajectory, PrintTrajectory):
-            print(i, trajectory, trajectory.n1 in connected, trajectory.n2 in connected,
-                  is_ground(trajectory.element, ground_nodes), len(trajectory.path))
+            print('{}) {:9} | Connected: {} | Ground: {} | Length: {}'.format(
+                i, trajectory, (trajectory.n1 in connected) and (trajectory.n2 in connected),
+                is_ground(trajectory.element, ground_nodes), len(trajectory.path)))
             connected.add(trajectory.n2)
         #wait_for_interrupt()
         #set_color(element_bodies[element], (1, 0, 0, 1))
