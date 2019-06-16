@@ -3,6 +3,8 @@ from __future__ import print_function
 
 import sys
 import argparse
+import cProfile
+import pstats
 
 sys.path.append('pddlstream/')
 
@@ -68,7 +70,17 @@ def check_plan(extrusion_name, planned_elements):
 
 ##################################################
 
-def plan_extrusion(path, args, precompute=False):
+def verify_plan(path, planned_elements):
+    # Path heuristic
+    # Disable shadows
+    connect(use_gui=False)
+    floor, robot = load_world()
+    is_valid = check_plan(path, planned_elements)
+    print('Valid:', is_valid)
+    disconnect()
+    return is_valid
+
+def plan_extrusion(path, args, precompute=False, watch=True):
     # TODO: setCollisionFilterGroupMask
     # TODO: fail if wild stream produces unexpected facts
     # TODO: try search at different cost levels (i.e. w/ and w/o abstract)
@@ -93,11 +105,12 @@ def plan_extrusion(path, args, precompute=False):
         wait_for_user()
     # debug_elements(robot, node_points, node_order, elements)
 
-    # TODO: script to solve all of them and report results
     with LockRenderer(False):
         trajectories = []
         if precompute:
             trajectories = sample_trajectories(robot, obstacles, node_points, element_bodies, ground_nodes)
+        pr = cProfile.Profile()
+        pr.enable()
         if args.algorithm == 'stripstream':
             planned_trajectories = plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
                                                  trajectories=trajectories, collisions=not args.cfree,
@@ -113,6 +126,8 @@ def plan_extrusion(path, args, precompute=False):
                                                      collisions=not args.cfree, disable=args.disable)
         else:
             raise ValueError(args.algorithm)
+        pr.disable()
+        pstats.Stats(pr).sort_stats('tottime').print_stats(10) # tottime | cumtime
         if planned_trajectories is None:
             return
         planned_elements = [traj.element for traj in planned_trajectories]
@@ -123,19 +138,9 @@ def plan_extrusion(path, args, precompute=False):
     # random.shuffle(planned_elements)
     # planned_elements = sorted(elements, key=lambda e: max(node_points[n][2] for n in e)) # TODO: tiebreak by angle or x
 
-    # Path heuristic
-    # Disable shadows
-    connect(use_gui=False)
-    floor, robot = load_world()
-    is_valid = check_plan(path, planned_elements)
-    print('Valid:', is_valid)
-    if args.disable:
-        wait_for_user()
-        return
-    disconnect()
-
-    display_trajectories(ground_nodes, planned_trajectories)
-    disconnect()
+    #verify_plan(path, planned_elements)
+    if watch:
+        display_trajectories(ground_nodes, planned_trajectories)
 
 def main():
     parser = argparse.ArgumentParser()
@@ -168,10 +173,10 @@ def main():
 
     if args.problem == 'all':
         for path in enumerate_paths():
-            plan_extrusion(path, args)
+            plan_extrusion(path, args, watch=False)
     else:
         path = get_extrusion_path(args.problem)
-        plan_extrusion(path, args)
+        plan_extrusion(path, args, watch=True)
 
     # TODO: collisions at the ends of elements?
     # TODO: slow down automatically near endpoints
