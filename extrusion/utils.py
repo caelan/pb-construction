@@ -264,8 +264,7 @@ def get_connected_structures(elements):
 
 ##################################################
 
-def create_stiffness_checker(extrusion_name):
-    from extrusion.parsing import get_extrusion_path
+def create_stiffness_checker(extrusion_path):
     # stiffness_checker.solve(existing_e_ids)
     # max_t, max_r = stiffness_checker.get_max_nodal_deformation()
     # t_tol, r_tol = stiffness_checker.get_nodal_deformation_tol()
@@ -274,7 +273,6 @@ def create_stiffness_checker(extrusion_name):
     #start_time = time.time()
     #n = 1000
     #for _ in range(n): # 0.00430833816528
-    extrusion_path = get_extrusion_path(extrusion_name)
     with HideOutput():
         checker = stiffness_checker(json_file_path=extrusion_path, verbose=False)
     checker.set_self_weight_load(True)

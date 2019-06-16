@@ -29,6 +29,10 @@ EXTRUSION_FILENAMES = {
 }
 DEFAULT_SCALE = 1e-3 # TODO: load different scales
 
+def get_extrusion_dir():
+    root_directory = os.path.dirname(os.path.abspath(__file__))
+    return os.path.abspath(os.path.join(root_directory, EXTRUSION_DIRECTORY))
+
 def get_extrusion_path(extrusion_name):
     if extrusion_name in EXTRUSION_FILENAMES:
         filename = EXTRUSION_FILENAMES[extrusion_name]
@@ -37,8 +41,14 @@ def get_extrusion_path(extrusion_name):
     root_directory = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(root_directory, EXTRUSION_DIRECTORY, filename)
 
-def load_extrusion(extrusion_name):
-    extrusion_path = get_extrusion_path(extrusion_name)
+def enumerate_paths():
+    directory = os.path.join(os.path.dirname(os.path.abspath(__file__)), EXTRUSION_DIRECTORY)
+    for filename in sorted(os.listdir(directory)):
+        if filename.endswith('.json'):
+            yield os.path.join(directory, filename)
+
+def load_extrusion(extrusion_path):
+    extrusion_name, _ = os.path.splitext(os.path.basename(extrusion_path))
     print('Name: {}'.format(extrusion_name))
     print('Path: {}'.format(extrusion_path))
     with open(extrusion_path, 'r') as f:
