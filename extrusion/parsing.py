@@ -10,36 +10,32 @@ from extrusion.utils import is_ground
 
 Element = namedtuple('Element', ['id', 'layer', 'nodes'])
 
+# https://github.com/yijiangh/assembly_instances/tree/master/extrusion
 EXTRUSION_DIRECTORY = os.path.join('..', 'assembly_instances', 'extrusion')
 EXTRUSION_FILENAMES = {
     # bunny (3)
     'C': 'C_shape.json',
-    'david': 'david.json',
     'djmm_bridge': 'DJMM_bridge.json',
     'djmm_test_block': 'djmm_test_block_S1_03-14-2019_w_layer.json',
-    'duck': 'duck.json',
-    'fandisk': 'fandisk.json',
-    'fertility': 'fertility.json',
-    'four-frame': 'four-frame.json',
     'klein': 'klein_bottle.json',
     'knot': 'tre_foil_knot.json',
-    'semi_sphere': 'semi_sphere.json',
     'mars_bubble': 'mars_bubble_S1_03-14-2019_w_layer.json',
     'sig_artopt-bunny': 'sig_artopt-bunny_S1_03-14-2019_w_layer.json',
-    'simple_frame': 'simple_frame.json',
     'topopt-100': 'topopt-100_S1_03-14-2019_w_layer.json',
     'topopt-205': 'topopt-205_S0.7_03-14-2019_w_layer.json',
-    'topopt-310':  'topopt-310_S1_03-14-2019_w_layer.json',
+    'topopt-310': 'topopt-310_S1_03-14-2019_w_layer.json',
     'voronoi': 'voronoi_S1_03-14-2019_w_layer.json',
 
 }
 DEFAULT_SCALE = 1e-3 # TODO: load different scales
 
 def get_extrusion_path(extrusion_name):
-    if extrusion_name not in EXTRUSION_FILENAMES:
-        raise ValueError(extrusion_name)
+    if extrusion_name in EXTRUSION_FILENAMES:
+        filename = EXTRUSION_FILENAMES[extrusion_name]
+    else:
+        filename = '{}.json'.format(extrusion_name)
     root_directory = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(root_directory, EXTRUSION_DIRECTORY, EXTRUSION_FILENAMES[extrusion_name])
+    return os.path.join(root_directory, EXTRUSION_DIRECTORY, filename)
 
 def load_extrusion(extrusion_name):
     extrusion_path = get_extrusion_path(extrusion_name)
@@ -54,6 +50,7 @@ def load_extrusion(extrusion_name):
     ground_nodes = parse_ground_nodes(json_data)
     print('Assembly: {} | Model: {} | Unit: {}'.format(
         json_data['assembly_type'], json_data['model_type'], json_data['unit'])) # extrusion, spatial_frame, millimeter
+    assert json_data['unit'] == 'millimeter'
     print('Nodes: {} | Ground: {} | Elements: {}'.format(
         len(node_points), len(ground_nodes), len(elements)))
     return element_from_id, node_points, ground_nodes

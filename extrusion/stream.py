@@ -215,7 +215,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                 prune_dominated(trajectories)
                 if command not in trajectories:
                     continue
-                print('{}) {}->{} ({}) | {} | {} | {}'.format(
+                print('{}) {}->{} | Supporters: {} | Attempts: {} | Trajectories: {} | Colliding: {}'.format(
                     num, n1, n2, len(supporters), attempt, len(trajectories),
                     sorted(len(t.colliding) for t in trajectories)))
                 yield (command,)
@@ -223,8 +223,8 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                     print('Reevaluated already non-colliding trajectory!')
                     return
             else:
-                print('{}) {}->{} ({}) | {} | Max attempts exceeded!'.format(
-                    num, len(supporters), n1, n2, max_attempts))
+                print('{}) {}->{} | Supporters: {} | Attempts: {} | Max attempts exceeded!'.format(
+                    num, n1, n2, len(supporters), max_attempts))
                 return
     return gen_fn
 
