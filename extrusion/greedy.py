@@ -59,8 +59,6 @@ def display_failure(node_points, extruded_elements, element):
         print('Failure!')
         wait_for_user()
 
-##################################################
-
 def draw_action(node_points, printed, element):
     if not has_gui():
         return []
@@ -71,8 +69,25 @@ def draw_action(node_points, printed, element):
     wait_for_user()
     return handles
 
+##################################################
+
+def get_heuristic(extrusion_name, element_from_id, node_points, printed, element, heuristic, forward):
+    # TODO: penalize disconnected
+    if heuristic is None:
+        return 0
+    elif heuristic == 'z':
+        z = get_z(node_points, element)
+        return z if forward else -z
+    elif heuristic == 'stiffness':
+        structure = printed | {element} if forward else printed - {element}
+        return score_stiffness(extrusion_name, element_from_id, structure)
+    elif heuristic == 'dijkstra':
+        # Could compute upfront once or recompute online
+        raise NotImplementedError()
+    raise ValueError(heuristic)
+
 def regression(robot, obstacles, element_bodies, extrusion_name,
-               max_time=INF, max_backtrack=INF, **kwargs):
+               heuristic='z', max_time=INF, max_backtrack=INF, **kwargs):
     # Focused has the benefit of reusing prior work
     # Greedy has the benefit of conditioning on previous choices
     # TODO: persistent search to reuse
@@ -89,11 +104,7 @@ def regression(robot, obstacles, element_bodies, extrusion_name,
         for element in sorted(printed, key=lambda e: -get_z(node_points, e)):
             num_remaining = len(printed) - 1
             assert 0 <= num_remaining
-            bias = -get_z(node_points, element)
-            #bias = 0
-            #bias = score_stiffness(extrusion_name, element_from_id, printed - {element})
-            # TODO: penalize disconnected
-            #print(bias)
+            bias = get_heuristic(extrusion_name, element_from_id, node_points, printed, element, heuristic, forward=False)
             priority = (num_remaining, bias, random.random())
             heapq.heappush(queue, (priority, printed, element))
 
@@ -120,7 +131,7 @@ def regression(robot, obstacles, element_bodies, extrusion_name,
         print('Iteration: {} | Best: {} | Printed: {} | Element: {} | Index: {} | Time: {:.3f}'.format(
             num_evaluated, min_printed, len(printed), element, id_from_element[element], elapsed_time(start_time)))
         next_printed = printed - {element}
-        draw_action(node_points, next_printed, element)
+        #draw_action(node_points, next_printed, element)
         if (next_printed in visited) or not check_connected(ground_nodes, next_printed) or \
                 not check_stiffness(extrusion_name, element_from_id, next_printed):
             continue
@@ -136,7 +147,6 @@ def regression(robot, obstacles, element_bodies, extrusion_name,
 
     # TODO: parallelize
     # TODO: different heuristics
-    # TODO: investigate recovering structure support from conmech
 
     data = {
         'runtime': elapsed_time(start_time),
@@ -149,7 +159,7 @@ def regression(robot, obstacles, element_bodies, extrusion_name,
 ##################################################
 
 def progression(robot, obstacles, element_bodies, extrusion_name,
-                max_time=INF, max_backtrack=INF, **kwargs):
+                heuristic='z', max_time=INF, max_backtrack=INF, **kwargs):
 
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_name)
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
@@ -164,7 +174,8 @@ def progression(robot, obstacles, element_bodies, extrusion_name,
         for element in sorted(remaining, key=lambda e: get_z(node_points, e)):
             num_remaining = len(remaining) - 1
             assert 0 <= num_remaining
-            priority = (num_remaining, get_z(node_points, element), random.random())
+            bias = get_heuristic(extrusion_name, element_from_id, node_points, printed, element, heuristic, forward=False)
+            priority = (num_remaining, bias, random.random())
             heapq.heappush(queue, (priority, printed, element))
 
     initial_printed = frozenset()

@@ -11,7 +11,7 @@ from pyconmech import stiffness_checker
 
 from examples.pybullet.utils.pybullet_tools.utils import set_point, Euler, get_movable_joints, set_joint_positions, \
     pairwise_collision, Pose, multiply, Point, load_model, elapsed_time, \
-    HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, set_pose
+    HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, set_pose, user_input
 from pddlstream.utils import get_connected_components
 
 KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
@@ -264,38 +264,18 @@ def get_connected_structures(elements):
 
 ##################################################
 
-def create_stiffness_checker(extrusion_path):
-    # stiffness_checker.solve(existing_e_ids)
-    # max_t, max_r = stiffness_checker.get_max_nodal_deformation()
-    # t_tol, r_tol = stiffness_checker.get_nodal_deformation_tol()
-    # print("max_t: {0} / {1}, max_r: {2} / {3}".format(max_t, t_tol, max_r, r_tol))
-
-    #start_time = time.time()
-    #n = 1000
-    #for _ in range(n): # 0.00430833816528
+def create_stiffness_checker(extrusion_path, verbose=False):
+    # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
     with HideOutput():
-        checker = stiffness_checker(json_file_path=extrusion_path, verbose=False)
+        checker = stiffness_checker(json_file_path=extrusion_path, verbose=verbose)
+    #checker.set_output_json(True)
+    #checker.set_output_json_path(file_path=os.getcwd(), file_name="stiffness-results.json")
     checker.set_self_weight_load(True)
     #checker.set_nodal_displacement_tol(transl_tol=0.005, rot_tol=10 * np.pi / 180)
     #checker.set_nodal_displacement_tol(transl_tol=0.003, rot_tol=5 * np.pi / 180)
     checker.set_nodal_displacement_tol(transl_tol=0.0015, rot_tol=5 * np.pi / 180)
     # checker.set_nodal_displacement_tol(transl_tol=1e-3, rot_tol=3 * (np.pi / 360))
-    #print(elapsed_time(start_time) / n)
 
-
-    # Ignore rotation for now
-    #print("has stored results?: {0}".format(checker.has_stored_result()))
-    success, nD, fR, eR = checker.get_solved_results()
-    #print("pass criteria?\n {0}".format(success))
-    #print("nodal displacement?\n {0}".format(nD))
-    #print("fixities reaction?\n {0}".format(fR))
-    #print("element reaction?\n {0}".format(eR))
-
-    # checker.set_output_json(True)
-    # checker.set_output_json_path(file_path = cwd, file_name = "sf-test_result.json")
-
-    # orig_beam_shape = checker.get_original_shape(disc=disc, draw_full_shape=False)
-    # beam_disp = checker.get_deformed_shape(exagg_ratio=exagg_ratio, disc=disc)
     return checker
 
 def get_id_from_element(element_from_id):
@@ -312,7 +292,7 @@ def score_stiffness(extrusion_name, element_from_id, elements):
     # Lower is better
     extruded_ids = get_extructed_ids(element_from_id, elements)
     checker.solve(exist_element_ids=extruded_ids, if_cond_num=True)
-    #compliance = checker.get_complaince() # TODO: spelling error
+    #compliance = checker.get_compliance()
     # TODO: use compliance?
     trans_tol, rot_tol = checker.get_nodal_deformation_tol()
     max_trans, max_rot, _, _ = checker.get_max_nodal_deformation()
@@ -328,18 +308,28 @@ def check_stiffness(extrusion_name, element_from_id, elements, verbose=False):
     if not elements:
         return True
     #return True
-    checker = create_stiffness_checker(extrusion_name)
+    checker = create_stiffness_checker(extrusion_name, verbose=verbose)
     extruded_ids = get_extructed_ids(element_from_id, elements)
 
     is_stiff = checker.solve(exist_element_ids=extruded_ids, if_cond_num=True)
+    #print("has stored results: {0}".format(checker.has_stored_result()))
+    #success, nodal_displacement, fixities_reaction, element_reaction = checker.get_solved_results()
+    #print("nodal displacement (m/rad):\n{0}".format(nodal_displacement)) # nodes x 7
+    # TODO: investigate if nodal displacement can be used to select an ordering
+    #print("fixities reaction (kN, kN-m):\n{0}".format(fixities_reaction)) # ground x 7
+    #print("element reaction (kN, kN-m):\n{0}".format(element_reaction)) # elements x 13
     trans_tol, rot_tol = checker.get_nodal_deformation_tol()
     max_trans, max_rot, max_trans_vid, max_rot_vid = checker.get_max_nodal_deformation()
-    compliance = checker.get_complaince() # TODO: spelling error
     # The inverse of stiffness is flexibility or compliance
     if verbose:
-        print('Stiff: {} | Compliance: {}'.format(is_stiff, compliance))
+        print('Stiff: {} | Compliance: {}'.format(is_stiff, checker.get_compliance()))
         print('max deformation: translation - {0} / tol {1}, at node #{2}'.format(
             max_trans, trans_tol, max_trans_vid))
         print('max deformation: rotation - {0} / tol {1}, at node #{2}'.format(
             max_rot, rot_tol, max_rot_vid))
+    #disc = 10
+    #exagg_ratio = 1.0
+    #time_step = 1.0
+    #orig_beam_shape = checker.get_original_shape(disc=disc, draw_full_shape=False)
+    #beam_disp = checker.get_deformed_shape(exagg_ratio=exagg_ratio, disc=disc)
     return is_stiff
