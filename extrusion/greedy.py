@@ -6,15 +6,17 @@ import time
 
 from collections import namedtuple
 
+import numpy as np
+
 from examples.pybullet.utils.pybullet_tools.utils import elapsed_time, \
     remove_all_debug, wait_for_user, has_gui, LockRenderer
 from extrusion.parsing import load_extrusion, draw_element
-from extrusion.sorted import get_z
 from extrusion.stream import get_print_gen_fn
 from extrusion.utils import check_connected, check_stiffness, \
-    create_stiffness_checker, score_stiffness, get_id_from_element
+    create_stiffness_checker, score_stiffness, get_id_from_element, load_world
 
 # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
+from pybullet_tools.utils import connect, ClientSaver, wait_for_user, INF
 
 State = namedtuple('State', ['element', 'printed', 'plan'])
 Node = namedtuple('Node', ['action', 'state'])
@@ -41,6 +43,22 @@ def sample_extrusion(print_gen_fn, ground_nodes, printed, element):
                 pass
     return None
 
+def get_z(node_points, element):
+    # TODO: tiebreak by angle or x
+    return np.average([node_points[n][2] for n in element])
+
+
+def display_failure(node_points, extruded_elements, element):
+    client = connect(use_gui=True)
+    with ClientSaver(client):
+        floor, robot = load_world()
+        handles = []
+        for e in extruded_elements:
+            handles.append(draw_element(node_points, e, color=(0, 1, 0)))
+        handles.append(draw_element(node_points, element, color=(1, 0, 0)))
+        print('Failure!')
+        wait_for_user()
+
 ##################################################
 
 def draw_action(node_points, printed, element):
@@ -53,7 +71,8 @@ def draw_action(node_points, printed, element):
     wait_for_user()
     return handles
 
-def regression(robot, obstacles, element_bodies, extrusion_name, **kwargs):
+def regression(robot, obstacles, element_bodies, extrusion_name,
+               max_time=INF, max_backtrack=INF, **kwargs):
     # Focused has the benefit of reusing prior work
     # Greedy has the benefit of conditioning on previous choices
     # TODO: persistent search to reuse
@@ -63,7 +82,6 @@ def regression(robot, obstacles, element_bodies, extrusion_name, **kwargs):
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_name)
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                     precompute_collisions=False, max_attempts=500, **kwargs)
-    #checker = create_stiffness_checker(extrusion_name)
     id_from_element = get_id_from_element(element_from_id)
 
     queue = []
@@ -93,13 +111,20 @@ def regression(robot, obstacles, element_bodies, extrusion_name, **kwargs):
     #    check_stiffness(checker, element_from_id, initial_printed)
     #print(elapsed_time(start_time) / N)
 
+    min_printed = INF
     start_time = time.time()
     iteration = 0
-    while queue:
+    while queue and (elapsed_time(start_time) < max_time):
         iteration += 1
         priority, printed, element = heapq.heappop(queue)
-        print('Iteration: {} | Printed: {} | Element: {} | Index: {} | Time: {:.3f}'.format(
-            iteration, len(printed), element, id_from_element[element], elapsed_time(start_time)))
+        backtrack = len(printed) - min_printed
+        if max_backtrack <= backtrack:
+            continue
+        if len(printed) < min_printed:
+            # TODO: count the depth of the local minima
+            min_printed = len(printed)
+        print('Iteration: {} | Best: {} | Printed: {} | Element: {} | Index: {} | Time: {:.3f}'.format(
+            iteration, min_printed, len(printed), element, id_from_element[element], elapsed_time(start_time)))
         next_printed = printed - {element}
         draw_action(node_points, next_printed, element)
         if (next_printed in visited) or not check_connected(ground_nodes, next_printed) or \
@@ -112,6 +137,12 @@ def regression(robot, obstacles, element_bodies, extrusion_name, **kwargs):
         if not next_printed:
             return list(reversed(retrace_plan(visited, next_printed)))
         add_successors(next_printed)
+
+    # TODO: return statistics
+    # TODO: parallelize
+    # TODO: different heuristics
+    # TODO: investigate recovering structure support from conmech
+
     return None
 
 ##################################################
@@ -120,7 +151,6 @@ def progression(robot, obstacles, element_bodies, extrusion_name, **kwargs):
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_name)
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                     precompute_collisions=False, max_attempts=500, **kwargs)
-    checker = create_stiffness_checker(extrusion_name)
     elements = frozenset(element_bodies)
 
     queue = []
@@ -146,7 +176,7 @@ def progression(robot, obstacles, element_bodies, extrusion_name, **kwargs):
             iteration, len(printed), element, elapsed_time(start_time)))
         next_printed = printed | {element}
         if (next_printed in visited) or not check_connected(ground_nodes, next_printed) or \
-                not check_stiffness(checker, element_from_id, next_printed):
+                not check_stiffness(extrusion_name, element_from_id, next_printed):
             continue
         command = sample_extrusion(print_gen_fn, ground_nodes, printed, element)
         if command is None:

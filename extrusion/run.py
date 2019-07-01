@@ -9,7 +9,6 @@ import pstats
 sys.path.append('pddlstream/')
 
 from extrusion.motion import compute_motions, display_trajectories
-from extrusion.sorted import heuristic_planner
 from extrusion.stripstream import plan_sequence
 from extrusion.utils import load_world, create_stiffness_checker, \
     downsample_nodes, check_connected, get_connected_structures, check_stiffness
@@ -121,9 +120,6 @@ def plan_extrusion(path, args, precompute=False, watch=True):
         elif args.algorithm == 'progression':
             planned_trajectories = progression(robot, obstacles, element_bodies, path,
                                                collisions=not args.cfree, disable=args.disable)
-        elif args.algorithm == 'heuristic':
-            planned_trajectories = heuristic_planner(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                                     collisions=not args.cfree, disable=args.disable)
         else:
             raise ValueError(args.algorithm)
         pr.disable()
