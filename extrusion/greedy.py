@@ -77,7 +77,6 @@ def regression(robot, obstacles, element_bodies, extrusion_name,
     # Greedy has the benefit of conditioning on previous choices
     # TODO: persistent search to reuse
     # TODO: max branching factor
-    # TODO: persistent search
 
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_name)
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
@@ -105,26 +104,21 @@ def regression(robot, obstacles, element_bodies, extrusion_name,
     visited[initial_printed] = Node(None, None)
     add_successors(initial_printed)
 
-    #N = 1000
-    #start_time = time.time() # 0.00717480421066
-    #for _ in range(N):
-    #    check_stiffness(checker, element_from_id, initial_printed)
-    #print(elapsed_time(start_time) / N)
-
+    plan = None
     min_printed = INF
     start_time = time.time()
-    iteration = 0
+    num_evaluated = 0
     while queue and (elapsed_time(start_time) < max_time):
-        iteration += 1
         priority, printed, element = heapq.heappop(queue)
-        backtrack = len(printed) - min_printed
+        num_remaining = len(printed)
+        backtrack = num_remaining - min_printed
         if max_backtrack <= backtrack:
             continue
+        num_evaluated += 1
         if len(printed) < min_printed:
-            # TODO: count the depth of the local minima
             min_printed = len(printed)
         print('Iteration: {} | Best: {} | Printed: {} | Element: {} | Index: {} | Time: {:.3f}'.format(
-            iteration, min_printed, len(printed), element, id_from_element[element], elapsed_time(start_time)))
+            num_evaluated, min_printed, len(printed), element, id_from_element[element], elapsed_time(start_time)))
         next_printed = printed - {element}
         draw_action(node_points, next_printed, element)
         if (next_printed in visited) or not check_connected(ground_nodes, next_printed) or \
@@ -135,22 +129,32 @@ def regression(robot, obstacles, element_bodies, extrusion_name,
             continue
         visited[next_printed] = Node(command, printed) # TODO: be careful when multiple trajs
         if not next_printed:
-            return list(reversed(retrace_plan(visited, next_printed)))
+            min_printed = 0
+            plan = list(reversed(retrace_plan(visited, next_printed)))
+            break
         add_successors(next_printed)
 
-    # TODO: return statistics
     # TODO: parallelize
     # TODO: different heuristics
     # TODO: investigate recovering structure support from conmech
 
-    return None
+    data = {
+        'runtime': elapsed_time(start_time),
+        'num_evaluated': num_evaluated,
+        'num_remaining': min_printed,
+        'num_elements': len(element_bodies)
+    }
+    return plan, data
 
 ##################################################
 
-def progression(robot, obstacles, element_bodies, extrusion_name, **kwargs):
+def progression(robot, obstacles, element_bodies, extrusion_name,
+                max_time=INF, max_backtrack=INF, **kwargs):
+
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_name)
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                     precompute_collisions=False, max_attempts=500, **kwargs)
+    id_from_element = get_id_from_element(element_from_id)
     elements = frozenset(element_bodies)
 
     queue = []
@@ -167,13 +171,22 @@ def progression(robot, obstacles, element_bodies, extrusion_name, **kwargs):
     visited[initial_printed] = Node(None, None)
     add_successors(initial_printed)
 
+    plan = None
+    min_printed = INF
     start_time = time.time()
-    iteration = 0
-    while queue:
-        iteration += 1
+    num_evaluated = 0
+    while queue and (elapsed_time(start_time) < max_time):
+        num_evaluated += 1
         _, printed, element = heapq.heappop(queue)
-        print('Iteration: {} | Printed: {} | Element: {} | Time: {:.3f}'.format(
-            iteration, len(printed), element, elapsed_time(start_time)))
+        num_remaining = len(elements) - len(printed)
+        backtrack = num_remaining - min_printed
+        if max_backtrack <= backtrack:
+            continue
+        num_evaluated += 1
+        if len(printed) < min_printed:
+            min_printed = len(printed)
+        print('Iteration: {} | Best: {} | Printed: {} | Element: {} | Index: {} | Time: {:.3f}'.format(
+            num_evaluated, min_printed, len(printed), element, id_from_element[element], elapsed_time(start_time)))
         next_printed = printed | {element}
         if (next_printed in visited) or not check_connected(ground_nodes, next_printed) or \
                 not check_stiffness(extrusion_name, element_from_id, next_printed):
@@ -183,6 +196,15 @@ def progression(robot, obstacles, element_bodies, extrusion_name, **kwargs):
             continue
         visited[next_printed] = Node(command, printed)
         if elements <= next_printed:
-            return retrace_plan(visited, next_printed)
+            min_printed = 0
+            plan = retrace_plan(visited, next_printed)
+            break
         add_successors(next_printed)
-    return None
+
+    data = {
+        'runtime': elapsed_time(start_time),
+        'num_evaluated': num_evaluated,
+        'num_remaining': min_printed,
+        'num_elements': len(elements)
+    }
+    return plan, data

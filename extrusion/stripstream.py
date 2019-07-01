@@ -118,7 +118,9 @@ def plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
     pr.disable()
     pstats.Stats(pr).sort_stats('tottime').print_stats(25)
     plan, _, _ = solution
+    data = {}
     if plan is None:
-        return None
-    return [t for _, (n1, e, c) in reversed(plan)
+        return None, data
+    trajectories = [t for _, (n1, e, c) in reversed(plan)
             for t in c.trajectories]
+    return trajectories, data

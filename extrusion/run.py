@@ -111,19 +111,20 @@ def plan_extrusion(path, args, precompute=False, watch=True):
         pr = cProfile.Profile()
         pr.enable()
         if args.algorithm == 'stripstream':
-            planned_trajectories = plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
+            planned_trajectories, data = plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
                                                  trajectories=trajectories, collisions=not args.cfree,
-                                                 disable=args.disable, max_time=args.max_time)
+                                                 disable=args.disable, max_time=args.max_time, debug=False)
         elif args.algorithm == 'regression':
-            planned_trajectories = regression(robot, obstacles, element_bodies, path,
-                                              collisions=not args.cfree, disable=args.disable)
+            planned_trajectories, data = regression(robot, obstacles, element_bodies, path,
+                                                    collisions=not args.cfree, disable=args.disable)
         elif args.algorithm == 'progression':
-            planned_trajectories = progression(robot, obstacles, element_bodies, path,
-                                               collisions=not args.cfree, disable=args.disable)
+            planned_trajectories, data = progression(robot, obstacles, element_bodies, path,
+                                                     collisions=not args.cfree, disable=args.disable)
         else:
             raise ValueError(args.algorithm)
         pr.disable()
         pstats.Stats(pr).sort_stats('tottime').print_stats(10) # tottime | cumtime
+        print(data)
         if planned_trajectories is None:
             return
         planned_elements = [traj.element for traj in planned_trajectories]
