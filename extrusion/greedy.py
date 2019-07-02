@@ -12,11 +12,12 @@ from examples.pybullet.utils.pybullet_tools.utils import elapsed_time, \
     remove_all_debug, wait_for_user, has_gui, LockRenderer
 from extrusion.parsing import load_extrusion, draw_element
 from extrusion.stream import get_print_gen_fn
-from extrusion.utils import check_connected, check_stiffness, \
-    create_stiffness_checker, score_stiffness, get_id_from_element, load_world
+from extrusion.utils import check_connected, test_stiffness, \
+    create_stiffness_checker, score_stiffness, get_id_from_element, load_world, get_supported_orders
 
 # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
-from pybullet_tools.utils import connect, ClientSaver, wait_for_user, INF
+from pybullet_tools.utils import connect, ClientSaver, wait_for_user, INF, get_distance
+from pddlstream.utils import neighbors_from_orders
 
 State = namedtuple('State', ['element', 'printed', 'plan'])
 Node = namedtuple('Node', ['action', 'state'])
@@ -71,6 +72,8 @@ def draw_action(node_points, printed, element):
 
 ##################################################
 
+HEURISTICS = [None, 'z', 'dijkstra'] # 'stiffness'
+
 def get_heuristic(extrusion_name, element_from_id, node_points, printed, element, heuristic, forward):
     # TODO: penalize disconnected
     if heuristic is None:
@@ -86,6 +89,30 @@ def get_heuristic(extrusion_name, element_from_id, node_points, printed, element
         raise NotImplementedError()
     raise ValueError(heuristic)
 
+def compute_stuff(element_from_id, node_points, ground_nodes):
+    #incoming_supporters, _ = neighbors_from_orders(get_supported_orders(
+    #    element_from_id.values(), node_points))
+    edge_costs = {edge: get_distance(node_points[edge[0]], node_points[edge[1]])
+                  for edge in element_from_id.values()}
+
+
+
+    print(edge_costs)
+
+    for node in ground_nodes:
+
+
+        pass
+
+    queue = []
+    while queue:
+        cost, node = heapq.heappop(queue)
+
+
+
+    print(element_from_id)
+
+
 def regression(robot, obstacles, element_bodies, extrusion_name,
                heuristic='z', max_time=INF, max_backtrack=INF, **kwargs):
     # Focused has the benefit of reusing prior work
@@ -97,6 +124,7 @@ def regression(robot, obstacles, element_bodies, extrusion_name,
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                     precompute_collisions=False, max_attempts=500, **kwargs)
     id_from_element = get_id_from_element(element_from_id)
+    #compute_stuff(element_from_id, node_points, ground_nodes)
 
     queue = []
     visited = {}
@@ -110,7 +138,7 @@ def regression(robot, obstacles, element_bodies, extrusion_name,
 
     initial_printed = frozenset(element_bodies)
     if not check_connected(ground_nodes, initial_printed) or \
-            not check_stiffness(extrusion_name, element_from_id, initial_printed):
+            not test_stiffness(extrusion_name, element_from_id, initial_printed):
         return None
     visited[initial_printed] = Node(None, None)
     add_successors(initial_printed)
@@ -133,7 +161,7 @@ def regression(robot, obstacles, element_bodies, extrusion_name,
         next_printed = printed - {element}
         #draw_action(node_points, next_printed, element)
         if (next_printed in visited) or not check_connected(ground_nodes, next_printed) or \
-                not check_stiffness(extrusion_name, element_from_id, next_printed):
+                not test_stiffness(extrusion_name, element_from_id, next_printed):
             continue
         command = sample_extrusion(print_gen_fn, ground_nodes, next_printed, element)
         if command is None:
@@ -200,7 +228,7 @@ def progression(robot, obstacles, element_bodies, extrusion_name,
             num_evaluated, min_printed, len(printed), element, id_from_element[element], elapsed_time(start_time)))
         next_printed = printed | {element}
         if (next_printed in visited) or not check_connected(ground_nodes, next_printed) or \
-                not check_stiffness(extrusion_name, element_from_id, next_printed):
+                not test_stiffness(extrusion_name, element_from_id, next_printed):
             continue
         command = sample_extrusion(print_gen_fn, ground_nodes, printed, element)
         if command is None:

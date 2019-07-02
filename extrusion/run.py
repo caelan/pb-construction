@@ -5,20 +5,21 @@ import sys
 import argparse
 import cProfile
 import pstats
+import numpy as np
 
 sys.path.append('pddlstream/')
 
 from extrusion.motion import compute_motions, display_trajectories
 from extrusion.stripstream import plan_sequence
 from extrusion.utils import load_world, create_stiffness_checker, \
-    downsample_nodes, check_connected, get_connected_structures, check_stiffness
+    downsample_nodes, check_connected, get_connected_structures, test_stiffness, evaluate_stiffness, Displacement
 from extrusion.parsing import load_extrusion, draw_element, create_elements, \
     get_extrusion_path, draw_model, enumerate_paths, get_extrusion_path
 from extrusion.stream import get_print_gen_fn
 from extrusion.greedy import regression, progression
 
 from examples.pybullet.utils.pybullet_tools.utils import connect, disconnect, get_movable_joints, add_text, \
-    get_joint_positions, LockRenderer, wait_for_user, has_gui, wait_for_duration, wait_for_interrupt
+    get_joint_positions, LockRenderer, wait_for_user, has_gui, wait_for_duration, wait_for_interrupt, add_line
 
 from pddlstream.utils import INF
 
@@ -40,8 +41,8 @@ def sample_trajectories(robot, obstacles, node_points, element_bodies, ground_no
 
 ##################################################
 
-def check_plan(extrusion_name, planned_elements):
-    element_from_id, node_points, ground_nodes = load_extrusion(extrusion_name)
+def check_plan(extrusion_path, planned_elements):
+    element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
     #checker = create_stiffness_checker(extrusion_name)
 
     # TODO: construct the structure in different ways (random, connected)
@@ -53,7 +54,7 @@ def check_plan(extrusion_name, planned_elements):
         extruded_elements.add(element)
         is_connected = check_connected(ground_nodes, extruded_elements)
         structures = get_connected_structures(extruded_elements)
-        is_stiff = check_stiffness(extrusion_name, element_from_id, extruded_elements)
+        is_stiff = test_stiffness(extrusion_path, element_from_id, extruded_elements)
         all_stiff &= is_stiff
         print('Elements: {} | Structures: {} | Connected: {} | Stiff: {}'.format(
             len(extruded_elements), len(structures), is_connected, is_stiff))
@@ -69,21 +70,21 @@ def check_plan(extrusion_name, planned_elements):
 
 ##################################################
 
-def verify_plan(path, planned_elements):
+def verify_plan(extrusion_path, planned_elements):
     # Path heuristic
     # Disable shadows
     connect(use_gui=False)
     floor, robot = load_world()
-    is_valid = check_plan(path, planned_elements)
+    is_valid = check_plan(extrusion_path, planned_elements)
     print('Valid:', is_valid)
     disconnect()
     return is_valid
 
-def plan_extrusion(path, args, precompute=False, watch=True):
+def plan_extrusion(extrusion_path, args, precompute=False, watch=True):
     # TODO: setCollisionFilterGroupMask
     # TODO: fail if wild stream produces unexpected facts
     # TODO: try search at different cost levels (i.e. w/ and w/o abstract)
-    element_from_id, node_points, ground_nodes = load_extrusion(path)
+    element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
     elements = list(element_from_id.values())
     elements, ground_nodes = downsample_nodes(elements, node_points, ground_nodes)
 
@@ -101,6 +102,21 @@ def plan_extrusion(path, args, precompute=False, watch=True):
     # dump_body(robot)
     if has_gui():
         draw_model(elements, node_points, ground_nodes)
+        deformation = evaluate_stiffness(extrusion_path, element_from_id, elements)
+        reaction_from_node = {}
+        for index, reactions in deformation.reactions.items():
+            for node, reaction in zip(elements[index], reactions):
+                reaction_from_node.setdefault(node, []).append(reaction)
+        mean_reaction_from_node = {node: Displacement(*np.sum(reactions, axis=0))
+                                   for node, reactions in reaction_from_node.items()}
+        max_force = max(np.linalg.norm(reaction[:3]) for reaction in mean_reaction_from_node.values())
+        print('Max force:', max_force)
+        handles = []
+        for node, reaction in mean_reaction_from_node.items():
+            start = node_points[node]
+            vector = 0.1*np.array(reaction[:3]) / max_force
+            end = start + vector
+            handles.append(add_line(start, end, color=(0, 1, 0)))
         wait_for_user()
     # debug_elements(robot, node_points, node_order, elements)
 
@@ -115,10 +131,10 @@ def plan_extrusion(path, args, precompute=False, watch=True):
                                                  trajectories=trajectories, collisions=not args.cfree,
                                                  disable=args.disable, max_time=args.max_time, debug=False)
         elif args.algorithm == 'regression':
-            planned_trajectories, data = regression(robot, obstacles, element_bodies, path,
+            planned_trajectories, data = regression(robot, obstacles, element_bodies, extrusion_path,
                                                     collisions=not args.cfree, disable=args.disable)
         elif args.algorithm == 'progression':
-            planned_trajectories, data = progression(robot, obstacles, element_bodies, path,
+            planned_trajectories, data = progression(robot, obstacles, element_bodies, extrusion_path,
                                                      collisions=not args.cfree, disable=args.disable)
         else:
             raise ValueError(args.algorithm)
@@ -127,17 +143,18 @@ def plan_extrusion(path, args, precompute=False, watch=True):
         print(data)
         if planned_trajectories is None:
             return
-        planned_elements = [traj.element for traj in planned_trajectories]
         if args.motions:
             planned_trajectories = compute_motions(robot, obstacles, element_bodies, initial_conf, planned_trajectories)
     disconnect()
 
+    # planned_elements = [traj.element for traj in planned_trajectories]
     # random.shuffle(planned_elements)
     # planned_elements = sorted(elements, key=lambda e: max(node_points[n][2] for n in e)) # TODO: tiebreak by angle or x
 
     #verify_plan(path, planned_elements)
-    if watch:
-        display_trajectories(ground_nodes, planned_trajectories)
+    if not watch:
+        return
+    display_trajectories(ground_nodes, planned_trajectories)
 
 def main():
     parser = argparse.ArgumentParser()
@@ -169,11 +186,11 @@ def main():
     print('Arguments:', args)
 
     if args.problem == 'all':
-        for path in enumerate_paths():
-            plan_extrusion(path, args, watch=False)
+        for extrusion_path in enumerate_paths():
+            plan_extrusion(extrusion_path, args, watch=False)
     else:
-        path = get_extrusion_path(args.problem)
-        plan_extrusion(path, args, watch=True)
+        extrusion_path = get_extrusion_path(args.problem)
+        plan_extrusion(extrusion_path, args, watch=True)
 
     # TODO: collisions at the ends of elements?
     # TODO: slow down automatically near endpoints

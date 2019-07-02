@@ -5,7 +5,7 @@ import random
 import numpy as np
 import time
 
-from collections import defaultdict, deque
+from collections import defaultdict, deque, namedtuple
 
 from pyconmech import stiffness_checker
 
@@ -285,10 +285,10 @@ def get_extructed_ids(element_from_id, elements):
     id_from_element = get_id_from_element(element_from_id)
     return sorted(id_from_element[e] for e in elements)
 
-def score_stiffness(extrusion_name, element_from_id, elements):
+def score_stiffness(extrusion_path, element_from_id, elements):
     if not elements:
         return True
-    checker = create_stiffness_checker(extrusion_name)
+    checker = create_stiffness_checker(extrusion_path)
     # Lower is better
     extruded_ids = get_extructed_ids(element_from_id, elements)
     checker.solve(exist_element_ids=extruded_ids, if_cond_num=True)
@@ -303,17 +303,27 @@ def score_stiffness(extrusion_name, element_from_id, elements):
     return max(relative_trans, relative_rot)
     #return relative_trans + relative_rot
 
-def check_stiffness(extrusion_name, element_from_id, elements, verbose=False):
+Deformation = namedtuple('Deformation', ['success', 'displacements', 'fixities', 'reactions'])
+Displacement = namedtuple('Displacement', ['dx', 'dy', 'dz', 'theta_x', 'theta_y', 'theta_z'])
+Reaction = namedtuple('Reaction', ['fx', 'fy', 'fz', 'mx', 'my', 'mz'])
+
+def evaluate_stiffness(extrusion_path, element_from_id, elements, verbose=False):
     # TODO: check each component individually
     if not elements:
-        return True
+        return Deformation(True, {}, {}, {})
+    # TODO: reuse checker now that the bug is fixed (~3 times faster)
     #return True
-    checker = create_stiffness_checker(extrusion_name, verbose=verbose)
+    checker = create_stiffness_checker(extrusion_path, verbose=verbose)
     extruded_ids = get_extructed_ids(element_from_id, elements)
 
     is_stiff = checker.solve(exist_element_ids=extruded_ids, if_cond_num=True)
     #print("has stored results: {0}".format(checker.has_stored_result()))
-    #success, nodal_displacement, fixities_reaction, element_reaction = checker.get_solved_results()
+    success, nodal_displacement, fixities_reaction, element_reaction = checker.get_solved_results()
+    assert is_stiff == success
+    displacements = {int(d[0]): Displacement(*d[1:]) for d in nodal_displacement}
+    fixities = {int(d[0]): Reaction(*d[1:7]) for d in element_reaction}
+    reactions = {int(d[0]): (Reaction(*d[1:7]), Reaction(*d[7:13])) for d in element_reaction}
+
     #print("nodal displacement (m/rad):\n{0}".format(nodal_displacement)) # nodes x 7
     # TODO: investigate if nodal displacement can be used to select an ordering
     #print("fixities reaction (kN, kN-m):\n{0}".format(fixities_reaction)) # ground x 7
@@ -332,4 +342,7 @@ def check_stiffness(extrusion_name, element_from_id, elements, verbose=False):
     #time_step = 1.0
     #orig_beam_shape = checker.get_original_shape(disc=disc, draw_full_shape=False)
     #beam_disp = checker.get_deformed_shape(exagg_ratio=exagg_ratio, disc=disc)
-    return is_stiff
+    return Deformation(is_stiff, displacements, fixities, reactions)
+
+def test_stiffness(extrusion_path, element_from_id, elements, **kwargs):
+    return evaluate_stiffness(extrusion_path, element_from_id, elements, **kwargs)
