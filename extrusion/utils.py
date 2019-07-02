@@ -287,7 +287,7 @@ def get_extructed_ids(element_from_id, elements):
 
 def score_stiffness(extrusion_path, element_from_id, elements):
     if not elements:
-        return True
+        return 0
     checker = create_stiffness_checker(extrusion_path)
     # Lower is better
     extruded_ids = get_extructed_ids(element_from_id, elements)
@@ -300,10 +300,11 @@ def score_stiffness(extrusion_path, element_from_id, elements):
     relative_rot = max_rot / rot_tol
 
     #return max_trans
-    return max(relative_trans, relative_rot)
+    #return max(relative_trans, relative_rot)
     #return relative_trans + relative_rot
+    return relative_trans * relative_rot # TODO: harmonic mean
 
-Deformation = namedtuple('Deformation', ['success', 'displacements', 'fixities', 'reactions'])
+Deformation = namedtuple('Deformation', ['success', 'displacements', 'fixities', 'reactions']) # TODO: get_max_nodal_deformation
 Displacement = namedtuple('Displacement', ['dx', 'dy', 'dz', 'theta_x', 'theta_y', 'theta_z'])
 Reaction = namedtuple('Reaction', ['fx', 'fy', 'fz', 'mx', 'my', 'mz'])
 
