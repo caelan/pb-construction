@@ -122,6 +122,73 @@ def compute_distance_from_node(elements, node_points, ground_nodes):
 
 ##################################################
 
+def progression(robot, obstacles, element_bodies, extrusion_path,
+                heuristic='z', max_time=INF, max_backtrack=INF, **kwargs):
+
+    element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
+    print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
+                                    precompute_collisions=False, max_attempts=500, **kwargs)
+    id_from_element = get_id_from_element(element_from_id)
+    elements = frozenset(element_bodies)
+    heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, forward=True)
+
+    queue = []
+    visited = {}
+    def add_successors(printed):
+        remaining = elements - printed
+        for element in sorted(remaining, key=lambda e: get_z(node_points, e)):
+            num_remaining = len(remaining) - 1
+            assert 0 <= num_remaining
+            bias = heuristic_fn(printed, element)
+            priority = (num_remaining, bias, random.random())
+            heapq.heappush(queue, (priority, printed, element))
+
+    initial_printed = frozenset()
+    visited[initial_printed] = Node(None, None)
+    add_successors(initial_printed)
+
+    plan = None
+    min_printed = INF
+    start_time = time.time()
+    num_evaluated = 0
+    while queue and (elapsed_time(start_time) < max_time):
+        num_evaluated += 1
+        _, printed, element = heapq.heappop(queue)
+        num_remaining = len(elements) - len(printed)
+        backtrack = num_remaining - min_printed
+        if max_backtrack <= backtrack:
+            continue
+        num_evaluated += 1
+        if len(printed) < min_printed:
+            min_printed = len(printed)
+        print('Iteration: {} | Best: {} | Printed: {} | Element: {} | Index: {} | Time: {:.3f}'.format(
+            num_evaluated, min_printed, len(printed), element, id_from_element[element], elapsed_time(start_time)))
+        next_printed = printed | {element}
+        if (next_printed in visited) or not check_connected(ground_nodes, next_printed) or \
+                not test_stiffness(extrusion_path, element_from_id, next_printed):
+            continue
+        command = sample_extrusion(print_gen_fn, ground_nodes, printed, element)
+        if command is None:
+            continue
+        visited[next_printed] = Node(command, printed)
+        if elements <= next_printed:
+            min_printed = 0
+            plan = retrace_plan(visited, next_printed)
+            break
+        add_successors(next_printed)
+
+    data = {
+        'success': plan is not None,
+        'length': INF if plan is None else len(plan),
+        'runtime': elapsed_time(start_time),
+        'num_evaluated': num_evaluated,
+        'num_remaining': min_printed,
+        'num_elements': len(elements)
+    }
+    return plan, data
+
+##################################################
+
 def regression(robot, obstacles, element_bodies, extrusion_path,
                heuristic='z', max_time=INF, max_backtrack=INF, **kwargs):
     # Focused has the benefit of reusing prior work
@@ -191,72 +258,5 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
         'num_evaluated': num_evaluated,
         'num_remaining': min_printed,
         'num_elements': len(element_bodies)
-    }
-    return plan, data
-
-##################################################
-
-def progression(robot, obstacles, element_bodies, extrusion_path,
-                heuristic='z', max_time=INF, max_backtrack=INF, **kwargs):
-
-    element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
-    print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                    precompute_collisions=False, max_attempts=500, **kwargs)
-    id_from_element = get_id_from_element(element_from_id)
-    elements = frozenset(element_bodies)
-    heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, forward=True)
-
-    queue = []
-    visited = {}
-    def add_successors(printed):
-        remaining = elements - printed
-        for element in sorted(remaining, key=lambda e: get_z(node_points, e)):
-            num_remaining = len(remaining) - 1
-            assert 0 <= num_remaining
-            bias = heuristic_fn(printed, element)
-            priority = (num_remaining, bias, random.random())
-            heapq.heappush(queue, (priority, printed, element))
-
-    initial_printed = frozenset()
-    visited[initial_printed] = Node(None, None)
-    add_successors(initial_printed)
-
-    plan = None
-    min_printed = INF
-    start_time = time.time()
-    num_evaluated = 0
-    while queue and (elapsed_time(start_time) < max_time):
-        num_evaluated += 1
-        _, printed, element = heapq.heappop(queue)
-        num_remaining = len(elements) - len(printed)
-        backtrack = num_remaining - min_printed
-        if max_backtrack <= backtrack:
-            continue
-        num_evaluated += 1
-        if len(printed) < min_printed:
-            min_printed = len(printed)
-        print('Iteration: {} | Best: {} | Printed: {} | Element: {} | Index: {} | Time: {:.3f}'.format(
-            num_evaluated, min_printed, len(printed), element, id_from_element[element], elapsed_time(start_time)))
-        next_printed = printed | {element}
-        if (next_printed in visited) or not check_connected(ground_nodes, next_printed) or \
-                not test_stiffness(extrusion_path, element_from_id, next_printed):
-            continue
-        command = sample_extrusion(print_gen_fn, ground_nodes, printed, element)
-        if command is None:
-            continue
-        visited[next_printed] = Node(command, printed)
-        if elements <= next_printed:
-            min_printed = 0
-            plan = retrace_plan(visited, next_printed)
-            break
-        add_successors(next_printed)
-
-    data = {
-        'success': plan is not None,
-        'length': INF if plan is None else len(plan),
-        'runtime': elapsed_time(start_time),
-        'num_evaluated': num_evaluated,
-        'num_remaining': min_printed,
-        'num_elements': len(elements)
     }
     return plan, data
