@@ -17,7 +17,7 @@ from extrusion.utils import check_connected, test_stiffness, \
 
 # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
 from pybullet_tools.utils import connect, ClientSaver, wait_for_user, INF, get_distance
-from pddlstream.utils import neighbors_from_orders, adjacent_from_edges
+from pddlstream.utils import neighbors_from_orders, adjacent_from_edges, implies
 
 State = namedtuple('State', ['element', 'printed', 'plan'])
 Node = namedtuple('Node', ['action', 'state'])
@@ -43,11 +43,6 @@ def sample_extrusion(print_gen_fn, ground_nodes, printed, element):
             except StopIteration:
                 pass
     return None
-
-def get_z(node_points, element):
-    # TODO: tiebreak by angle or x
-    return np.average([node_points[n][2] for n in element])
-
 
 def display_failure(node_points, extruded_elements, element):
     client = connect(use_gui=True)
@@ -89,11 +84,16 @@ def get_heuristic_fn(extrusion_path, heuristic, forward):
             structure = printed | {element} if forward else printed - {element}
             return score_stiffness(extrusion_path, element_from_id, structure)
         elif heuristic == 'dijkstra':
-            distance = np.average(distance_from_node[node] for node in element) # min, max, node not in set
+            # min, max, node not in set
+            distance = np.average([distance_from_node[node] for node in element])
             return sign * distance
             # Could also recompute online
         raise ValueError(heuristic)
     return fn
+
+def get_z(node_points, element):
+    # TODO: tiebreak by angle or x
+    return np.average([node_points[n][2] for n in element])
 
 def compute_distance_from_node(elements, node_points, ground_nodes):
     #incoming_supporters, _ = neighbors_from_orders(get_supported_orders(
@@ -123,7 +123,7 @@ def compute_distance_from_node(elements, node_points, ground_nodes):
 ##################################################
 
 def progression(robot, obstacles, element_bodies, extrusion_path,
-                heuristic='z', max_time=INF, max_backtrack=INF, **kwargs):
+                heuristic='z', max_time=INF, max_backtrack=INF, stiffness=True, **kwargs):
 
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
@@ -165,7 +165,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
             num_evaluated, min_printed, len(printed), element, id_from_element[element], elapsed_time(start_time)))
         next_printed = printed | {element}
         if (next_printed in visited) or not check_connected(ground_nodes, next_printed) or \
-                not test_stiffness(extrusion_path, element_from_id, next_printed):
+                (stiffness and not test_stiffness(extrusion_path, element_from_id, next_printed)):
             continue
         command = sample_extrusion(print_gen_fn, ground_nodes, printed, element)
         if command is None:
@@ -190,7 +190,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
 ##################################################
 
 def regression(robot, obstacles, element_bodies, extrusion_path,
-               heuristic='z', max_time=INF, max_backtrack=INF, **kwargs):
+               heuristic='z', max_time=INF, max_backtrack=INF, stiffness=True, **kwargs):
     # Focused has the benefit of reusing prior work
     # Greedy has the benefit of conditioning on previous choices
     # TODO: persistent search to reuse
@@ -237,7 +237,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
         next_printed = printed - {element}
         #draw_action(node_points, next_printed, element)
         if (next_printed in visited) or not check_connected(ground_nodes, next_printed) or \
-                not test_stiffness(extrusion_path, element_from_id, next_printed):
+                not implies(stiffness, test_stiffness(extrusion_path, element_from_id, next_printed)):
             continue
         command = sample_extrusion(print_gen_fn, ground_nodes, next_printed, element)
         if command is None:

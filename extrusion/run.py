@@ -6,6 +6,12 @@ import argparse
 import cProfile
 import pstats
 import numpy as np
+import random
+import time
+
+from collections import namedtuple
+from itertools import product
+from multiprocessing import Pool, cpu_count, TimeoutError
 
 sys.path.append('pddlstream/')
 
@@ -16,13 +22,25 @@ from extrusion.utils import load_world, create_stiffness_checker, \
 from extrusion.parsing import load_extrusion, draw_element, create_elements, \
     get_extrusion_path, draw_model, enumerate_paths, get_extrusion_path
 from extrusion.stream import get_print_gen_fn
-from extrusion.greedy import regression, progression
+from extrusion.greedy import regression, progression, HEURISTICS
 
 from examples.pybullet.utils.pybullet_tools.utils import connect, disconnect, get_movable_joints, add_text, \
-    get_joint_positions, LockRenderer, wait_for_user, has_gui, wait_for_duration, wait_for_interrupt, add_line
+    get_joint_positions, LockRenderer, wait_for_user, has_gui, wait_for_duration, wait_for_interrupt, \
+    add_line, INF, is_darwin, elapsed_time, write_pickle, user_input
 
-from pddlstream.utils import INF
+##################################################
 
+def get_random_seed():
+    # random.getstate()[1][0]
+    return np.random.get_state()[1][0]
+
+def set_seed(seed):
+    # These generators are different and independent
+    random.seed(seed)
+    np.random.seed(seed % (2**32))
+    print('Seed:', seed)
+
+##################################################
 
 def sample_trajectories(robot, obstacles, node_points, element_bodies, ground_nodes):
     gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes)
@@ -67,9 +85,6 @@ def check_plan(extrusion_path, planned_elements):
                 wait_for_user()
     return all_connected and all_stiff
 
-
-##################################################
-
 def verify_plan(extrusion_path, planned_elements):
     # Path heuristic
     # Disable shadows
@@ -80,18 +95,25 @@ def verify_plan(extrusion_path, planned_elements):
     disconnect()
     return is_valid
 
-def plan_extrusion(extrusion_path, args, precompute=False, watch=True):
+
+##################################################
+
+ALGORITHMS = ['progression', 'regression']
+
+def plan_extrusion(args, viewer=False, precompute=False, watch=False):
     # TODO: setCollisionFilterGroupMask
     # TODO: fail if wild stream produces unexpected facts
     # TODO: try search at different cost levels (i.e. w/ and w/o abstract)
-    element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
+    set_seed(hash((time.time(), args.seed)))
+    # TODO: change dir for pddlstream
+    element_from_id, node_points, ground_nodes = load_extrusion(args.problem, verbose=True)
     elements = list(element_from_id.values())
     elements, ground_nodes = downsample_nodes(elements, node_points, ground_nodes)
 
     # plan = plan_sequence_test(node_points, elements, ground_nodes)
     # elements = elements[:50] # 10 | 50 | 100 | 150
 
-    connect(use_gui=args.viewer)
+    connect(use_gui=viewer)
     with LockRenderer():
         floor, robot = load_world()
         obstacles = [floor]
@@ -102,7 +124,7 @@ def plan_extrusion(extrusion_path, args, precompute=False, watch=True):
     # dump_body(robot)
     if has_gui():
         draw_model(elements, node_points, ground_nodes)
-        deformation = evaluate_stiffness(extrusion_path, element_from_id, elements)
+        deformation = evaluate_stiffness(args.problem, element_from_id, elements)
         reaction_from_node = {}
         for index, reactions in deformation.reactions.items():
             for node, reaction in zip(elements[index], reactions):
@@ -130,19 +152,19 @@ def plan_extrusion(extrusion_path, args, precompute=False, watch=True):
             planned_trajectories, data = plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
                                                  trajectories=trajectories, collisions=not args.cfree,
                                                  disable=args.disable, max_time=args.max_time, debug=False)
-        elif args.algorithm == 'regression':
-            planned_trajectories, data = regression(robot, obstacles, element_bodies, extrusion_path,
-                                                    collisions=not args.cfree, disable=args.disable)
         elif args.algorithm == 'progression':
-            planned_trajectories, data = progression(robot, obstacles, element_bodies, extrusion_path,
-                                                     collisions=not args.cfree, disable=args.disable)
+            planned_trajectories, data = progression(robot, obstacles, element_bodies, args.problem, heuristic=args.bias,
+                                                     collisions=not args.cfree, disable=args.disable, stiffness=args.stiffness)
+        elif args.algorithm == 'regression':
+            planned_trajectories, data = regression(robot, obstacles, element_bodies, args.problem, heuristic=args.bias,
+                                                    collisions=not args.cfree, disable=args.disable, stiffness=args.stiffness)
         else:
             raise ValueError(args.algorithm)
         pr.disable()
         pstats.Stats(pr).sort_stats('tottime').print_stats(10) # tottime | cumtime
         print(data)
         if planned_trajectories is None:
-            return
+            return args, data
         if args.motions:
             planned_trajectories = compute_motions(robot, obstacles, element_bodies, initial_conf, planned_trajectories)
     disconnect()
@@ -152,9 +174,46 @@ def plan_extrusion(extrusion_path, args, precompute=False, watch=True):
     # planned_elements = sorted(elements, key=lambda e: max(node_points[n][2] for n in e)) # TODO: tiebreak by angle or x
 
     #verify_plan(path, planned_elements)
-    if not watch:
-        return
-    display_trajectories(ground_nodes, planned_trajectories)
+    if watch:
+        display_trajectories(ground_nodes, planned_trajectories)
+    return args, data
+
+##################################################
+
+Configuration = namedtuple('Configuration', ['seed', 'problem', 'algorithm', 'bias',
+                                             'cfree', 'disable', 'stiffness', 'motions'])
+
+def train_parallel(num=25, max_time=30*60):
+    problems = enumerate_paths()
+    configurations = [Configuration(*c) for c in product(
+        range(num), problems, ALGORITHMS, HEURISTICS,
+        [False], [False, True], [False, True], [False])]
+    print('Configurations: {}'.format(len(configurations)))
+    user_input('Begin?')
+
+    serial = is_darwin()
+    available_cores = cpu_count()
+    num_cores = max(1, min(1 if serial else available_cores - 3, len(configurations)))
+    print('Max Cores:', available_cores)
+    print('Serial:', serial)
+    print('Using Cores:', num_cores)
+
+    pool = Pool(processes=num_cores)  # , initializer=mute)
+    generator = pool.imap_unordered(plan_extrusion, configurations, chunksize=1)
+    results = []
+    while True:
+        start_time = time.time()
+        try:
+            results.append(generator.next(timeout=2 * max_time))
+            if results:
+                write_pickle('filename.pk2', results)
+        except StopIteration:
+            break
+        except TimeoutError:
+            print('Error! Timed out after {:.3f} seconds'.format(elapsed_time(start_time)))
+            break
+
+##################################################
 
 def main():
     parser = argparse.ArgumentParser()
@@ -170,32 +229,45 @@ def main():
     # djmm_test_block | Nodes: 76 | Ground: 13 | Elements: 253
     parser.add_argument('-a', '--algorithm', default='stripstream',
                         help='Which algorithm to use')
+    parser.add_argument('-b', '--bias', default='z', choices=HEURISTICS,
+                        help='Which heuristic to use')
     parser.add_argument('-c', '--cfree', action='store_true',
                         help='Disables collisions with obstacles')
     parser.add_argument('-d', '--disable', action='store_true',
                         help='Disables trajectory planning')
     parser.add_argument('-m', '--motions', action='store_true',
                         help='Plans motions between each extrusion')
+    parser.add_argument('-n', '--num', default=0, type=int,
+                        help='Plans motions between each extrusion')
     parser.add_argument('-p', '--problem', default='simple_frame',
                         help='The name of the problem to solve')
-    parser.add_argument('-t', '--max_time', default=INF, type=int,
+    parser.add_argument('-s', '--stiffness',  action='store_false',
+                        help='The max time')
+    parser.add_argument('-t', '--max_time', default=15*60, type=int,
                         help='The max time')
     parser.add_argument('-v', '--viewer', action='store_true',
                         help='Enables the viewer during planning (slow!)')
     args = parser.parse_args()
     print('Arguments:', args)
 
+    if args.num:
+        train_parallel(num=args.num, max_time=args.max_time)
+        return
+
+    args.seed = hash(time.time())
     if args.problem == 'all':
         for extrusion_path in enumerate_paths():
-            plan_extrusion(extrusion_path, args, watch=False)
+            args.problem = extrusion_path
+            plan_extrusion(args, watch=False)
     else:
         extrusion_path = get_extrusion_path(args.problem)
-        plan_extrusion(extrusion_path, args, watch=True)
+        args.problem = extrusion_path
+        plan_extrusion(args, viewer=args.viewer, watch=True)
 
     # TODO: collisions at the ends of elements?
     # TODO: slow down automatically near endpoints
     # TODO: heuristic that orders elements by angle
-    # TODO: check that both teh start and end satisfy
+    # TODO: check that both the start and end satisfy
     # TODO: return to start when done
 
     # Can greedily print
@@ -219,5 +291,4 @@ if __name__ == '__main__':
 # TODO: introduce support structures and then require that they be removed
 # Robot spiderweb printing weaving hook which may slide
 # Graph traversal (path within the graph): load
-
 # TODO: only consider axioms that could be relevant

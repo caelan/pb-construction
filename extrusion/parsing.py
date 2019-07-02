@@ -47,22 +47,24 @@ def enumerate_paths():
         if filename.endswith('.json'):
             yield os.path.join(directory, filename)
 
-def load_extrusion(extrusion_path):
+def load_extrusion(extrusion_path, verbose=False):
     extrusion_name, _ = os.path.splitext(os.path.basename(extrusion_path))
-    print('Name: {}'.format(extrusion_name))
-    print('Path: {}'.format(extrusion_path))
+    if verbose:
+        print('Name: {}'.format(extrusion_name))
+        print('Path: {}'.format(extrusion_path))
     with open(extrusion_path, 'r') as f:
         json_data = json.loads(f.read())
+    assert json_data['unit'] == 'millimeter'
 
     elements = parse_elements(json_data)
     element_from_id = OrderedDict((element.id, element.nodes) for element in elements)
     node_points = parse_node_points(json_data)
     ground_nodes = parse_ground_nodes(json_data)
-    print('Assembly: {} | Model: {} | Unit: {}'.format(
-        json_data['assembly_type'], json_data['model_type'], json_data['unit'])) # extrusion, spatial_frame, millimeter
-    assert json_data['unit'] == 'millimeter'
-    print('Nodes: {} | Ground: {} | Elements: {}'.format(
-        len(node_points), len(ground_nodes), len(elements)))
+    if verbose:
+        print('Assembly: {} | Model: {} | Unit: {}'.format(
+            json_data['assembly_type'], json_data['model_type'], json_data['unit'])) # extrusion, spatial_frame, millimeter
+        print('Nodes: {} | Ground: {} | Elements: {}'.format(
+            len(node_points), len(ground_nodes), len(elements)))
     return element_from_id, node_points, ground_nodes
 
 
