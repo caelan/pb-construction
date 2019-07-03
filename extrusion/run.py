@@ -202,7 +202,7 @@ def train_parallel(num=10, max_time=30*60):
     problems = enumerate_paths()
     configurations = [Configuration(*c) for c in product(
         range(num), problems, ALGORITHMS, HEURISTICS,
-        [False], [False, True], [False, True], [False])]
+        [False], [True], [True], [False])]
     print('Configurations: {}'.format(len(configurations)))
 
     serial = is_darwin()
