@@ -9,7 +9,7 @@ from collections import namedtuple
 import numpy as np
 
 from examples.pybullet.utils.pybullet_tools.utils import elapsed_time, \
-    remove_all_debug, wait_for_user, has_gui, LockRenderer
+    remove_all_debug, wait_for_user, has_gui, LockRenderer, reset_simulation, disconnect
 from extrusion.parsing import load_extrusion, draw_element
 from extrusion.stream import get_print_gen_fn
 from extrusion.utils import check_connected, test_stiffness, \
@@ -54,6 +54,8 @@ def display_failure(node_points, extruded_elements, element):
         handles.append(draw_element(node_points, element, color=(1, 0, 0)))
         print('Failure!')
         wait_for_user()
+        reset_simulation()
+        disconnect()
 
 def draw_action(node_points, printed, element):
     if not has_gui():

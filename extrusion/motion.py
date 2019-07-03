@@ -5,7 +5,7 @@ import numpy as np
 
 from examples.pybullet.utils.pybullet_tools.utils import get_movable_joints, set_joint_positions, plan_joint_motion, \
     connect, wait_for_interrupt, point_from_pose, get_link_pose, link_from_name, add_line, \
-    wait_for_duration, disconnect, elapsed_time
+    wait_for_duration, disconnect, elapsed_time, reset_simulation
 
 from extrusion.utils import get_disabled_collisions, MotionTrajectory, load_world, PrintTrajectory, is_ground, \
     TOOL_NAME
@@ -86,4 +86,5 @@ def display_trajectories(ground_nodes, trajectories, time_step=0.05):
         #wait_for_interrupt()
     #user_input('Finish?')
     wait_for_interrupt()
+    reset_simulation()
     disconnect()

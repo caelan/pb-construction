@@ -8,6 +8,8 @@ import pstats
 import numpy as np
 import random
 import time
+import os
+import datetime
 
 from collections import namedtuple
 from itertools import product
@@ -24,9 +26,10 @@ from extrusion.parsing import load_extrusion, draw_element, create_elements, \
 from extrusion.stream import get_print_gen_fn
 from extrusion.greedy import regression, progression, HEURISTICS
 
+from pddlstream.utils import get_python_version
 from examples.pybullet.utils.pybullet_tools.utils import connect, disconnect, get_movable_joints, add_text, \
     get_joint_positions, LockRenderer, wait_for_user, has_gui, wait_for_duration, wait_for_interrupt, \
-    add_line, INF, is_darwin, elapsed_time, write_pickle, user_input
+    add_line, INF, is_darwin, elapsed_time, write_pickle, user_input, reset_simulation
 
 ##################################################
 
@@ -92,6 +95,7 @@ def verify_plan(extrusion_path, planned_elements):
     floor, robot = load_world()
     is_valid = check_plan(extrusion_path, planned_elements)
     print('Valid:', is_valid)
+    reset_simulation()
     disconnect()
     return is_valid
 
@@ -100,10 +104,13 @@ def verify_plan(extrusion_path, planned_elements):
 
 ALGORITHMS = ['progression', 'regression']
 
-def plan_extrusion(args, viewer=False, precompute=False, watch=False):
+def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=False):
     # TODO: setCollisionFilterGroupMask
     # TODO: fail if wild stream produces unexpected facts
     # TODO: try search at different cost levels (i.e. w/ and w/o abstract)
+    if not verbose:
+        sys.stdout = open(os.devnull, 'w')
+
     set_seed(hash((time.time(), args.seed)))
     # TODO: change dir for pddlstream
     element_from_id, node_points, ground_nodes = load_extrusion(args.problem, verbose=True)
@@ -164,9 +171,12 @@ def plan_extrusion(args, viewer=False, precompute=False, watch=False):
         pstats.Stats(pr).sort_stats('tottime').print_stats(10) # tottime | cumtime
         print(data)
         if planned_trajectories is None:
+            if not verbose:
+                sys.stdout.close()
             return args, data
         if args.motions:
             planned_trajectories = compute_motions(robot, obstacles, element_bodies, initial_conf, planned_trajectories)
+    reset_simulation()
     disconnect()
 
     # planned_elements = [traj.element for traj in planned_trajectories]
@@ -176,6 +186,8 @@ def plan_extrusion(args, viewer=False, precompute=False, watch=False):
     #verify_plan(path, planned_elements)
     if watch:
         display_trajectories(ground_nodes, planned_trajectories)
+    if not verbose:
+        sys.stdout.close()
     return args, data
 
 ##################################################
@@ -183,13 +195,15 @@ def plan_extrusion(args, viewer=False, precompute=False, watch=False):
 Configuration = namedtuple('Configuration', ['seed', 'problem', 'algorithm', 'bias',
                                              'cfree', 'disable', 'stiffness', 'motions'])
 
-def train_parallel(num=25, max_time=30*60):
+def train_parallel(num=10, max_time=30*60):
+    print('Trials:', num)
+    print('Max time:', max_time)
+
     problems = enumerate_paths()
     configurations = [Configuration(*c) for c in product(
         range(num), problems, ALGORITHMS, HEURISTICS,
         [False], [False, True], [False, True], [False])]
     print('Configurations: {}'.format(len(configurations)))
-    user_input('Begin?')
 
     serial = is_darwin()
     available_cores = cpu_count()
@@ -197,16 +211,23 @@ def train_parallel(num=25, max_time=30*60):
     print('Max Cores:', available_cores)
     print('Serial:', serial)
     print('Using Cores:', num_cores)
+    date = datetime.datetime.now().strftime('%y-%m-%d_%H-%M-%S')
+    path = '{}.pk{}'.format(date, get_python_version())
+    print('Data path:', path)
 
+    user_input('Begin?')
     pool = Pool(processes=num_cores)  # , initializer=mute)
     generator = pool.imap_unordered(plan_extrusion, configurations, chunksize=1)
     results = []
     while True:
         start_time = time.time()
         try:
-            results.append(generator.next(timeout=2 * max_time))
+            configuration, data = generator.next(timeout=2 * max_time)
+            print(len(results), configuration, data)
+            results.append((configuration, data))
             if results:
-                write_pickle('filename.pk2', results)
+                write_pickle(path, results)
+                print('Saved', path)
         except StopIteration:
             break
         except TimeoutError:
@@ -258,11 +279,11 @@ def main():
     if args.problem == 'all':
         for extrusion_path in enumerate_paths():
             args.problem = extrusion_path
-            plan_extrusion(args, watch=False)
+            plan_extrusion(args, verbose=True, watch=False)
     else:
         extrusion_path = get_extrusion_path(args.problem)
         args.problem = extrusion_path
-        plan_extrusion(args, viewer=args.viewer, watch=True)
+        plan_extrusion(args, viewer=args.viewer, verbose=True, watch=True)
 
     # TODO: collisions at the ends of elements?
     # TODO: slow down automatically near endpoints
