@@ -82,12 +82,15 @@ def get_grasp_pose(translation, direction, angle, reverse, offset=1e-3):
                     Pose(euler=Euler(roll=(1-reverse) * np.pi)))
 
 
-def load_world():
+def load_world(use_floor=True):
     root_directory = os.path.dirname(os.path.abspath(__file__))
     with HideOutput():
-        floor = load_model('models/short_floor.urdf')
+        if use_floor:
+            floor = load_model('models/short_floor.urdf')
+            set_point(floor, Point(z=-0.01))
+        else:
+            floor = None # TODO: make this an empty list of obstacles
         robot = load_pybullet(os.path.join(root_directory, KUKA_PATH), fixed_base=True)
-    set_point(floor, Point(z=-0.01))
     return floor, robot
 
 
@@ -227,14 +230,16 @@ def retrace_supporters(element, incoming_edges, supporters):
 
 ##################################################
 
-def downsample_nodes(elements, node_points, ground_nodes, n=None):
+def downsample_nodes(elements, node_points, ground_nodes, num=None):
+    if num is None:
+        return elements, ground_nodes
     node_order = list(range(len(node_points)))
     # np.random.shuffle(node_order)
     node_order = sorted(node_order, key=lambda n: node_points[n][2])
     elements = sorted(elements, key=lambda e: min(node_points[n][2] for n in e))
 
-    if n is not None:
-        node_order = node_order[:n]
+    if num is not None:
+        node_order = node_order[:num]
     ground_nodes = [n for n in ground_nodes if n in node_order]
     elements = [element for element in elements
                 if all(n in node_order for n in element)]

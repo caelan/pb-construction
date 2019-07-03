@@ -28,8 +28,9 @@ from extrusion.greedy import regression, progression, HEURISTICS
 
 from pddlstream.utils import get_python_version, str_from_object
 from examples.pybullet.utils.pybullet_tools.utils import connect, disconnect, get_movable_joints, add_text, \
-    get_joint_positions, LockRenderer, wait_for_user, has_gui, wait_for_duration, wait_for_interrupt, \
-    add_line, INF, is_darwin, elapsed_time, write_pickle, user_input, reset_simulation, read_pickle
+    get_joint_positions, LockRenderer, wait_for_user, has_gui, wait_for_duration, wait_for_interrupt, unit_pose, \
+    add_line, INF, is_darwin, elapsed_time, write_pickle, user_input, reset_simulation, \
+    read_pickle, get_pose, draw_pose, tform_point, Euler, Pose, multiply
 
 ##################################################
 
@@ -45,12 +46,18 @@ def set_seed(seed):
 
 ##################################################
 
+def label_nodes(element_bodies, element):
+    element_body = element_bodies[element]
+    return [
+        add_text(element[0], position=(0, 0, -0.02), parent=element_body),
+        add_text(element[1], position=(0, 0, +0.02), parent=element_body),
+    ]
+
 def sample_trajectories(robot, obstacles, node_points, element_bodies, ground_nodes):
     gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes)
     all_trajectories = []
     for index, (element, element_body) in enumerate(element_bodies.items()):
-        add_text(element[0], position=(0, 0, -0.05), parent=element_body)
-        add_text(element[1], position=(0, 0, +0.05), parent=element_body)
+        label_nodes(element_bodies, element)
         trajectories = []
         for node1 in element:
             for traj, in gen_fn(node1, element):
@@ -99,10 +106,61 @@ def verify_plan(extrusion_path, planned_elements):
     disconnect()
     return is_valid
 
+def visualize_stiffness(problem, element_bodies):
+    if not has_gui():
+        return
+    # +z points parallel to each element body
+    #for element, body in element_bodies.items():
+    #    print(element)
+    #    label_nodes(element_bodies, element)
+    #    draw_pose(get_pose(body), length=0.02)
+    #    wait_for_user()
+
+    element_from_id, node_points, ground_nodes = load_extrusion(problem)
+    elements = list(element_from_id.values())
+    draw_model(elements, node_points, ground_nodes)
+
+    deformation = evaluate_stiffness(problem, element_from_id, elements)
+    reaction_from_node = {}
+    for index, reactions in deformation.reactions.items():
+        # Yijiang assumes pointing along +x
+        element = element_from_id[index]
+        body = element_bodies[element]
+        rotation = Pose(euler=Euler(pitch=np.pi/2))
+        world_from_local = multiply(rotation, get_pose(body))
+        for node, reaction_local in zip(elements[index], reactions):
+            # TODO: apply to torques as well
+            reaction_world = tform_point(world_from_local, reaction_local[:3])
+            reaction_from_node.setdefault(node, []).append(reaction_world)
+
+    total_reaction_from_node = {node: np.sum(reactions, axis=0)
+                               for node, reactions in reaction_from_node.items()}
+    force_from_node = {node: np.linalg.norm(reaction)
+                       for node, reaction in total_reaction_from_node.items()}
+    max_force = max(force_from_node.values())
+    print('Max force:', max_force)
+    for i, node in enumerate(sorted(total_reaction_from_node, key=lambda n: force_from_node[n])):
+        print('{}) node={}, point={}, vector={}, magnitude={:.3f}'.format(
+            i, node, node_points[node], total_reaction_from_node[node], force_from_node[node]))
+
+    # TODO: sum of forces instead
+    # TODO: count deformation.fixities?
+    handles = []
+    for node, reaction_world in total_reaction_from_node.items():
+        start = node_points[node]
+        vector = 0.05 * np.array(reaction_world) / max_force
+        end = start + vector
+        handles.append(add_line(start, end, color=(0, 1, 0)))
+    wait_for_user()
+
 
 ##################################################
 
-ALGORITHMS = ['progression', 'regression']
+ALGORITHMS = [
+    #'stripstream'.
+    'progression',
+    'regression',
+]
 
 def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=False):
     # TODO: setCollisionFilterGroupMask
@@ -115,38 +173,20 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     # TODO: change dir for pddlstream
     element_from_id, node_points, ground_nodes = load_extrusion(args.problem, verbose=True)
     elements = list(element_from_id.values())
-    elements, ground_nodes = downsample_nodes(elements, node_points, ground_nodes)
-
+    #elements, ground_nodes = downsample_nodes(elements, node_points, ground_nodes)
     # plan = plan_sequence_test(node_points, elements, ground_nodes)
-    # elements = elements[:50] # 10 | 50 | 100 | 150
 
     connect(use_gui=viewer)
     with LockRenderer():
-        floor, robot = load_world()
-        obstacles = [floor]
+        draw_pose(unit_pose(), length=1.)
+        floor, robot = load_world(use_floor=False)
+        obstacles = [] if floor is None else [floor]
         element_bodies = dict(zip(elements, create_elements(
-            node_points, elements, color=(0, 0, 0, 0))))
+            node_points, elements, color=(0, 0, 0, 1))))
     # joint_weights = compute_joint_weights(robot, num=1000)
     initial_conf = get_joint_positions(robot, get_movable_joints(robot))
     # dump_body(robot)
-    if has_gui():
-        draw_model(elements, node_points, ground_nodes)
-        deformation = evaluate_stiffness(args.problem, element_from_id, elements)
-        reaction_from_node = {}
-        for index, reactions in deformation.reactions.items():
-            for node, reaction in zip(elements[index], reactions):
-                reaction_from_node.setdefault(node, []).append(reaction)
-        mean_reaction_from_node = {node: Displacement(*np.sum(reactions, axis=0))
-                                   for node, reactions in reaction_from_node.items()}
-        max_force = max(np.linalg.norm(reaction[:3]) for reaction in mean_reaction_from_node.values())
-        print('Max force:', max_force)
-        handles = []
-        for node, reaction in mean_reaction_from_node.items():
-            start = node_points[node]
-            vector = 0.1*np.array(reaction[:3]) / max_force
-            end = start + vector
-            handles.append(add_line(start, end, color=(0, 1, 0)))
-        wait_for_user()
+    visualize_stiffness(args.problem, element_bodies)
     # debug_elements(robot, node_points, node_order, elements)
 
     with LockRenderer(False):
@@ -195,8 +235,6 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
 Configuration = namedtuple('Configuration', ['seed', 'problem', 'algorithm', 'bias',
                                              'cfree', 'disable', 'stiffness', 'motions'])
 
-Score = namedtuple('Score', ['failure', 'runtime'])
-
 def train_parallel(num=10, max_time=30*60):
     print('Trials:', num)
     print('Max time:', max_time)
@@ -235,6 +273,10 @@ def train_parallel(num=10, max_time=30*60):
         except TimeoutError:
             print('Error! Timed out after {:.3f} seconds'.format(elapsed_time(start_time)))
             break
+
+##################################################
+
+Score = namedtuple('Score', ['failure', 'runtime'])
 
 def score_result(result):
     return Score(1. - round(result['success'], 3), round(result['runtime'], 3))
@@ -307,6 +349,7 @@ def main():
                         help='Enables the viewer during planning (slow!)')
     args = parser.parse_args()
     print('Arguments:', args)
+    np.set_printoptions(precision=3)
 
     if args.load is not None:
         load_experiment(args.load)
