@@ -69,7 +69,12 @@ def draw_action(node_points, printed, element):
 
 ##################################################
 
-HEURISTICS = [None, 'z', 'dijkstra', 'stiffness']
+HEURISTICS = [
+    None,
+    'z',
+    #'dijkstra',
+    #'stiffness', # Performs poorly with respect to stiffness
+]
 
 def get_heuristic_fn(extrusion_path, heuristic, forward):
     # TODO: penalize disconnected

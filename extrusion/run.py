@@ -11,7 +11,7 @@ import time
 import os
 import datetime
 
-from collections import namedtuple
+from collections import namedtuple, OrderedDict
 from itertools import product
 from multiprocessing import Pool, cpu_count, TimeoutError
 
@@ -26,10 +26,10 @@ from extrusion.parsing import load_extrusion, draw_element, create_elements, \
 from extrusion.stream import get_print_gen_fn
 from extrusion.greedy import regression, progression, HEURISTICS
 
-from pddlstream.utils import get_python_version
+from pddlstream.utils import get_python_version, str_from_object
 from examples.pybullet.utils.pybullet_tools.utils import connect, disconnect, get_movable_joints, add_text, \
     get_joint_positions, LockRenderer, wait_for_user, has_gui, wait_for_duration, wait_for_interrupt, \
-    add_line, INF, is_darwin, elapsed_time, write_pickle, user_input, reset_simulation
+    add_line, INF, is_darwin, elapsed_time, write_pickle, user_input, reset_simulation, read_pickle
 
 ##################################################
 
@@ -195,6 +195,8 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
 Configuration = namedtuple('Configuration', ['seed', 'problem', 'algorithm', 'bias',
                                              'cfree', 'disable', 'stiffness', 'motions'])
 
+Score = namedtuple('Score', ['failure', 'runtime'])
+
 def train_parallel(num=10, max_time=30*60):
     print('Trials:', num)
     print('Max time:', max_time)
@@ -234,6 +236,39 @@ def train_parallel(num=10, max_time=30*60):
             print('Error! Timed out after {:.3f} seconds'.format(elapsed_time(start_time)))
             break
 
+def score_result(result):
+    return Score(1. - round(result['success'], 3), round(result['runtime'], 3))
+
+def load_experiment(filename):
+    # TODO: maybe just pass the random seed as a separate arg
+    data_from_problem = OrderedDict()
+    for config, result in read_pickle(filename):
+        data_from_problem.setdefault(config.problem, []).append((config, result))
+    for problem in sorted(data_from_problem):
+        print()
+        print('Problem:', os.path.basename(os.path.abspath(problem)))
+        data_from_config = OrderedDict()
+        value_per_field = {}
+        for config, result in data_from_problem[problem]:
+            new_config = Configuration(None, None, *config[2:])
+            #print(config._asdict()) # config.__dict__
+            for field, value in config.__dict__.items():
+                value_per_field.setdefault(field, set()).add(value)
+            data_from_config.setdefault(new_config, []).append(result)
+        print('Attributes:', str_from_object(value_per_field))
+        print('Configs:', len(data_from_config))
+        for i, (config, results) in enumerate(data_from_config.items()):
+            accumulated_result = {}
+            for result in results:
+                for name, value in result.items():
+                    accumulated_result.setdefault(name, []).append(value)
+            mean_result = {name: round(np.average(values), 3) for name, values in accumulated_result.items()}
+            score = score_result(mean_result)
+            key = {field: value for field, value in config.__dict__.items()
+                                   if 2 <= len(value_per_field[field])}
+            print('{}) {} ({}): {}'.format(i, str_from_object(key), len(results), str_from_object(score)))
+
+
 ##################################################
 
 def main():
@@ -248,7 +283,7 @@ def main():
     # sig_artopt-bunny | Nodes: 219 | Ground: 14 | Elements: 418
     # djmm_bridge | Nodes: 1548 | Ground: 258 | Elements: 6427
     # djmm_test_block | Nodes: 76 | Ground: 13 | Elements: 253
-    parser.add_argument('-a', '--algorithm', default='stripstream',
+    parser.add_argument('-a', '--algorithm', default='regression',
                         help='Which algorithm to use')
     parser.add_argument('-b', '--bias', default='z', choices=HEURISTICS,
                         help='Which heuristic to use')
@@ -259,7 +294,9 @@ def main():
     parser.add_argument('-m', '--motions', action='store_true',
                         help='Plans motions between each extrusion')
     parser.add_argument('-n', '--num', default=0, type=int,
-                        help='Plans motions between each extrusion')
+                        help='TBD')
+    parser.add_argument('-l', '--load', default=None,
+                        help='TBD')
     parser.add_argument('-p', '--problem', default='simple_frame',
                         help='The name of the problem to solve')
     parser.add_argument('-s', '--stiffness',  action='store_false',
@@ -271,6 +308,9 @@ def main():
     args = parser.parse_args()
     print('Arguments:', args)
 
+    if args.load is not None:
+        load_experiment(args.load)
+        return
     if args.num:
         train_parallel(num=args.num, max_time=args.max_time)
         return
@@ -299,6 +339,8 @@ def main():
     # mars_bubble
     # djmm_bridge
     # djmm_test_block
+
+    # python -m extrusion.run -n 10 2>&1 | tee log.txt
 
 
 if __name__ == '__main__':

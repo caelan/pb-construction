@@ -42,7 +42,7 @@ def get_extrusion_path(extrusion_name):
     return os.path.join(root_directory, EXTRUSION_DIRECTORY, filename)
 
 def enumerate_paths():
-    directory = os.path.join(os.path.dirname(os.path.abspath(__file__)), EXTRUSION_DIRECTORY)
+    directory = os.path.abspath(os.path.join(os.path.dirname(__file__), EXTRUSION_DIRECTORY))
     for filename in sorted(os.listdir(directory)):
         if filename.endswith('.json'):
             yield os.path.join(directory, filename)
