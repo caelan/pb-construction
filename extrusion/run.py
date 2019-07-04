@@ -132,6 +132,10 @@ def visualize_stiffness(problem, element_bodies):
             # TODO: apply to torques as well
             reaction_world = tform_point(world_from_local, reaction_local[:3])
             reaction_from_node.setdefault(node, []).append(reaction_world)
+    # TODO: fixities apply to elements not nodes
+    #for node, reaction in deformation.fixities.items():
+    #    reaction_world = reaction[:3]
+    #    reaction_from_node.setdefault(node, []).append(reaction_world)
 
     total_reaction_from_node = {node: np.sum(reactions, axis=0)
                                for node, reactions in reaction_from_node.items()}
@@ -144,7 +148,6 @@ def visualize_stiffness(problem, element_bodies):
             i, node, node_points[node], total_reaction_from_node[node], force_from_node[node]))
 
     # TODO: sum of forces instead
-    # TODO: count deformation.fixities?
     handles = []
     for node, reaction_world in total_reaction_from_node.items():
         start = node_points[node]
@@ -242,12 +245,12 @@ def train_parallel(num=10, max_time=30*60):
     problems = enumerate_paths()
     configurations = [Configuration(*c) for c in product(
         range(num), problems, ALGORITHMS, HEURISTICS,
-        [False], [True], [True], [False])]
+        [False], [False], [True], [False])]
     print('Configurations: {}'.format(len(configurations)))
 
     serial = is_darwin()
     available_cores = cpu_count()
-    num_cores = max(1, min(1 if serial else available_cores - 3, len(configurations)))
+    num_cores = max(1, min(1 if serial else available_cores - 10, len(configurations)))
     print('Max Cores:', available_cores)
     print('Serial:', serial)
     print('Using Cores:', num_cores)
