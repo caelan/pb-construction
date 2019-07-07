@@ -165,7 +165,7 @@ ALGORITHMS = [
     'regression',
 ]
 
-def plan_extrusion(args, max_time=INF, viewer=False, precompute=False, verbose=False, watch=False):
+def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=False):
     # TODO: setCollisionFilterGroupMask
     # TODO: fail if wild stream produces unexpected facts
     # TODO: try search at different cost levels (i.e. w/ and w/o abstract)
@@ -199,17 +199,16 @@ def plan_extrusion(args, max_time=INF, viewer=False, precompute=False, verbose=F
         pr = cProfile.Profile()
         pr.enable()
         if args.algorithm == 'stripstream':
-            # TODO: max_time here
             planned_trajectories, data = plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
                                                  trajectories=trajectories, collisions=not args.cfree,
-                                                 disable=args.disable, max_time=max_time, debug=False)
+                                                 max_time=args.max_time, disable=args.disable, debug=False)
         elif args.algorithm == 'progression':
             planned_trajectories, data = progression(robot, obstacles, element_bodies, args.problem, heuristic=args.bias,
-                                                     max_time=max_time, collisions=not args.cfree,
+                                                     max_time=args.max_time, collisions=not args.cfree,
                                                      disable=args.disable, stiffness=args.stiffness)
         elif args.algorithm == 'regression':
             planned_trajectories, data = regression(robot, obstacles, element_bodies, args.problem, heuristic=args.bias,
-                                                    max_time=max_time, collisions=not args.cfree,
+                                                    max_time=args.max_time, collisions=not args.cfree,
                                                     disable=args.disable, stiffness=args.stiffness)
         else:
             raise ValueError(args.algorithm)
@@ -238,7 +237,7 @@ def plan_extrusion(args, max_time=INF, viewer=False, precompute=False, verbose=F
 
 ##################################################
 
-Configuration = namedtuple('Configuration', ['seed', 'problem', 'algorithm', 'bias',
+Configuration = namedtuple('Configuration', ['seed', 'problem', 'algorithm', 'bias', 'max_time',
                                              'cfree', 'disable', 'stiffness', 'motions'])
 
 def train_parallel(num=10, max_time=30*60):
@@ -246,8 +245,8 @@ def train_parallel(num=10, max_time=30*60):
     print('Max time:', max_time)
 
     problems = enumerate_paths()
-    configurations = [(Configuration(*c), max_time) for c in product(
-        range(num), problems, ALGORITHMS, HEURISTICS,
+    configurations = [Configuration(*c) for c in product(
+        range(num), problems, ALGORITHMS, HEURISTICS, [max_time],
         [False], [False], [True], [False])]
     print('Configurations: {}'.format(len(configurations)))
 
