@@ -165,7 +165,7 @@ ALGORITHMS = [
     'regression',
 ]
 
-def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=False):
+def plan_extrusion(args, max_time=INF, viewer=False, precompute=False, verbose=False, watch=False):
     # TODO: setCollisionFilterGroupMask
     # TODO: fail if wild stream produces unexpected facts
     # TODO: try search at different cost levels (i.e. w/ and w/o abstract)
@@ -202,13 +202,15 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
             # TODO: max_time here
             planned_trajectories, data = plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
                                                  trajectories=trajectories, collisions=not args.cfree,
-                                                 disable=args.disable, max_time=args.max_time, debug=False)
+                                                 disable=args.disable, max_time=max_time, debug=False)
         elif args.algorithm == 'progression':
             planned_trajectories, data = progression(robot, obstacles, element_bodies, args.problem, heuristic=args.bias,
-                                                     max_time=args.max_time, collisions=not args.cfree, disable=args.disable, stiffness=args.stiffness)
+                                                     max_time=max_time, collisions=not args.cfree,
+                                                     disable=args.disable, stiffness=args.stiffness)
         elif args.algorithm == 'regression':
             planned_trajectories, data = regression(robot, obstacles, element_bodies, args.problem, heuristic=args.bias,
-                                                    max_time=args.max_time, collisions=not args.cfree, disable=args.disable, stiffness=args.stiffness)
+                                                    max_time=max_time, collisions=not args.cfree,
+                                                    disable=args.disable, stiffness=args.stiffness)
         else:
             raise ValueError(args.algorithm)
         pr.disable()
@@ -244,7 +246,7 @@ def train_parallel(num=10, max_time=30*60):
     print('Max time:', max_time)
 
     problems = enumerate_paths()
-    configurations = [Configuration(*c) for c in product(
+    configurations = [(Configuration(*c), max_time) for c in product(
         range(num), problems, ALGORITHMS, HEURISTICS,
         [False], [False], [True], [False])]
     print('Configurations: {}'.format(len(configurations)))
