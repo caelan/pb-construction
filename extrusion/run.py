@@ -199,15 +199,16 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
         pr = cProfile.Profile()
         pr.enable()
         if args.algorithm == 'stripstream':
+            # TODO: max_time here
             planned_trajectories, data = plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
                                                  trajectories=trajectories, collisions=not args.cfree,
                                                  disable=args.disable, max_time=args.max_time, debug=False)
         elif args.algorithm == 'progression':
             planned_trajectories, data = progression(robot, obstacles, element_bodies, args.problem, heuristic=args.bias,
-                                                     collisions=not args.cfree, disable=args.disable, stiffness=args.stiffness)
+                                                     max_time=args.max_time, collisions=not args.cfree, disable=args.disable, stiffness=args.stiffness)
         elif args.algorithm == 'regression':
             planned_trajectories, data = regression(robot, obstacles, element_bodies, args.problem, heuristic=args.bias,
-                                                    collisions=not args.cfree, disable=args.disable, stiffness=args.stiffness)
+                                                    max_time=args.max_time, collisions=not args.cfree, disable=args.disable, stiffness=args.stiffness)
         else:
             raise ValueError(args.algorithm)
         pr.disable()
@@ -345,11 +346,11 @@ def main():
     parser.add_argument('-p', '--problem', default='simple_frame',
                         help='The name of the problem to solve')
     parser.add_argument('-s', '--stiffness',  action='store_false',
-                        help='The max time')
+                        help='TBD')
     parser.add_argument('-t', '--max_time', default=15*60, type=int,
                         help='The max time')
     parser.add_argument('-v', '--viewer', action='store_true',
-                        help='Enables the viewer during planning (slow!)')
+                        help='Enables the viewer during planning')
     args = parser.parse_args()
     print('Arguments:', args)
     np.set_printoptions(precision=3)
