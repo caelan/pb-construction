@@ -241,6 +241,7 @@ Configuration = namedtuple('Configuration', ['seed', 'problem', 'algorithm', 'bi
                                              'cfree', 'disable', 'stiffness', 'motions'])
 
 def train_parallel(num=10, max_time=30*60):
+    initial_time = time.time()
     print('Trials:', num)
     print('Max time:', max_time)
 
@@ -257,7 +258,8 @@ def train_parallel(num=10, max_time=30*60):
     print('Serial:', serial)
     print('Using Cores:', num_cores)
     date = datetime.datetime.now().strftime('%y-%m-%d_%H-%M-%S')
-    path = '{}.pk{}'.format(date, get_python_version())
+    filename = '{}.pk{}'.format(date, get_python_version())
+    path = os.path.join('experiments', filename)
     print('Data path:', path)
 
     user_input('Begin?')
@@ -278,6 +280,7 @@ def train_parallel(num=10, max_time=30*60):
         except TimeoutError:
             print('Error! Timed out after {:.3f} seconds'.format(elapsed_time(start_time)))
             break
+    print('Total time:', elapsed_time(initial_time))
 
 ##################################################
 
@@ -286,34 +289,41 @@ Score = namedtuple('Score', ['failure', 'runtime'])
 def score_result(result):
     return Score(1. - round(result['success'], 3), round(result['runtime'], 3))
 
-def load_experiment(filename):
+def load_experiment(filename, overall=True):
     # TODO: maybe just pass the random seed as a separate arg
+    # TODO: aggregate over all problems and score using IPC rules
+    # https://ipc2018-classical.bitbucket.io/
     data_from_problem = OrderedDict()
     for config, result in read_pickle(filename):
-        data_from_problem.setdefault(config.problem, []).append((config, result))
-    for problem in sorted(data_from_problem):
+        problem = 'all' if overall else config.problem
+        data_from_problem.setdefault(problem, []).append((config, result))
+
+    for p_idx, problem in enumerate(sorted(data_from_problem)):
         print()
-        print('Problem:', os.path.basename(os.path.abspath(problem)))
+        print('{}) Problem: {}'.format(p_idx, os.path.basename(os.path.abspath(problem))))
+
         data_from_config = OrderedDict()
         value_per_field = {}
         for config, result in data_from_problem[problem]:
             new_config = Configuration(None, None, *config[2:])
             #print(config._asdict()) # config.__dict__
-            for field, value in config.__dict__.items():
+            for field, value in config._asdict().items():
                 value_per_field.setdefault(field, set()).add(value)
             data_from_config.setdefault(new_config, []).append(result)
+
         print('Attributes:', str_from_object(value_per_field))
         print('Configs:', len(data_from_config))
-        for i, (config, results) in enumerate(data_from_config.items()):
+        for c_idx, config in enumerate(sorted(data_from_config, key=str)):
+            results = data_from_config[config]
             accumulated_result = {}
             for result in results:
                 for name, value in result.items():
                     accumulated_result.setdefault(name, []).append(value)
             mean_result = {name: round(np.average(values), 3) for name, values in accumulated_result.items()}
             score = score_result(mean_result)
-            key = {field: value for field, value in config.__dict__.items()
+            key = {field: value for field, value in config._asdict().items()
                                    if 2 <= len(value_per_field[field])}
-            print('{}) {} ({}): {}'.format(i, str_from_object(key), len(results), str_from_object(score)))
+            print('{}) {} ({}): {}'.format(c_idx, str_from_object(key), len(results), str_from_object(score)))
 
 
 ##################################################
@@ -348,7 +358,7 @@ def main():
                         help='The name of the problem to solve')
     parser.add_argument('-s', '--stiffness',  action='store_false',
                         help='TBD')
-    parser.add_argument('-t', '--max_time', default=15*60, type=int,
+    parser.add_argument('-t', '--max_time', default=30*60, type=int,
                         help='The max time')
     parser.add_argument('-v', '--viewer', action='store_true',
                         help='Enables the viewer during planning')
