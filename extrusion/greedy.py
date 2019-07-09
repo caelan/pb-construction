@@ -72,7 +72,7 @@ def draw_action(node_points, printed, element):
 HEURISTICS = [
     None,
     'z',
-    #'dijkstra',
+    'dijkstra',
     #'stiffness', # Performs poorly with respect to stiffness
 ]
 

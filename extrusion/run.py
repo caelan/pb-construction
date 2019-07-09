@@ -253,7 +253,7 @@ def train_parallel(num=10, max_time=30*60):
 
     serial = is_darwin()
     available_cores = cpu_count()
-    num_cores = max(1, min(1 if serial else available_cores - 10, len(configurations)))
+    num_cores = max(1, min(1 if serial else available_cores - 3, len(configurations)))
     print('Max Cores:', available_cores)
     print('Serial:', serial)
     print('Using Cores:', num_cores)
