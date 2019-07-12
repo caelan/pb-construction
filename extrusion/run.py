@@ -30,7 +30,7 @@ from pddlstream.utils import get_python_version, str_from_object
 from examples.pybullet.utils.pybullet_tools.utils import connect, disconnect, get_movable_joints, add_text, \
     get_joint_positions, LockRenderer, wait_for_user, has_gui, wait_for_duration, wait_for_interrupt, unit_pose, \
     add_line, INF, is_darwin, elapsed_time, write_pickle, user_input, reset_simulation, \
-    read_pickle, get_pose, draw_pose, tform_point, Euler, Pose, multiply
+    read_pickle, get_pose, draw_pose, tform_point, Euler, Pose, multiply, remove_debug
 
 ##################################################
 
@@ -106,6 +106,22 @@ def verify_plan(extrusion_path, planned_elements):
     disconnect()
     return is_valid
 
+def test(node_points, reaction_from_node):
+    handles = []
+    for node in sorted(reaction_from_node):
+        reactions = reaction_from_node[node]
+        max_force = max(map(np.linalg.norm, reactions))
+        print('node={}, max force={:.3f}'.format(node, max_force))
+        print(list(map(np.array, reactions)))
+        start = node_points[node]
+        for reaction in reactions:
+            vector = 0.05 * np.array(reaction) / max_force
+            end = start + vector
+            handles.append(add_line(start, end, color=(0, 1, 0)))
+        wait_for_user()
+        for handle in handles:
+            remove_debug(handle)
+
 def visualize_stiffness(problem, element_bodies):
     if not has_gui():
         return
@@ -122,21 +138,27 @@ def visualize_stiffness(problem, element_bodies):
 
     deformation = evaluate_stiffness(problem, element_from_id, elements)
     reaction_from_node = {}
-    for index, reactions in deformation.reactions.items():
-        # Yijiang assumes pointing along +x
-        element = element_from_id[index]
-        body = element_bodies[element]
-        rotation = Pose(euler=Euler(pitch=np.pi/2))
-        world_from_local = multiply(rotation, get_pose(body))
-        for node, reaction_local in zip(elements[index], reactions):
-            # TODO: apply to torques as well
-            reaction_world = tform_point(world_from_local, reaction_local[:3])
-            reaction_from_node.setdefault(node, []).append(reaction_world)
-    # TODO: fixities apply to elements not nodes
-    #for node, reaction in deformation.fixities.items():
-    #    reaction_world = reaction[:3]
-    #    reaction_from_node.setdefault(node, []).append(reaction_world)
+    # Freeform Assembly Planning
+    # TODO: https://arxiv.org/pdf/1801.00527.pdf
+    # Though assembly sequencing is often done by finding a disassembly sequence and reversing it, we will use a forward search.
+    # Thus a low-cost state will usually be correctly identified by considering only the deflection of the cantilevered beam path
+    # and approximating the rest of the beams as being infinitely stiff
 
+    # TODO: could recompute stability properties at each point
+    for reactions_from_index in [deformation.reactions]: #, deformation.fixities]: # TODO: 1 reaction / element
+        for index, reactions in reactions_from_index.items():
+            # Yijiang assumes pointing along +x
+            element = element_from_id[index]
+            body = element_bodies[element]
+            rotation = Pose(euler=Euler(pitch=np.pi/2))
+            world_from_local = multiply(rotation, get_pose(body))
+            for node, reaction_local in zip(elements[index], reactions):
+                # TODO: apply to torques as well
+                reaction_world = tform_point(world_from_local, reaction_local[:3])
+                reaction_from_node.setdefault(node, []).append(reaction_world)
+
+    reaction_from_node = deformation.displacements
+    #test(node_points, reaction_from_node)
     total_reaction_from_node = {node: np.sum(reactions, axis=0)
                                for node, reactions in reaction_from_node.items()}
     force_from_node = {node: np.linalg.norm(reaction)
@@ -147,7 +169,6 @@ def visualize_stiffness(problem, element_bodies):
         print('{}) node={}, point={}, vector={}, magnitude={:.3f}'.format(
             i, node, node_points[node], total_reaction_from_node[node], force_from_node[node]))
 
-    # TODO: sum of forces instead
     handles = []
     for node, reaction_world in total_reaction_from_node.items():
         start = node_points[node]
