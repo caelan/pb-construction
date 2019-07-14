@@ -145,19 +145,20 @@ def visualize_stiffness(problem, element_bodies):
     # and approximating the rest of the beams as being infinitely stiff
 
     # TODO: could recompute stability properties at each point
-    for reactions_from_index in [deformation.reactions]: #, deformation.fixities]: # TODO: 1 reaction / element
-        for index, reactions in reactions_from_index.items():
-            # Yijiang assumes pointing along +x
-            element = element_from_id[index]
-            body = element_bodies[element]
-            rotation = Pose(euler=Euler(pitch=np.pi/2))
-            world_from_local = multiply(rotation, get_pose(body))
-            for node, reaction_local in zip(elements[index], reactions):
-                # TODO: apply to torques as well
-                reaction_world = tform_point(world_from_local, reaction_local[:3])
-                reaction_from_node.setdefault(node, []).append(reaction_world)
+    for index, reactions in deformation.reactions.items():
+        # Yijiang assumes pointing along +x
+        element = element_from_id[index]
+        body = element_bodies[element]
+        rotation = Pose(euler=Euler(pitch=np.pi/2))
+        world_from_local = multiply(rotation, get_pose(body))
+        for node, reaction_local in zip(elements[index], reactions):
+            # TODO: apply to torques as well
+            reaction_world = tform_point(world_from_local, reaction_local[:3])
+            reaction_from_node.setdefault(node, []).append(reaction_world)
+    for node, reaction in deformation.fixities.items():
+        reaction_from_node.setdefault(node, []).append(reaction[:3])
 
-    reaction_from_node = deformation.displacements
+    #reaction_from_node = deformation.displacements # For visualizing displacements
     #test(node_points, reaction_from_node)
     total_reaction_from_node = {node: np.sum(reactions, axis=0)
                                for node, reactions in reaction_from_node.items()}

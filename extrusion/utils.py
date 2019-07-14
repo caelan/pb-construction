@@ -327,7 +327,7 @@ def evaluate_stiffness(extrusion_path, element_from_id, elements, verbose=False)
     success, nodal_displacement, fixities_reaction, element_reaction = checker.get_solved_results()
     assert is_stiff == success
     displacements = {int(d[0]): Displacement(*d[1:]) for d in nodal_displacement}
-    fixities = {int(d[0]): Reaction(*d[1:7]) for d in element_reaction}
+    fixities = {int(d[0]): Reaction(*d[1:7]) for d in fixities_reaction}
     reactions = {int(d[0]): (Reaction(*d[1:7]), Reaction(*d[7:13])) for d in element_reaction}
 
     #print("nodal displacement (m/rad):\n{0}".format(nodal_displacement)) # nodes x 7
