@@ -11,26 +11,25 @@ import time
 import os
 import datetime
 
-from collections import namedtuple, OrderedDict
 from itertools import product
 from multiprocessing import Pool, cpu_count, TimeoutError
 
 sys.path.append('pddlstream/')
 
+from extrusion.experiment import Configuration, load_experiment
 from extrusion.motion import compute_motions, display_trajectories
 from extrusion.stripstream import plan_sequence, STRIPSTREAM_ALGORITHM
-from extrusion.utils import load_world, create_stiffness_checker, \
-    downsample_nodes, check_connected, get_connected_structures, test_stiffness, evaluate_stiffness, Displacement
+from extrusion.utils import load_world, check_connected, get_connected_structures, test_stiffness, evaluate_stiffness
 from extrusion.parsing import load_extrusion, draw_element, create_elements, \
-    get_extrusion_path, draw_model, enumerate_paths, get_extrusion_path
+    draw_model, enumerate_paths, get_extrusion_path
 from extrusion.stream import get_print_gen_fn
 from extrusion.greedy import regression, progression, GREEDY_HEURISTICS, GREEDY_ALGORITHMS
 
-from pddlstream.utils import get_python_version, str_from_object
+from pddlstream.utils import get_python_version
 from examples.pybullet.utils.pybullet_tools.utils import connect, disconnect, get_movable_joints, add_text, \
-    get_joint_positions, LockRenderer, wait_for_user, has_gui, wait_for_duration, wait_for_interrupt, unit_pose, \
-    add_line, INF, is_darwin, elapsed_time, write_pickle, user_input, reset_simulation, \
-    read_pickle, get_pose, draw_pose, tform_point, Euler, Pose, multiply, remove_debug
+    get_joint_positions, LockRenderer, wait_for_user, has_gui, unit_pose, \
+    add_line, is_darwin, elapsed_time, write_pickle, user_input, reset_simulation, \
+    get_pose, draw_pose, tform_point, Euler, Pose, multiply, remove_debug
 
 ##################################################
 
@@ -255,9 +254,6 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
 
 ##################################################
 
-Configuration = namedtuple('Configuration', ['seed', 'problem', 'algorithm', 'bias', 'max_time',
-                                             'cfree', 'disable', 'stiffness', 'motions'])
-
 def train_parallel(num=10, max_time=30*60):
     initial_time = time.time()
     print('Trials:', num)
@@ -300,50 +296,6 @@ def train_parallel(num=10, max_time=30*60):
             print('Error! Timed out after {:.3f} seconds'.format(elapsed_time(start_time)))
             break
     print('Total time:', elapsed_time(initial_time))
-
-##################################################
-
-Score = namedtuple('Score', ['failure', 'runtime'])
-
-def score_result(result):
-    return Score(1. - round(result['success'], 3), round(result['runtime'], 3))
-
-def load_experiment(filename, overall=True):
-    # TODO: maybe just pass the random seed as a separate arg
-    # TODO: aggregate over all problems and score using IPC rules
-    # https://ipc2018-classical.bitbucket.io/
-    data_from_problem = OrderedDict()
-    for config, result in read_pickle(filename):
-        problem = 'all' if overall else config.problem
-        data_from_problem.setdefault(problem, []).append((config, result))
-
-    for p_idx, problem in enumerate(sorted(data_from_problem)):
-        print()
-        print('{}) Problem: {}'.format(p_idx, os.path.basename(os.path.abspath(problem))))
-
-        data_from_config = OrderedDict()
-        value_per_field = {}
-        for config, result in data_from_problem[problem]:
-            new_config = Configuration(None, None, *config[2:])
-            #print(config._asdict()) # config.__dict__
-            for field, value in config._asdict().items():
-                value_per_field.setdefault(field, set()).add(value)
-            data_from_config.setdefault(new_config, []).append(result)
-
-        print('Attributes:', str_from_object(value_per_field))
-        print('Configs:', len(data_from_config))
-        for c_idx, config in enumerate(sorted(data_from_config, key=str)):
-            results = data_from_config[config]
-            accumulated_result = {}
-            for result in results:
-                for name, value in result.items():
-                    accumulated_result.setdefault(name, []).append(value)
-            mean_result = {name: round(np.average(values), 3) for name, values in accumulated_result.items()}
-            score = score_result(mean_result)
-            key = {field: value for field, value in config._asdict().items()
-                                   if 2 <= len(value_per_field[field])}
-            print('{}) {} ({}): {}'.format(c_idx, str_from_object(key), len(results), str_from_object(score)))
-
 
 ##################################################
 
