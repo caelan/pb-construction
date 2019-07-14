@@ -18,13 +18,13 @@ from multiprocessing import Pool, cpu_count, TimeoutError
 sys.path.append('pddlstream/')
 
 from extrusion.motion import compute_motions, display_trajectories
-from extrusion.stripstream import plan_sequence
+from extrusion.stripstream import plan_sequence, STRIPSTREAM_ALGORITHM
 from extrusion.utils import load_world, create_stiffness_checker, \
     downsample_nodes, check_connected, get_connected_structures, test_stiffness, evaluate_stiffness, Displacement
 from extrusion.parsing import load_extrusion, draw_element, create_elements, \
     get_extrusion_path, draw_model, enumerate_paths, get_extrusion_path
 from extrusion.stream import get_print_gen_fn
-from extrusion.greedy import regression, progression, HEURISTICS
+from extrusion.greedy import regression, progression, GREEDY_HEURISTICS, GREEDY_ALGORITHMS
 
 from pddlstream.utils import get_python_version, str_from_object
 from examples.pybullet.utils.pybullet_tools.utils import connect, disconnect, get_movable_joints, add_text, \
@@ -106,7 +106,7 @@ def verify_plan(extrusion_path, planned_elements):
     disconnect()
     return is_valid
 
-def test(node_points, reaction_from_node):
+def test_node_forces(node_points, reaction_from_node):
     handles = []
     for node in sorted(reaction_from_node):
         reactions = reaction_from_node[node]
@@ -159,7 +159,7 @@ def visualize_stiffness(problem, element_bodies):
         reaction_from_node.setdefault(node, []).append(reaction[:3])
 
     #reaction_from_node = deformation.displacements # For visualizing displacements
-    #test(node_points, reaction_from_node)
+    #test_node_forces(node_points, reaction_from_node)
     total_reaction_from_node = {node: np.sum(reactions, axis=0)
                                for node, reactions in reaction_from_node.items()}
     force_from_node = {node: np.linalg.norm(reaction)
@@ -181,11 +181,7 @@ def visualize_stiffness(problem, element_bodies):
 
 ##################################################
 
-ALGORITHMS = [
-    #'stripstream'.
-    'progression',
-    'regression',
-]
+ALGORITHMS = GREEDY_ALGORITHMS + [STRIPSTREAM_ALGORITHM]
 
 def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=False):
     # TODO: setCollisionFilterGroupMask
@@ -222,8 +218,8 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
         pr.enable()
         if args.algorithm == 'stripstream':
             planned_trajectories, data = plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                                 trajectories=trajectories, collisions=not args.cfree,
-                                                 max_time=args.max_time, disable=args.disable, debug=False)
+                                                       trajectories=trajectories, collisions=not args.cfree,
+                                                       max_time=args.max_time, disable=args.disable, debug=False)
         elif args.algorithm == 'progression':
             planned_trajectories, data = progression(robot, obstacles, element_bodies, args.problem, heuristic=args.bias,
                                                      max_time=args.max_time, collisions=not args.cfree,
@@ -268,8 +264,9 @@ def train_parallel(num=10, max_time=30*60):
     print('Max time:', max_time)
 
     problems = enumerate_paths()
+    #problems = [path for path in problems if 'simple_frame' in path]
     configurations = [Configuration(*c) for c in product(
-        range(num), problems, ALGORITHMS, HEURISTICS, [max_time],
+        range(num), problems, GREEDY_ALGORITHMS, GREEDY_HEURISTICS, [max_time],
         [False], [False], [True], [False])]
     print('Configurations: {}'.format(len(configurations)))
 
@@ -364,7 +361,7 @@ def main():
     # djmm_test_block | Nodes: 76 | Ground: 13 | Elements: 253
     parser.add_argument('-a', '--algorithm', default='regression',
                         help='Which algorithm to use')
-    parser.add_argument('-b', '--bias', default='z', choices=HEURISTICS,
+    parser.add_argument('-b', '--bias', default='z', choices=GREEDY_HEURISTICS,
                         help='Which heuristic to use')
     parser.add_argument('-c', '--cfree', action='store_true',
                         help='Disables collisions with obstacles')

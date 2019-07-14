@@ -69,11 +69,16 @@ def draw_action(node_points, printed, element):
 
 ##################################################
 
-HEURISTICS = [
+GREEDY_HEURISTICS = [
     None,
     'z',
-    'dijkstra',
+    #'dijkstra',
     #'stiffness', # Performs poorly with respect to stiffness
+]
+
+GREEDY_ALGORITHMS = [
+    'progression',
+    'regression',
 ]
 
 def get_heuristic_fn(extrusion_path, heuristic, forward):
