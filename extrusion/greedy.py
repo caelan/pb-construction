@@ -70,7 +70,7 @@ def draw_action(node_points, printed, element):
 ##################################################
 
 GREEDY_HEURISTICS = [
-    #None,
+    None,
     'z',
     #'dijkstra',
     #'stiffness', # Performs poorly with respect to stiffness
