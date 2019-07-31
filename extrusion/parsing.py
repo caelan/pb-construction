@@ -59,6 +59,9 @@ def load_extrusion(extrusion_path, verbose=False):
     elements = parse_elements(json_data)
     element_from_id = OrderedDict((element.id, element.nodes) for element in elements)
     node_points = parse_node_points(json_data)
+    min_z = np.min(node_points, axis=0)[2]
+    print('Min z: {}'.format(min_z))
+    node_points = [np.array([0, 0, -min_z]) + point for point in node_points]
     ground_nodes = parse_ground_nodes(json_data)
     if verbose:
         print('Assembly: {} | Model: {} | Unit: {}'.format(
@@ -101,16 +104,11 @@ def parse_ground_nodes(json_data):
 
 def create_elements(node_points, elements, color=(1, 0, 0, 1)):
     # TODO: just shrink the structure to prevent worrying about collisions at end-points
-    #radius = 0.0001
-    #radius = 0.00005
-    #radius = 0.000001
-    radius = 1e-6
+    # TODO: could scale the whole environment
+    radius = 1e-6 # 5e-5 | 1e-4
     # TODO: seems to be a min radius
 
-    shrink = 0.01
-    #shrink = 0.005
-    #shrink = 0.002
-    #shrink = 0.
+    shrink = 0.01 # 0. | 0.002 | 0.005
     element_bodies = []
     for (n1, n2) in elements:
         p1, p2 = node_points[n1], node_points[n2]

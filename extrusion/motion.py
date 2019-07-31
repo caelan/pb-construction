@@ -5,7 +5,7 @@ import numpy as np
 
 from examples.pybullet.utils.pybullet_tools.utils import get_movable_joints, set_joint_positions, plan_joint_motion, \
     connect, wait_for_interrupt, point_from_pose, get_link_pose, link_from_name, add_line, \
-    wait_for_duration, disconnect, elapsed_time, reset_simulation
+    wait_for_duration, disconnect, elapsed_time, reset_simulation, wait_for_user
 
 from extrusion.utils import get_disabled_collisions, MotionTrajectory, load_world, PrintTrajectory, is_ground, \
     TOOL_NAME
@@ -56,20 +56,15 @@ def display_trajectories(ground_nodes, trajectories, time_step=0.05):
     if trajectories is None:
         return
     connect(use_gui=True)
-    floor, robot = load_world()
+    obstacles, robot = load_world()
     wait_for_interrupt()
     movable_joints = get_movable_joints(robot)
     #element_bodies = dict(zip(elements, create_elements(node_points, elements)))
     #for body in element_bodies.values():
     #    set_color(body, (1, 0, 0, 0))
-    connected = set(ground_nodes)
+    connected_nodes = set(ground_nodes)
     print('Trajectories:', len(trajectories))
     for i, trajectory in enumerate(trajectories):
-        if isinstance(trajectory, PrintTrajectory):
-            print('{}) {:9} | Connected: {} | Ground: {} | Length: {}'.format(
-                i, str(trajectory), (trajectory.n1 in connected) and (trajectory.n2 in connected),
-                is_ground(trajectory.element, ground_nodes), len(trajectory.path)))
-            connected.add(trajectory.n2)
         #wait_for_interrupt()
         #set_color(element_bodies[element], (1, 0, 0, 1))
         last_point = None
@@ -84,6 +79,15 @@ def display_trajectories(ground_nodes, trajectories, time_step=0.05):
                 last_point = current_point
             wait_for_duration(time_step)
         #wait_for_interrupt()
+
+        if isinstance(trajectory, PrintTrajectory):
+            is_connected = (trajectory.n1 in connected_nodes) # and (trajectory.n2 in connected_nodes)
+            print('{}) {:9} | Connected: {} | Ground: {} | Length: {}'.format(
+                i, str(trajectory), is_connected, is_ground(trajectory.element, ground_nodes), len(trajectory.path)))
+            if not is_connected:
+                wait_for_user()
+        connected_nodes.add(trajectory.n2)
+
     #user_input('Finish?')
     wait_for_interrupt()
     reset_simulation()

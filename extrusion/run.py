@@ -70,7 +70,7 @@ def sample_trajectories(robot, obstacles, node_points, element_bodies, ground_no
 
 ##################################################
 
-def check_plan(extrusion_path, planned_elements):
+def check_plan(extrusion_path, planned_elements, verbose=False):
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
     #checker = create_stiffness_checker(extrusion_name)
 
@@ -82,28 +82,30 @@ def check_plan(extrusion_path, planned_elements):
     for element in planned_elements:
         extruded_elements.add(element)
         is_connected = check_connected(ground_nodes, extruded_elements)
-        structures = get_connected_structures(extruded_elements)
+        all_connected &= is_connected
         is_stiff = test_stiffness(extrusion_path, element_from_id, extruded_elements)
         all_stiff &= is_stiff
-        print('Elements: {} | Structures: {} | Connected: {} | Stiff: {}'.format(
-            len(extruded_elements), len(structures), is_connected, is_stiff))
-        is_stable = is_connected and is_stiff
+        if verbose:
+            structures = get_connected_structures(extruded_elements)
+            print('Elements: {} | Structures: {} | Connected: {} | Stiff: {}'.format(
+                len(extruded_elements), len(structures), is_connected, is_stiff))
         if has_gui():
+            is_stable = is_connected and is_stiff
             color = (0, 1, 0) if is_stable else (1, 0, 0)
             handles.append(draw_element(node_points, element, color))
             #wait_for_duration(0.5)
             if not is_stable:
                 wait_for_user()
+    # Make these counts instead
+    print('Connected: {} | Stiff: {}'.format(all_connected, all_stiff))
     return all_connected and all_stiff
-Connectivity check
 
-def verify_plan(extrusion_path, planned_elements):
+def verify_plan(extrusion_path, planned_elements, use_gui=False):
     # Path heuristic
     # Disable shadows
-    connect(use_gui=False)
-    floor, robot = load_world()
+    connect(use_gui=use_gui)
+    obstacles, robot = load_world()
     is_valid = check_plan(extrusion_path, planned_elements)
-    print('Valid:', is_valid)
     reset_simulation()
     disconnect()
     return is_valid
@@ -183,7 +185,7 @@ def visualize_stiffness(problem, element_bodies):
 
 ##################################################
 
-ALGORITHMS = GREEDY_ALGORITHMS + [STRIPSTREAM_ALGORITHM]
+ALGORITHMS = GREEDY_ALGORITHMS #+ [STRIPSTREAM_ALGORITHM]
 
 def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=False):
     # TODO: setCollisionFilterGroupMask
@@ -202,8 +204,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     connect(use_gui=viewer)
     with LockRenderer():
         draw_pose(unit_pose(), length=1.)
-        floor, robot = load_world()
-        obstacles = [] if floor is None else [floor]
+        obstacles, robot = load_world()
         element_bodies = dict(zip(elements, create_elements(
             node_points, elements, color=(0, 0, 0, 1))))
     # joint_weights = compute_joint_weights(robot, num=1000)
@@ -244,11 +245,11 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     reset_simulation()
     disconnect()
 
-    # planned_elements = [traj.element for traj in planned_trajectories]
+    planned_elements = [traj.element for traj in planned_trajectories]
     # random.shuffle(planned_elements)
     # planned_elements = sorted(elements, key=lambda e: max(node_points[n][2] for n in e)) # TODO: tiebreak by angle or x
 
-    #verify_plan(path, planned_elements)
+    verify_plan(args.problem, planned_elements)
     if watch:
         display_trajectories(ground_nodes, planned_trajectories)
     if not verbose:

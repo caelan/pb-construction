@@ -11,7 +11,7 @@ from pyconmech import stiffness_checker
 
 from examples.pybullet.utils.pybullet_tools.utils import set_point, Euler, get_movable_joints, set_joint_positions, \
     pairwise_collision, Pose, multiply, Point, load_model, elapsed_time, \
-    HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, set_pose, user_input
+    HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, set_pose, user_input, draw_aabb, get_aabb
 from pddlstream.utils import get_connected_components
 
 KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
@@ -31,7 +31,7 @@ CUSTOM_LIMITS = {
 }
 SUPPORT_THETA = np.math.radians(10)  # Support polygon
 
-USE_FLOOR = False
+USE_FLOOR = True
 
 ##################################################
 
@@ -86,14 +86,17 @@ def get_grasp_pose(translation, direction, angle, reverse, offset=1e-3):
 
 def load_world(use_floor=USE_FLOOR):
     root_directory = os.path.dirname(os.path.abspath(__file__))
+    obstacles = []
     with HideOutput():
+        robot = load_pybullet(os.path.join(root_directory, KUKA_PATH), fixed_base=True)
+        lower, _ = get_aabb(robot)
         if use_floor:
             floor = load_model('models/short_floor.urdf')
-            set_point(floor, Point(z=-0.01))
+            obstacles.append(floor)
+            set_point(floor, Point(z=lower[2]))
         else:
             floor = None # TODO: make this an empty list of obstacles
-        robot = load_pybullet(os.path.join(root_directory, KUKA_PATH), fixed_base=True)
-    return floor, robot
+    return obstacles, robot
 
 
 def prune_dominated(trajectories):
@@ -247,10 +250,10 @@ def downsample_nodes(elements, node_points, ground_nodes, num=None):
                 if all(n in node_order for n in element)]
     return elements, ground_nodes
 
-def check_connected(ground_nodes, elements):
-    if not elements:
+def check_connected(ground_nodes, printed_elements):
+    if not printed_elements:
         return True
-    node_neighbors = get_node_neighbors(elements)
+    node_neighbors = get_node_neighbors(printed_elements)
     queue = deque(ground_nodes)
     visited_nodes = set(ground_nodes)
     visited_elements = set()
@@ -262,7 +265,7 @@ def check_connected(ground_nodes, elements):
             if node2 not in visited_nodes:
                 queue.append(node2)
                 visited_nodes.add(node2)
-    return elements <= visited_elements
+    return printed_elements <= visited_elements
 
 def get_connected_structures(elements):
     edges = {(e1, e2) for e1, neighbors in get_element_neighbors(elements).items()
@@ -353,4 +356,4 @@ def evaluate_stiffness(extrusion_path, element_from_id, elements, verbose=False)
     return Deformation(is_stiff, displacements, fixities, reactions)
 
 def test_stiffness(extrusion_path, element_from_id, elements, **kwargs):
-    return evaluate_stiffness(extrusion_path, element_from_id, elements, **kwargs)
+    return evaluate_stiffness(extrusion_path, element_from_id, elements, **kwargs).success

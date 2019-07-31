@@ -47,7 +47,7 @@ def sample_extrusion(print_gen_fn, ground_nodes, printed, element):
 def display_failure(node_points, extruded_elements, element):
     client = connect(use_gui=True)
     with ClientSaver(client):
-        floor, robot = load_world()
+        obstacles, robot = load_world()
         handles = []
         for e in extruded_elements:
             handles.append(draw_element(node_points, e, color=(0, 1, 0)))
@@ -155,26 +155,31 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
             priority = (num_remaining, bias, random.random())
             heapq.heappush(queue, (priority, printed, element))
 
+    final_printed = frozenset(element_bodies)
+    if not check_connected(ground_nodes, final_printed) or \
+            not test_stiffness(extrusion_path, element_from_id, final_printed):
+        return None, {'success': False}
+
     initial_printed = frozenset()
     visited[initial_printed] = Node(None, None)
     add_successors(initial_printed)
 
     plan = None
-    min_printed = INF
+    min_remaining = INF
     start_time = time.time()
     num_evaluated = 0
     while queue and (elapsed_time(start_time) < max_time):
         num_evaluated += 1
         _, printed, element = heapq.heappop(queue)
         num_remaining = len(elements) - len(printed)
-        backtrack = num_remaining - min_printed
+        backtrack = num_remaining - min_remaining
         if max_backtrack <= backtrack:
             continue
         num_evaluated += 1
-        if len(printed) < min_printed:
-            min_printed = len(printed)
+        if num_remaining < min_remaining:
+            min_remaining = num_remaining
         print('Iteration: {} | Best: {} | Printed: {} | Element: {} | Index: {} | Time: {:.3f}'.format(
-            num_evaluated, min_printed, len(printed), element, id_from_element[element], elapsed_time(start_time)))
+            num_evaluated, min_remaining, len(printed), element, id_from_element[element], elapsed_time(start_time)))
         next_printed = printed | {element}
         if (next_printed in visited) or not check_connected(ground_nodes, next_printed) or \
                 (stiffness and not test_stiffness(extrusion_path, element_from_id, next_printed)):
@@ -184,7 +189,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
             continue
         visited[next_printed] = Node(command, printed)
         if elements <= next_printed:
-            min_printed = 0
+            min_remaining = 0
             plan = retrace_plan(visited, next_printed)
             break
         add_successors(next_printed)
@@ -194,7 +199,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
         'length': INF if plan is None else len(plan),
         'runtime': elapsed_time(start_time),
         'num_evaluated': num_evaluated,
-        'num_remaining': min_printed,
+        'num_remaining': min_remaining,
         'num_elements': len(elements)
     }
     return plan, data
@@ -227,25 +232,25 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
     initial_printed = frozenset(element_bodies)
     if not check_connected(ground_nodes, initial_printed) or \
             not test_stiffness(extrusion_path, element_from_id, initial_printed):
-        return None
+        return None, {'success': False}
     visited[initial_printed] = Node(None, None)
     add_successors(initial_printed)
 
     plan = None
-    min_printed = INF
+    min_remaining = INF
     start_time = time.time()
     num_evaluated = 0
     while queue and (elapsed_time(start_time) < max_time):
         priority, printed, element = heapq.heappop(queue)
         num_remaining = len(printed)
-        backtrack = num_remaining - min_printed
+        backtrack = num_remaining - min_remaining
         if max_backtrack <= backtrack:
             continue
         num_evaluated += 1
-        if len(printed) < min_printed:
-            min_printed = len(printed)
+        if num_remaining < min_remaining:
+            min_remaining = num_remaining
         print('Iteration: {} | Best: {} | Printed: {} | Element: {} | Index: {} | Time: {:.3f}'.format(
-            num_evaluated, min_printed, len(printed), element, id_from_element[element], elapsed_time(start_time)))
+            num_evaluated, min_remaining, len(printed), element, id_from_element[element], elapsed_time(start_time)))
         next_printed = printed - {element}
         #draw_action(node_points, next_printed, element)
         if (next_printed in visited) or not check_connected(ground_nodes, next_printed) or \
@@ -256,7 +261,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
             continue
         visited[next_printed] = Node(command, printed) # TODO: be careful when multiple trajs
         if not next_printed:
-            min_printed = 0
+            min_remaining = 0
             plan = list(reversed(retrace_plan(visited, next_printed)))
             break
         add_successors(next_printed)
@@ -268,7 +273,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
         'length': INF if plan is None else len(plan),
         'runtime': elapsed_time(start_time),
         'num_evaluated': num_evaluated,
-        'num_remaining': min_printed,
+        'num_remaining': min_remaining,
         'num_elements': len(element_bodies)
     }
     return plan, data
