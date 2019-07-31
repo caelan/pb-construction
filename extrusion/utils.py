@@ -31,6 +31,8 @@ CUSTOM_LIMITS = {
 }
 SUPPORT_THETA = np.math.radians(10)  # Support polygon
 
+USE_FLOOR = False
+
 ##################################################
 
 def check_command_collision(tool_body, tool_from_root, command, bodies):
@@ -82,7 +84,7 @@ def get_grasp_pose(translation, direction, angle, reverse, offset=1e-3):
                     Pose(euler=Euler(roll=(1-reverse) * np.pi)))
 
 
-def load_world(use_floor=True):
+def load_world(use_floor=USE_FLOOR):
     root_directory = os.path.dirname(os.path.abspath(__file__))
     with HideOutput():
         if use_floor:

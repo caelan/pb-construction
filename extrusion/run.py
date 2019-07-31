@@ -19,7 +19,8 @@ sys.path.append('pddlstream/')
 from extrusion.experiment import Configuration, load_experiment
 from extrusion.motion import compute_motions, display_trajectories
 from extrusion.stripstream import plan_sequence, STRIPSTREAM_ALGORITHM
-from extrusion.utils import load_world, check_connected, get_connected_structures, test_stiffness, evaluate_stiffness
+from extrusion.utils import load_world, check_connected, get_connected_structures, test_stiffness, evaluate_stiffness, \
+    USE_FLOOR
 from extrusion.parsing import load_extrusion, draw_element, create_elements, \
     draw_model, enumerate_paths, get_extrusion_path
 from extrusion.stream import get_print_gen_fn
@@ -30,6 +31,7 @@ from examples.pybullet.utils.pybullet_tools.utils import connect, disconnect, ge
     get_joint_positions, LockRenderer, wait_for_user, has_gui, unit_pose, \
     add_line, is_darwin, elapsed_time, write_pickle, user_input, reset_simulation, \
     get_pose, draw_pose, tform_point, Euler, Pose, multiply, remove_debug
+
 
 ##################################################
 
@@ -93,6 +95,7 @@ def check_plan(extrusion_path, planned_elements):
             if not is_stable:
                 wait_for_user()
     return all_connected and all_stiff
+Connectivity check
 
 def verify_plan(extrusion_path, planned_elements):
     # Path heuristic
@@ -199,7 +202,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     connect(use_gui=viewer)
     with LockRenderer():
         draw_pose(unit_pose(), length=1.)
-        floor, robot = load_world(use_floor=False)
+        floor, robot = load_world()
         obstacles = [] if floor is None else [floor]
         element_bodies = dict(zip(elements, create_elements(
             node_points, elements, color=(0, 0, 0, 1))))
