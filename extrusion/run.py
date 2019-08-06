@@ -149,17 +149,18 @@ def visualize_stiffness(problem, element_bodies):
     # and approximating the rest of the beams as being infinitely stiff
 
     # TODO: could recompute stability properties at each point
-    for index, reactions in deformation.reactions.items():
-        # Yijiang assumes pointing along +x
-        element = element_from_id[index]
-        body = element_bodies[element]
-        rotation = Pose(euler=Euler(pitch=np.pi/2))
-        world_from_local = multiply(rotation, get_pose(body))
-        for node, reaction_local in zip(elements[index], reactions):
-            # TODO: apply to torques as well
-            reaction_world = tform_point(world_from_local, reaction_local[:3])
-            reaction_from_node.setdefault(node, []).append(reaction_world)
-    for node, reaction in deformation.fixities.items():
+    #for index, reactions in deformation.reactions.items():
+    #    # Yijiang assumes pointing along +x
+    #    element = element_from_id[index]
+    #    body = element_bodies[element]
+    #    rotation = Pose(euler=Euler(pitch=np.pi/2))
+    #    world_from_local = multiply(rotation, get_pose(body))
+    #    for node, reaction_local in zip(elements[index], reactions):
+    #        # TODO: apply to torques as well
+    #        reaction_world = tform_point(world_from_local, reaction_local[:3])
+    #        reaction_from_node.setdefault(node, []).append(reaction_world)
+    # The fixities are global. The reaction forces are local
+    for node, reaction in deformation.fixities.items(): # Fixities are like the ground force to resist the structure?
         reaction_from_node.setdefault(node, []).append(reaction[:3])
 
     #reaction_from_node = deformation.displacements # For visualizing displacements
@@ -340,6 +341,9 @@ def main():
     args = parser.parse_args()
     print('Arguments:', args)
     np.set_printoptions(precision=3)
+
+    # TODO: randomly rotate the structure and analyze the effectiveness of different heuristics
+    # The stiffness checker assumes gravity is always -z. Apply rotation to heuristic
 
     if args.load is not None:
         load_experiment(args.load)

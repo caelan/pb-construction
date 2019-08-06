@@ -12,7 +12,8 @@ Score = namedtuple('Score', ['failure', 'runtime'])
 
 
 def score_result(result):
-    return Score(1. - round(result['success'], 3), round(result['runtime'], 3))
+    return Score(1. - round(result['success'], 3),
+                 round(result.get('runtime', 0), 3))
 
 
 def load_experiment(filename, overall=True):

@@ -73,28 +73,26 @@ GREEDY_HEURISTICS = [
     None,
     'z',
     #'dijkstra',
-    #'stiffness', # Performs poorly with respect to stiffness
+    'stiffness', # Performs poorly with respect to stiffness
 ]
 
-GREEDY_ALGORITHMS = [
-    'progression',
-    'regression',
-]
-
-def get_heuristic_fn(extrusion_path, heuristic, forward):
+def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
     # TODO: penalize disconnected
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
     distance_from_node = compute_distance_from_node(element_from_id.values(), node_points, ground_nodes)
     sign = +1 if forward else -1
     def fn(printed, element):
+        # Queue minimizes the statistic
         if heuristic is None:
             return 0
         elif heuristic == 'z':
             z = get_z(node_points, element)
             return sign*z
         elif heuristic == 'stiffness':
+            # Gets faster with fewer elements
             structure = printed | {element} if forward else printed - {element}
-            return score_stiffness(extrusion_path, element_from_id, structure)
+            stiffness = score_stiffness(extrusion_path, element_from_id, structure, checker=checker)
+            return stiffness # lower is better
         elif heuristic == 'dijkstra':
             # min, max, node not in set
             distance = np.average([distance_from_node[node] for node in element])
@@ -137,6 +135,7 @@ def compute_distance_from_node(elements, node_points, ground_nodes):
 def progression(robot, obstacles, element_bodies, extrusion_path,
                 heuristic='z', max_time=INF, max_backtrack=INF, stiffness=True, **kwargs):
 
+    start_time = time.time()
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                     precompute_collisions=False, max_attempts=500, **kwargs)
@@ -158,7 +157,11 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
     final_printed = frozenset(element_bodies)
     if not check_connected(ground_nodes, final_printed) or \
             not test_stiffness(extrusion_path, element_from_id, final_printed):
-        return None, {'success': False}
+        data = {
+            'success': False,
+            'runtime': elapsed_time(start_time),
+        }
+        return None, data
 
     initial_printed = frozenset()
     visited[initial_printed] = Node(None, None)
@@ -166,7 +169,6 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
 
     plan = None
     min_remaining = INF
-    start_time = time.time()
     num_evaluated = 0
     while queue and (elapsed_time(start_time) < max_time):
         num_evaluated += 1
@@ -213,11 +215,13 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
     # TODO: persistent search to reuse
     # TODO: max branching factor
 
+    start_time = time.time()
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
+    id_from_element = get_id_from_element(element_from_id)
+    checker = create_stiffness_checker(extrusion_path, verbose=False)
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                     precompute_collisions=False, max_attempts=500, **kwargs)
-    id_from_element = get_id_from_element(element_from_id)
-    heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, forward=False)
+    heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=False)
 
     queue = []
     visited = {}
@@ -231,14 +235,17 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
 
     initial_printed = frozenset(element_bodies)
     if not check_connected(ground_nodes, initial_printed) or \
-            not test_stiffness(extrusion_path, element_from_id, initial_printed):
-        return None, {'success': False}
+            not test_stiffness(extrusion_path, element_from_id, initial_printed, checker=checker):
+        data = {
+            'success': False,
+            'runtime': elapsed_time(start_time),
+        }
+        return None, data
     visited[initial_printed] = Node(None, None)
     add_successors(initial_printed)
 
     plan = None
     min_remaining = INF
-    start_time = time.time()
     num_evaluated = 0
     while queue and (elapsed_time(start_time) < max_time):
         priority, printed, element = heapq.heappop(queue)
@@ -254,7 +261,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
         next_printed = printed - {element}
         #draw_action(node_points, next_printed, element)
         if (next_printed in visited) or not check_connected(ground_nodes, next_printed) or \
-                not implies(stiffness, test_stiffness(extrusion_path, element_from_id, next_printed)):
+                not implies(stiffness, test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker)):
             continue
         command = sample_extrusion(print_gen_fn, ground_nodes, next_printed, element)
         if command is None:
@@ -266,8 +273,6 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
             break
         add_successors(next_printed)
 
-    # TODO: parallelize
-
     data = {
         'success': plan is not None,
         'length': INF if plan is None else len(plan),
@@ -277,3 +282,8 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
         'num_elements': len(element_bodies)
     }
     return plan, data
+
+GREEDY_ALGORITHMS = [
+    progression.__name__,
+    regression.__name__,
+]

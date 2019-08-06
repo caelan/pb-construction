@@ -295,36 +295,54 @@ def get_extructed_ids(element_from_id, elements):
     id_from_element = get_id_from_element(element_from_id)
     return sorted(id_from_element[e] for e in elements)
 
-def score_stiffness(extrusion_path, element_from_id, elements):
+def score_stiffness(extrusion_path, element_from_id, elements, checker=None):
     if not elements:
         return 0
-    checker = create_stiffness_checker(extrusion_path)
+    if checker is None:
+        checker = create_stiffness_checker(extrusion_path)
+
+    # TODO: sum the fixities scores. Could also analyze projection in xy plane
+    # TODO: sum of all element path distances
+
     # Lower is better
     extruded_ids = get_extructed_ids(element_from_id, elements)
     checker.solve(exist_element_ids=extruded_ids, if_cond_num=True)
+    _, nodal_displacement, _, _ = checker.get_solved_results()
+    trans_displacement = np.linalg.norm(nodal_displacement[:,1:4].tolist(), axis=1)
+    return np.max(trans_displacement)
+    #return np.sum(trans_displacement) # equivalently average # sum actually works after some brute force search
+
     #compliance = checker.get_compliance()
-    # TODO: use compliance?
+    #return -compliance # higher is better
+
+    # trans unit: meter, rot unit: rad
     trans_tol, rot_tol = checker.get_nodal_deformation_tol()
     max_trans, max_rot, _, _ = checker.get_max_nodal_deformation()
-    relative_trans = max_trans / trans_tol
-    relative_rot = max_rot / rot_tol
+    relative_trans = max_trans / trans_tol # lower is better
+    relative_rot = max_rot / rot_tol # lower is better
+    # sum of nodal deformations
 
-    #return max_trans
+    # TODO: the sum of all deformations
+    # More quickly approximate by taking out element with smallest deformation?
+
+    return relative_trans
     #return max(relative_trans, relative_rot)
-    #return relative_trans + relative_rot
-    return relative_trans * relative_rot # TODO: harmonic mean
+    #return relative_trans + relative_rot # arithmetic mean
+    #return relative_trans * relative_rot # geometric mean
+    #return 2*relative_trans * relative_rot / (relative_trans + relative_rot) # harmonic mean
 
 Deformation = namedtuple('Deformation', ['success', 'displacements', 'fixities', 'reactions']) # TODO: get_max_nodal_deformation
 Displacement = namedtuple('Displacement', ['dx', 'dy', 'dz', 'theta_x', 'theta_y', 'theta_z'])
 Reaction = namedtuple('Reaction', ['fx', 'fy', 'fz', 'mx', 'my', 'mz'])
 
-def evaluate_stiffness(extrusion_path, element_from_id, elements, verbose=False):
+def evaluate_stiffness(extrusion_path, element_from_id, elements, checker=None, verbose=True):
     # TODO: check each component individually
     if not elements:
         return Deformation(True, {}, {}, {})
     # TODO: reuse checker now that the bug is fixed (~3 times faster)
     #return True
-    checker = create_stiffness_checker(extrusion_path, verbose=verbose)
+    if checker is None:
+        checker = create_stiffness_checker(extrusion_path, verbose=False)
     extruded_ids = get_extructed_ids(element_from_id, elements)
 
     is_stiff = checker.solve(exist_element_ids=extruded_ids, if_cond_num=True)
@@ -343,11 +361,11 @@ def evaluate_stiffness(extrusion_path, element_from_id, elements, verbose=False)
     max_trans, max_rot, max_trans_vid, max_rot_vid = checker.get_max_nodal_deformation()
     # The inverse of stiffness is flexibility or compliance
     if verbose:
-        print('Stiff: {} | Compliance: {}'.format(is_stiff, checker.get_compliance()))
-        print('max deformation: translation - {0} / tol {1}, at node #{2}'.format(
-            max_trans, trans_tol, max_trans_vid))
-        print('max deformation: rotation - {0} / tol {1}, at node #{2}'.format(
-            max_rot, rot_tol, max_rot_vid))
+        print('Stiff: {} | Compliance: {:.5f}'.format(is_stiff, checker.get_compliance()))
+        print('Max translation deformation: {0:.5f} / {1:.5} = {2:.5}, at node #{3}'.format(
+            max_trans, trans_tol, max_trans / trans_tol, max_trans_vid))
+        print('Max rotation deformation: {0:.5f} / {1:.5} = {2:.5}, at node #{3}'.format(
+            max_rot, rot_tol, max_rot / rot_tol, max_rot_vid))
     #disc = 10
     #exagg_ratio = 1.0
     #time_step = 1.0
