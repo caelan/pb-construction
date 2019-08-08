@@ -301,16 +301,20 @@ def score_stiffness(extrusion_path, element_from_id, elements, checker=None):
     if checker is None:
         checker = create_stiffness_checker(extrusion_path)
 
-    # TODO: sum the fixities scores. Could also analyze projection in xy plane
+    # TODO: analyze fixities projections in the xy plane
     # TODO: sum of all element path distances
 
     # Lower is better
     extruded_ids = get_extructed_ids(element_from_id, elements)
     checker.solve(exist_element_ids=extruded_ids, if_cond_num=True)
-    _, nodal_displacement, _, _ = checker.get_solved_results()
-    trans_displacement = np.linalg.norm(nodal_displacement[:,1:4].tolist(), axis=1)
-    return np.max(trans_displacement)
-    #return np.sum(trans_displacement) # equivalently average # sum actually works after some brute force search
+    _, nodal_displacement, fixities_reaction, _ = checker.get_solved_results()
+    fixities_translation = np.linalg.norm(fixities_reaction[:,1:4].tolist(), axis=1)
+    #return np.max(fixities_translation)
+    return np.sum(fixities_translation)
+
+    nodal_translation = np.linalg.norm(nodal_displacement[:,1:4].tolist(), axis=1)
+    #return np.max(nodal_translation)
+    return np.sum(nodal_translation) # equivalently average # sum actually works after some brute force search
 
     #compliance = checker.get_compliance()
     #return -compliance # higher is better
