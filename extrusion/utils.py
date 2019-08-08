@@ -10,7 +10,7 @@ from collections import defaultdict, deque, namedtuple
 from pyconmech import stiffness_checker
 
 from examples.pybullet.utils.pybullet_tools.utils import set_point, Euler, get_movable_joints, set_joint_positions, \
-    pairwise_collision, Pose, multiply, Point, load_model, elapsed_time, \
+    pairwise_collision, Pose, multiply, Point, load_model, INF, elapsed_time, \
     HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, set_pose, user_input, draw_aabb, get_aabb
 from pddlstream.utils import get_connected_components
 
@@ -165,6 +165,8 @@ class PrintTrajectory(object):
         assert len(self.path) == len(self.tool_path)
         self.n1, self.n2 = reversed(element) if self.is_reverse else element
         self.element = element
+    def direction(self):
+        return self.n1, self.n2
     def reverse(self):
         return self.__class__(self.robot, self.joints, self.path[::-1],
                               self.tool_path[::-1], self.element, self.is_reverse)
@@ -301,13 +303,16 @@ def score_stiffness(extrusion_path, element_from_id, elements, checker=None):
     if checker is None:
         checker = create_stiffness_checker(extrusion_path)
 
+    # TODO: try rotational fixities moment
     # TODO: analyze fixities projections in the xy plane
     # TODO: sum of all element path distances
 
     # Lower is better
     extruded_ids = get_extructed_ids(element_from_id, elements)
     checker.solve(exist_element_ids=extruded_ids, if_cond_num=True)
-    _, nodal_displacement, fixities_reaction, _ = checker.get_solved_results()
+    success, nodal_displacement, fixities_reaction, _ = checker.get_solved_results()
+    if not success:
+        return INF
     fixities_translation = np.linalg.norm(fixities_reaction[:,1:4].tolist(), axis=1)
     #return np.max(fixities_translation)
     return np.sum(fixities_translation)

@@ -186,6 +186,8 @@ def visualize_stiffness(problem, element_bodies):
 
 ##################################################
 
+# TODO: sort by action cost heuristic
+
 ALGORITHMS = GREEDY_ALGORITHMS #+ [STRIPSTREAM_ALGORITHM]
 
 def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=False):

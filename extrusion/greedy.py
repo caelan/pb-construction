@@ -86,6 +86,7 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
         if heuristic is None:
             return 0
         elif heuristic == 'z':
+            # TODO: round values for more tie-breaking opportunities
             z = get_z(node_points, element)
             return sign*z
         elif heuristic == 'stiffness':
@@ -137,11 +138,13 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
 
     start_time = time.time()
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
+    #checker = create_stiffness_checker(extrusion_path, verbose=False)
+    checker = None
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                     precompute_collisions=False, max_attempts=500, **kwargs)
     id_from_element = get_id_from_element(element_from_id)
     elements = frozenset(element_bodies)
-    heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, forward=True)
+    heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=True)
 
     queue = []
     visited = {}
@@ -184,7 +187,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
             num_evaluated, min_remaining, len(printed), element, id_from_element[element], elapsed_time(start_time)))
         next_printed = printed | {element}
         if (next_printed in visited) or not check_connected(ground_nodes, next_printed) or \
-                (stiffness and not test_stiffness(extrusion_path, element_from_id, next_printed)):
+                (stiffness and not test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker)):
             continue
         command = sample_extrusion(print_gen_fn, ground_nodes, printed, element)
         if command is None:
@@ -196,9 +199,11 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
             break
         add_successors(next_printed)
 
+    sequence = None
+    if plan is not None:
+        sequence = [traj.element for traj in plan]
     data = {
-        'success': plan is not None,
-        'length': INF if plan is None else len(plan),
+        'sequence': sequence,
         'runtime': elapsed_time(start_time),
         'num_evaluated': num_evaluated,
         'num_remaining': min_remaining,
@@ -218,7 +223,8 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
     start_time = time.time()
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
     id_from_element = get_id_from_element(element_from_id)
-    checker = create_stiffness_checker(extrusion_path, verbose=False)
+    #checker = create_stiffness_checker(extrusion_path, verbose=False)
+    checker = None
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                     precompute_collisions=False, max_attempts=500, **kwargs)
     heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=False)
@@ -273,9 +279,12 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
             break
         add_successors(next_printed)
 
+    # TODO: store maximum stiffness violations
+    sequence = None
+    if plan is not None:
+        sequence = [traj.element for traj in plan]
     data = {
-        'success': plan is not None,
-        'length': INF if plan is None else len(plan),
+        'sequence': sequence,
         'runtime': elapsed_time(start_time),
         'num_evaluated': num_evaluated,
         'num_remaining': min_remaining,
