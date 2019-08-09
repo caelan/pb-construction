@@ -277,6 +277,7 @@ def get_connected_structures(elements):
 ##################################################
 
 def create_stiffness_checker(extrusion_path, verbose=False):
+    # TODO: the stiffness checker likely has a memory leak
     # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
     with HideOutput():
         checker = stiffness_checker(json_file_path=extrusion_path, verbose=verbose)

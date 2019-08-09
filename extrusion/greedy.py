@@ -138,8 +138,8 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
 
     start_time = time.time()
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
-    #checker = create_stiffness_checker(extrusion_path, verbose=False)
-    checker = None
+    checker = create_stiffness_checker(extrusion_path, verbose=False)
+    #checker = None
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                     precompute_collisions=False, max_attempts=500, **kwargs)
     id_from_element = get_id_from_element(element_from_id)
@@ -223,8 +223,8 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
     start_time = time.time()
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
     id_from_element = get_id_from_element(element_from_id)
-    #checker = create_stiffness_checker(extrusion_path, verbose=False)
-    checker = None
+    checker = create_stiffness_checker(extrusion_path, verbose=False)
+    #checker = None
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                     precompute_collisions=False, max_attempts=500, **kwargs)
     heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=False)
