@@ -22,7 +22,7 @@ from extrusion.stripstream import plan_sequence, STRIPSTREAM_ALGORITHM
 from extrusion.utils import load_world, check_connected, get_connected_structures, test_stiffness, evaluate_stiffness, \
     USE_FLOOR
 from extrusion.parsing import load_extrusion, draw_element, create_elements, \
-    draw_model, enumerate_paths, get_extrusion_path
+    draw_model, enumerate_problems, get_extrusion_path
 from extrusion.stream import get_print_gen_fn
 from extrusion.greedy import regression, progression, GREEDY_HEURISTICS, GREEDY_ALGORITHMS
 
@@ -199,7 +199,8 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
 
     set_seed(hash((time.time(), args.seed)))
     # TODO: change dir for pddlstream
-    element_from_id, node_points, ground_nodes = load_extrusion(args.problem, verbose=True)
+    problem_path = get_extrusion_path(args.problem)
+    element_from_id, node_points, ground_nodes = load_extrusion(problem_path, verbose=True)
     elements = list(element_from_id.values())
     #elements, ground_nodes = downsample_nodes(elements, node_points, ground_nodes)
     # plan = plan_sequence_test(node_points, elements, ground_nodes)
@@ -213,7 +214,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     # joint_weights = compute_joint_weights(robot, num=1000)
     initial_conf = get_joint_positions(robot, get_movable_joints(robot))
     # dump_body(robot)
-    visualize_stiffness(args.problem, element_bodies)
+    visualize_stiffness(problem_path, element_bodies)
     # debug_elements(robot, node_points, node_order, elements)
 
     with LockRenderer(False):
@@ -227,11 +228,11 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
                                                        trajectories=trajectories, collisions=not args.cfree,
                                                        max_time=args.max_time, disable=args.disable, debug=False)
         elif args.algorithm == 'progression':
-            planned_trajectories, data = progression(robot, obstacles, element_bodies, args.problem, heuristic=args.bias,
+            planned_trajectories, data = progression(robot, obstacles, element_bodies, problem_path, heuristic=args.bias,
                                                      max_time=args.max_time, collisions=not args.cfree,
                                                      disable=args.disable, stiffness=args.stiffness)
         elif args.algorithm == 'regression':
-            planned_trajectories, data = regression(robot, obstacles, element_bodies, args.problem, heuristic=args.bias,
+            planned_trajectories, data = regression(robot, obstacles, element_bodies, problem_path, heuristic=args.bias,
                                                     max_time=args.max_time, collisions=not args.cfree,
                                                     disable=args.disable, stiffness=args.stiffness)
         else:
@@ -252,7 +253,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     # random.shuffle(planned_elements)
     # planned_elements = sorted(elements, key=lambda e: max(node_points[n][2] for n in e)) # TODO: tiebreak by angle or x
 
-    verify_plan(args.problem, planned_elements)
+    verify_plan(problem_path, planned_elements)
     if watch:
         display_trajectories(ground_nodes, planned_trajectories)
     if not verbose:
@@ -266,7 +267,7 @@ def train_parallel(num=10, max_time=30*60):
     print('Trials:', num)
     print('Max time:', max_time)
 
-    problems = enumerate_paths()
+    problems = enumerate_problems()
     #problems = [path for path in problems if 'simple_frame' in path]
     configurations = [Configuration(*c) for c in product(
         range(num), problems, ALGORITHMS, GREEDY_HEURISTICS, [max_time],
@@ -356,12 +357,10 @@ def main():
 
     args.seed = hash(time.time())
     if args.problem == 'all':
-        for extrusion_path in enumerate_paths():
-            args.problem = extrusion_path
+        for problem in enumerate_problems():
+            args.problem = problem
             plan_extrusion(args, verbose=True, watch=False)
     else:
-        extrusion_path = get_extrusion_path(args.problem)
-        args.problem = extrusion_path
         plan_extrusion(args, viewer=args.viewer, verbose=True, watch=True)
 
     # TODO: collisions at the ends of elements?
@@ -387,9 +386,6 @@ if __name__ == '__main__':
 
 # TODO: look at the actual violation of the stiffness
 # TODO: local search to reduce the violation
-# TODO: sort by deformation in the priority queue
-# TODO: identify the max violating node
-# TODO: compliance (work on the structure)
 # TODO: introduce support structures and then require that they be removed
 # Robot spiderweb printing weaving hook which may slide
 # Graph traversal (path within the graph): load

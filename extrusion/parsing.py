@@ -38,18 +38,22 @@ def get_extrusion_path(extrusion_name):
         filename = EXTRUSION_FILENAMES[extrusion_name]
     else:
         filename = '{}.json'.format(extrusion_name)
-    root_directory = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(root_directory, EXTRUSION_DIRECTORY, filename)
+    root_directory = os.path.dirname(__file__)
+    return os.path.abspath(os.path.join(root_directory, EXTRUSION_DIRECTORY, filename))
 
-def enumerate_paths():
+def enumerate_problems():
     directory = os.path.abspath(os.path.join(os.path.dirname(__file__), EXTRUSION_DIRECTORY))
     for filename in sorted(os.listdir(directory)):
         if filename.endswith('.json'):
-            yield os.path.join(directory, filename)
+            yield filename
+
+def extrusion_name_from_path(extrusion_path):
+    extrusion_name, _ = os.path.splitext(os.path.basename(extrusion_path))
+    return extrusion_name
 
 def load_extrusion(extrusion_path, verbose=False):
-    extrusion_name, _ = os.path.splitext(os.path.basename(extrusion_path))
     if verbose:
+        extrusion_name = extrusion_name_from_path(extrusion_path)
         print('Name: {}'.format(extrusion_name))
         print('Path: {}'.format(extrusion_path))
     with open(extrusion_path, 'r') as f:

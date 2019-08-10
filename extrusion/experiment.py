@@ -3,18 +3,44 @@ import numpy as np
 
 from collections import namedtuple, OrderedDict
 
-from pddlstream.utils import str_from_object
+from extrusion.parsing import load_extrusion, get_extrusion_path, extrusion_name_from_path
+from extrusion.utils import evaluate_stiffness, create_stiffness_checker, TRANS_TOL, ROT_TOL
+from pddlstream.utils import str_from_object, INF
 from examples.pybullet.utils.pybullet_tools.utils import read_pickle
 
 Configuration = namedtuple('Configuration', ['seed', 'problem', 'algorithm', 'bias', 'max_time',
                                              'cfree', 'disable', 'stiffness', 'motions'])
-Score = namedtuple('Score', ['failure', 'runtime'])
+#Score = namedtuple('Score', ['failure', 'runtime', 'max_trans', 'max_rot'])
 
 
 def score_result(result):
-    return Score(1. - round(result['success'], 3),
-                 round(result.get('runtime', 0), 3))
+    return '{{failure={:.3f}, runtime={:.3f}, max_trans={:.5f}, failure={:.5f}}}'.format(
+        1. - result['success'], result.get('runtime', 0),
+        result.get('max_trans', 0), result.get('max_rot', 0))
 
+def max_plan_deformation(config, result):
+    plan = result.get('sequence', None)
+    if plan is None:
+        #return 0, 0
+        return TRANS_TOL, ROT_TOL
+    # TODO: absence of entry means ignore
+    problem = extrusion_name_from_path(config.problem)
+    problem_path = get_extrusion_path(problem)
+    element_from_id, _, _ = load_extrusion(problem_path)
+    checker = create_stiffness_checker(problem_path, verbose=False)
+    #trans_tol, rot_tol = checker.get_nodal_deformation_tol()
+
+    printed = []
+    translations = []
+    rotations = []
+    for element in plan:
+        printed.append(element)
+        deformation = evaluate_stiffness(problem, element_from_id, printed,
+                                         checker=checker, verbose=False)
+        trans, rot, _, _ = checker.get_max_nodal_deformation()
+        translations.append(trans)
+        rotations.append(rot)
+    return max(translations), max(rotations)
 
 def load_experiment(filename, overall=True):
     # TODO: maybe just pass the random seed as a separate arg
@@ -22,7 +48,15 @@ def load_experiment(filename, overall=True):
     # https://ipc2018-classical.bitbucket.io/
     data_from_problem = OrderedDict()
     for config, result in read_pickle(filename):
+        #config.problem = extrusion_name_from_path(config.problem)
         problem = 'all' if overall else config.problem
+        plan = result.get('sequence', None)
+        result['success'] = (plan is not None)
+        result['length'] = len(plan) if result['success'] else INF
+        max_trans, max_rot = max_plan_deformation(config, result)
+        result['max_trans'] = max_trans
+        result['max_rot'] = max_rot
+        result.pop('sequence', None)
         data_from_problem.setdefault(problem, []).append((config, result))
 
     for p_idx, problem in enumerate(sorted(data_from_problem)):
@@ -47,7 +81,7 @@ def load_experiment(filename, overall=True):
                 for name, value in result.items():
                     accumulated_result.setdefault(name, []).append(value)
             mean_result = {name: round(np.average(values), 3) for name, values in accumulated_result.items()}
-            score = score_result(mean_result)
             key = {field: value for field, value in config._asdict().items()
-                                   if 2 <= len(value_per_field[field])}
+                   if 2 <= len(value_per_field[field])}
+            score = score_result(mean_result)
             print('{}) {} ({}): {}'.format(c_idx, str_from_object(key), len(results), str_from_object(score)))

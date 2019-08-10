@@ -161,7 +161,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
     if not check_connected(ground_nodes, final_printed) or \
             not test_stiffness(extrusion_path, element_from_id, final_printed):
         data = {
-            'success': False,
+            'sequence': None,
             'runtime': elapsed_time(start_time),
         }
         return None, data
@@ -243,7 +243,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
     if not check_connected(ground_nodes, initial_printed) or \
             not test_stiffness(extrusion_path, element_from_id, initial_printed, checker=checker):
         data = {
-            'success': False,
+            'sequence': None,
             'runtime': elapsed_time(start_time),
         }
         return None, data
@@ -279,7 +279,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
             break
         add_successors(next_printed)
 
-    # TODO: store maximum stiffness violations
+    # TODO: store maximum stiffness violations (for speed purposes)
     sequence = None
     if plan is not None:
         sequence = [traj.element for traj in plan]

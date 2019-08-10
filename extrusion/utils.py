@@ -276,6 +276,9 @@ def get_connected_structures(elements):
 
 ##################################################
 
+TRANS_TOL = 0.0015
+ROT_TOL = 5 * np.pi / 180
+
 def create_stiffness_checker(extrusion_path, verbose=False):
     # TODO: the stiffness checker likely has a memory leak
     # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
@@ -286,8 +289,8 @@ def create_stiffness_checker(extrusion_path, verbose=False):
     checker.set_self_weight_load(True)
     #checker.set_nodal_displacement_tol(transl_tol=0.005, rot_tol=10 * np.pi / 180)
     #checker.set_nodal_displacement_tol(transl_tol=0.003, rot_tol=5 * np.pi / 180)
-    checker.set_nodal_displacement_tol(transl_tol=0.0015, rot_tol=5 * np.pi / 180)
     # checker.set_nodal_displacement_tol(transl_tol=1e-3, rot_tol=3 * (np.pi / 360))
+    checker.set_nodal_displacement_tol(transl_tol=TRANS_TOL, rot_tol=ROT_TOL)
 
     return checker
 
@@ -349,10 +352,10 @@ def evaluate_stiffness(extrusion_path, element_from_id, elements, checker=None, 
     # TODO: check each component individually
     if not elements:
         return Deformation(True, {}, {}, {})
-    # TODO: reuse checker now that the bug is fixed (~3 times faster)
     #return True
     if checker is None:
         checker = create_stiffness_checker(extrusion_path, verbose=False)
+    # TODO: load element_from_id
     extruded_ids = get_extructed_ids(element_from_id, elements)
 
     is_stiff = checker.solve(exist_element_ids=extruded_ids, if_cond_num=True)
