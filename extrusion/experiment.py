@@ -14,7 +14,7 @@ Configuration = namedtuple('Configuration', ['seed', 'problem', 'algorithm', 'bi
 
 
 def score_result(result):
-    return '{{failure={:.3f}, runtime={:.3f}, max_trans={:.5f}, failure={:.5f}}}'.format(
+    return '{{failure={:.3f}, runtime={:.3f}, max_trans={:.5f}, max_rot={:.5f}}}'.format(
         1. - result['success'], result.get('runtime', 0),
         result.get('max_trans', 0), result.get('max_rot', 0))
 

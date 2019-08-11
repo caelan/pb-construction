@@ -3,15 +3,14 @@ from __future__ import print_function
 import os
 import random
 import numpy as np
-import time
 
 from collections import defaultdict, deque, namedtuple
 
 from pyconmech import stiffness_checker
 
-from examples.pybullet.utils.pybullet_tools.utils import set_point, Euler, get_movable_joints, set_joint_positions, \
-    pairwise_collision, Pose, multiply, Point, load_model, INF, elapsed_time, \
-    HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, set_pose, user_input, draw_aabb, get_aabb
+from examples.pybullet.utils.pybullet_tools.utils import set_point, Euler, set_joint_positions, \
+    pairwise_collision, Pose, multiply, Point, load_model, HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, set_pose, \
+    get_aabb
 from pddlstream.utils import get_connected_components
 
 KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
@@ -300,49 +299,6 @@ def get_id_from_element(element_from_id):
 def get_extructed_ids(element_from_id, elements):
     id_from_element = get_id_from_element(element_from_id)
     return sorted(id_from_element[e] for e in elements)
-
-def score_stiffness(extrusion_path, element_from_id, elements, checker=None):
-    if not elements:
-        return 0
-    if checker is None:
-        checker = create_stiffness_checker(extrusion_path)
-
-    # TODO: try rotational fixities moment
-    # TODO: analyze fixities projections in the xy plane
-    # TODO: sum of all element path distances
-
-    # Lower is better
-    extruded_ids = get_extructed_ids(element_from_id, elements)
-    checker.solve(exist_element_ids=extruded_ids, if_cond_num=True)
-    success, nodal_displacement, fixities_reaction, _ = checker.get_solved_results()
-    if not success:
-        return INF
-    fixities_translation = np.linalg.norm(fixities_reaction[:,1:4].tolist(), axis=1)
-    #return np.max(fixities_translation)
-    return np.sum(fixities_translation)
-
-    nodal_translation = np.linalg.norm(nodal_displacement[:,1:4].tolist(), axis=1)
-    #return np.max(nodal_translation)
-    return np.sum(nodal_translation) # equivalently average # sum actually works after some brute force search
-
-    #compliance = checker.get_compliance()
-    #return -compliance # higher is better
-
-    # trans unit: meter, rot unit: rad
-    trans_tol, rot_tol = checker.get_nodal_deformation_tol()
-    max_trans, max_rot, _, _ = checker.get_max_nodal_deformation()
-    relative_trans = max_trans / trans_tol # lower is better
-    relative_rot = max_rot / rot_tol # lower is better
-    # sum of nodal deformations
-
-    # TODO: the sum of all deformations
-    # More quickly approximate by taking out element with smallest deformation?
-
-    return relative_trans
-    #return max(relative_trans, relative_rot)
-    #return relative_trans + relative_rot # arithmetic mean
-    #return relative_trans * relative_rot # geometric mean
-    #return 2*relative_trans * relative_rot / (relative_trans + relative_rot) # harmonic mean
 
 Deformation = namedtuple('Deformation', ['success', 'displacements', 'fixities', 'reactions']) # TODO: get_max_nodal_deformation
 Displacement = namedtuple('Displacement', ['dx', 'dy', 'dz', 'theta_x', 'theta_y', 'theta_z'])

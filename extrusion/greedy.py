@@ -13,7 +13,7 @@ from examples.pybullet.utils.pybullet_tools.utils import elapsed_time, \
 from extrusion.parsing import load_extrusion, draw_element
 from extrusion.stream import get_print_gen_fn
 from extrusion.utils import check_connected, test_stiffness, \
-    create_stiffness_checker, score_stiffness, get_id_from_element, load_world, get_supported_orders
+    create_stiffness_checker, get_id_from_element, load_world, get_supported_orders, get_extructed_ids
 
 # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
 from pybullet_tools.utils import connect, ClientSaver, wait_for_user, INF, get_distance
@@ -130,6 +130,52 @@ def compute_distance_from_node(elements, node_points, ground_nodes):
                 cost_from_node[node2] = cost2
                 heapq.heappush(queue, (cost2, node2))
     return cost_from_node
+
+def score_stiffness(extrusion_path, element_from_id, elements, checker=None):
+    if not elements:
+        return 0
+    if checker is None:
+        checker = create_stiffness_checker(extrusion_path)
+    # TODO: analyze fixities projections in the xy plane
+    # TODO: sum of all element path distances
+
+    # Lower is better
+    extruded_ids = get_extructed_ids(element_from_id, elements)
+    checker.solve(exist_element_ids=extruded_ids, if_cond_num=True)
+    success, nodal_displacement, fixities_reaction, _ = checker.get_solved_results()
+    if not success:
+        return INF
+    # Yijiang was supprised that fixities_translation worked
+    #fixities_translation = np.linalg.norm(fixities_reaction[:,1:4].tolist(), axis=1)
+    ##return np.max(fixities_translation)
+    #return np.sum(fixities_translation)
+
+    fixities_rotation = np.linalg.norm(fixities_reaction[:,4:].tolist(), axis=1)
+    #return np.max(fixities_rotation)
+    return np.sum(fixities_rotation)
+
+    nodal_translation = np.linalg.norm(nodal_displacement[:,1:4].tolist(), axis=1)
+    #return np.max(nodal_translation)
+    return np.sum(nodal_translation) # equivalently average # sum actually works after some brute force search
+
+    #compliance = checker.get_compliance()
+    #return -compliance # higher is better
+
+    # trans unit: meter, rot unit: rad
+    trans_tol, rot_tol = checker.get_nodal_deformation_tol()
+    max_trans, max_rot, _, _ = checker.get_max_nodal_deformation()
+    relative_trans = max_trans / trans_tol # lower is better
+    relative_rot = max_rot / rot_tol # lower is better
+    # sum of nodal deformations
+
+    # TODO: the sum of all deformations
+    # More quickly approximate by taking out element with smallest deformation?
+
+    return relative_trans
+    #return max(relative_trans, relative_rot)
+    #return relative_trans + relative_rot # arithmetic mean
+    #return relative_trans * relative_rot # geometric mean
+    #return 2*relative_trans * relative_rot / (relative_trans + relative_rot) # harmonic mean
 
 ##################################################
 
