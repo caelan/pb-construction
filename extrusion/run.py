@@ -269,7 +269,9 @@ def train_parallel(num=10, max_time=30*60):
     print('Trials:', num)
     print('Max time:', max_time)
 
-    problems = enumerate_problems()
+    problems = list(enumerate_problems())
+    #problems = ['simple_frame']
+    print('Problems ({}): {}'.format(len(problems), problems))
     #problems = [path for path in problems if 'simple_frame' in path]
     configurations = [Configuration(*c) for c in product(
         range(num), problems, ALGORITHMS, GREEDY_HEURISTICS, [max_time],

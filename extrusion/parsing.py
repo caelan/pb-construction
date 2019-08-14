@@ -45,7 +45,7 @@ def enumerate_problems():
     directory = os.path.abspath(os.path.join(os.path.dirname(__file__), EXTRUSION_DIRECTORY))
     for filename in sorted(os.listdir(directory)):
         if filename.endswith('.json'):
-            yield filename
+            yield extrusion_name_from_path(filename)
 
 def extrusion_name_from_path(extrusion_path):
     extrusion_name, _ = os.path.splitext(os.path.basename(extrusion_path))
