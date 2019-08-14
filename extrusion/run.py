@@ -273,9 +273,13 @@ def train_parallel(num=10, max_time=30*60):
     #problems = ['simple_frame']
     print('Problems ({}): {}'.format(len(problems), problems))
     #problems = [path for path in problems if 'simple_frame' in path]
+    cfree = False
+    disable = True
+    stiffness = True # store_false
+    motions = False
     configurations = [Configuration(*c) for c in product(
         range(num), problems, ALGORITHMS, GREEDY_HEURISTICS, [max_time],
-        [False], [False], [True], [False])]
+        [cfree], [disable], [stiffness], [motions])]
     print('Configurations: {}'.format(len(configurations)))
 
     serial = is_darwin()

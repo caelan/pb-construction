@@ -53,9 +53,9 @@ def load_experiment(filename, overall=True):
         plan = result.get('sequence', None)
         result['success'] = (plan is not None)
         result['length'] = len(plan) if result['success'] else INF
-        max_trans, max_rot = max_plan_deformation(config, result)
-        result['max_trans'] = max_trans
-        result['max_rot'] = max_rot
+        #max_trans, max_rot = max_plan_deformation(config, result)
+        #result['max_trans'] = max_trans
+        #result['max_rot'] = max_rot
         result.pop('sequence', None)
         data_from_problem.setdefault(problem, []).append((config, result))
 
