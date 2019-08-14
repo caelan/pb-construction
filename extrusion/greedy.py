@@ -73,14 +73,19 @@ GREEDY_HEURISTICS = [
     None,
     'z',
     #'dijkstra',
+    #'fixed-dijkstra',
     'stiffness', # Performs poorly with respect to stiffness
+    'fixed-stiffness',
 ]
 
 def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
     # TODO: penalize disconnected
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
-    distance_from_node = compute_distance_from_node(element_from_id.values(), node_points, ground_nodes)
+    elements = set(element_from_id.values())
+    distance_from_node = compute_distance_from_node(elements, node_points, ground_nodes)
     sign = +1 if forward else -1
+    fixed = ('fixed' in heuristic)
+
     def fn(printed, element):
         # Queue minimizes the statistic
         if heuristic is None:
@@ -89,18 +94,24 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
             # TODO: round values for more tie-breaking opportunities
             z = get_z(node_points, element)
             return sign*z
-        elif heuristic == 'stiffness':
+        elif 'stiffness' in heuristic:
+            # TODO: add different variations
             # Gets faster with fewer elements
             structure = printed | {element} if forward else printed - {element}
-            stiffness = score_stiffness(extrusion_path, element_from_id, structure, checker=checker)
-            return stiffness # lower is better
+            return score_stiffness(extrusion_path, element_from_id, structure, checker=checker) # lower is better
         elif heuristic == 'dijkstra':
             # min, max, node not in set
+            # TODO: recompute online (but all at once)
+            # TODO: sum of all element path distances
             distance = np.average([distance_from_node[node] for node in element])
             return sign * distance
-            # Could also recompute online
         raise ValueError(heuristic)
-    return fn
+    if not fixed:
+        return fn
+    # TODO: flip for progression
+    # TODO: sort FastDownward by the (fixed) action cost
+    fixed_cache = {element: fn(elements, element) for element in elements}
+    return lambda _, element: fixed_cache[element]
 
 def get_z(node_points, element):
     # TODO: tiebreak by angle or x
@@ -137,7 +148,6 @@ def score_stiffness(extrusion_path, element_from_id, elements, checker=None):
     if checker is None:
         checker = create_stiffness_checker(extrusion_path)
     # TODO: analyze fixities projections in the xy plane
-    # TODO: sum of all element path distances
 
     # Lower is better
     extruded_ids = get_extructed_ids(element_from_id, elements)
@@ -145,35 +155,27 @@ def score_stiffness(extrusion_path, element_from_id, elements, checker=None):
     success, nodal_displacement, fixities_reaction, _ = checker.get_solved_results()
     if not success:
         return INF
-    # Yijiang was supprised that fixities_translation worked
-    fixities_translation = np.linalg.norm(fixities_reaction[:,1:4].tolist(), axis=1)
-    ##return np.max(fixities_translation)
-    #return np.sum(fixities_translation)
-
-    # TODO: use the initial ordering as a heuristic
-    # TODO: sort FastDownward by the (fixed) action cost
-    fixities_rotation = np.linalg.norm(fixities_reaction[:,4:].tolist(), axis=1)
-    #return np.max(fixities_rotation)
-    return np.sum(fixities_rotation)
-
-    nodal_translation = np.linalg.norm(nodal_displacement[:,1:4].tolist(), axis=1)
-    #return np.max(nodal_translation)
-    #return np.sum(nodal_translation) # equivalently average # sum actually works after some brute force search
-
-    #compliance = checker.get_compliance()
-    #return -compliance # higher is better
+    #operation = np.max
+    operation = np.sum # equivalently average
 
     # trans unit: meter, rot unit: rad
     trans_tol, rot_tol = checker.get_nodal_deformation_tol()
     max_trans, max_rot, _, _ = checker.get_max_nodal_deformation()
     relative_trans = max_trans / trans_tol # lower is better
     relative_rot = max_rot / rot_tol # lower is better
-    # sum of nodal deformations
+    # More quickly approximate deformations by modifying the matrix operations incrementally
 
-    # TODO: the sum of all deformations
-    # More quickly approximate by taking out element with smallest deformation?
-
-    return relative_trans
+    heuristic = 'fixities_rotation'
+    scores = {
+        # Yijiang was suprised that fixities_translation worked
+        'fixities_translation': np.linalg.norm(fixities_reaction[:,1:4].tolist(), axis=1),
+        'fixities_rotation': np.linalg.norm(fixities_reaction[:,4:].tolist(), axis=1),
+        'nodal_translation': np.linalg.norm(nodal_displacement[:,1:4].tolist(), axis=1),
+        'compliance': [-checker.get_compliance()], # negated because higher is better
+        'deformation': [relative_trans, relative_rot],
+    }
+    return operation(scores[heuristic])
+    #return relative_trans
     #return max(relative_trans, relative_rot)
     #return relative_trans + relative_rot # arithmetic mean
     #return relative_trans * relative_rot # geometric mean
@@ -300,6 +302,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
     add_successors(initial_printed)
 
     if has_gui():
+        # TODO: recompute then sort rather than use the queue
         sequence = []
         while queue:
             _, _, element = heapq.heappop(queue)
