@@ -10,13 +10,13 @@ import numpy as np
 
 from examples.pybullet.utils.pybullet_tools.utils import elapsed_time, \
     remove_all_debug, wait_for_user, has_gui, LockRenderer, reset_simulation, disconnect
-from extrusion.parsing import load_extrusion, draw_element
+from extrusion.parsing import load_extrusion, draw_element, draw_sequence
 from extrusion.stream import get_print_gen_fn
 from extrusion.utils import check_connected, test_stiffness, \
     create_stiffness_checker, get_id_from_element, load_world, get_supported_orders, get_extructed_ids
 
 # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
-from pybullet_tools.utils import connect, ClientSaver, wait_for_user, INF, get_distance
+from pybullet_tools.utils import connect, ClientSaver, wait_for_user, INF, get_distance, has_gui, remove_all_debug
 from pddlstream.utils import neighbors_from_orders, adjacent_from_edges, implies
 
 State = namedtuple('State', ['element', 'printed', 'plan'])
@@ -146,17 +146,19 @@ def score_stiffness(extrusion_path, element_from_id, elements, checker=None):
     if not success:
         return INF
     # Yijiang was supprised that fixities_translation worked
-    #fixities_translation = np.linalg.norm(fixities_reaction[:,1:4].tolist(), axis=1)
+    fixities_translation = np.linalg.norm(fixities_reaction[:,1:4].tolist(), axis=1)
     ##return np.max(fixities_translation)
     #return np.sum(fixities_translation)
 
+    # TODO: use the initial ordering as a heuristic
+    # TODO: sort FastDownward by the (fixed) action cost
     fixities_rotation = np.linalg.norm(fixities_reaction[:,4:].tolist(), axis=1)
     #return np.max(fixities_rotation)
     return np.sum(fixities_rotation)
 
     nodal_translation = np.linalg.norm(nodal_displacement[:,1:4].tolist(), axis=1)
     #return np.max(nodal_translation)
-    return np.sum(nodal_translation) # equivalently average # sum actually works after some brute force search
+    #return np.sum(nodal_translation) # equivalently average # sum actually works after some brute force search
 
     #compliance = checker.get_compliance()
     #return -compliance # higher is better
@@ -274,6 +276,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                     precompute_collisions=False, max_attempts=500, **kwargs)
     heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=False)
+    # TODO: compute the heuristic function once and fix
 
     queue = []
     visited = {}
@@ -295,6 +298,16 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
         return None, data
     visited[initial_printed] = Node(None, None)
     add_successors(initial_printed)
+
+    if has_gui():
+        sequence = []
+        while queue:
+            _, _, element = heapq.heappop(queue)
+            sequence.append(element)
+        sequence = sequence[::-1]
+        remove_all_debug()
+        draw_sequence(sequence, node_points)
+        wait_for_user()
 
     plan = None
     min_remaining = INF

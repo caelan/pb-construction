@@ -1,11 +1,11 @@
 import json
 import os
-
+import colorsys
 import numpy as np
 
 from collections import namedtuple, OrderedDict
 from examples.pybullet.utils.pybullet_tools.utils import add_line, create_cylinder, set_point, set_quat, \
-    quat_from_euler, Euler
+    quat_from_euler, Euler, spaced_colors
 from extrusion.utils import is_ground
 
 Element = namedtuple('Element', ['id', 'layer', 'nodes'])
@@ -146,5 +146,13 @@ def draw_model(elements, node_points, ground_nodes):
     handles = []
     for element in elements:
         color = (0, 0, 1) if is_ground(element, ground_nodes) else (1, 0, 0)
+        handles.append(draw_element(node_points, element, color=color))
+    return handles
+
+def draw_sequence(elements, node_points):
+    #colors = spaced_colors(len(elements))
+    colors = [colorsys.hsv_to_rgb(h, s=1, v=1) for h in np.linspace(0, 0.75, len(elements), endpoint=True)]
+    handles = []
+    for element, color in zip(elements, colors):
         handles.append(draw_element(node_points, element, color=color))
     return handles

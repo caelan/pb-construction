@@ -22,7 +22,7 @@ from extrusion.stripstream import plan_sequence, STRIPSTREAM_ALGORITHM
 from extrusion.utils import load_world, check_connected, get_connected_structures, test_stiffness, evaluate_stiffness, \
     USE_FLOOR
 from extrusion.parsing import load_extrusion, draw_element, create_elements, \
-    draw_model, enumerate_problems, get_extrusion_path
+    draw_model, enumerate_problems, get_extrusion_path, draw_sequence
 from extrusion.stream import get_print_gen_fn
 from extrusion.greedy import regression, progression, GREEDY_HEURISTICS, GREEDY_ALGORITHMS
 
@@ -209,8 +209,10 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     with LockRenderer():
         draw_pose(unit_pose(), length=1.)
         obstacles, robot = load_world()
+        #color = (0, 0, 0, 1)
+        color = (0, 0, 0, 0)
         element_bodies = dict(zip(elements, create_elements(
-            node_points, elements, color=(0, 0, 0, 1))))
+            node_points, elements, color=color)))
     # joint_weights = compute_joint_weights(robot, num=1000)
     initial_conf = get_joint_positions(robot, get_movable_joints(robot))
     # dump_body(robot)
@@ -249,13 +251,13 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     reset_simulation()
     disconnect()
 
-    planned_elements = [traj.element for traj in planned_trajectories]
+    # planned_elements = [traj.element for traj in planned_trajectories]
     # random.shuffle(planned_elements)
     # planned_elements = sorted(elements, key=lambda e: max(node_points[n][2] for n in e)) # TODO: tiebreak by angle or x
 
-    verify_plan(problem_path, planned_elements)
+    #verify_plan(problem_path, planned_elements)
     if watch:
-        display_trajectories(ground_nodes, planned_trajectories)
+        display_trajectories(node_points, ground_nodes, planned_trajectories, animate=not args.disable)
     if not verbose:
         sys.stdout.close()
     return args, data
