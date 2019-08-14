@@ -84,7 +84,11 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
     elements = set(element_from_id.values())
     distance_from_node = compute_distance_from_node(elements, node_points, ground_nodes)
     sign = +1 if forward else -1
-    fixed = ('fixed' in heuristic)
+
+    stiffness_cache = {}
+    if heuristic == 'fixed-stiffness':
+        stiffness_cache.update({element: score_stiffness(extrusion_path, element_from_id, elements - {element},
+                                                         checker=checker) for element in elements})
 
     def fn(printed, element):
         # Queue minimizes the statistic
@@ -94,11 +98,14 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
             # TODO: round values for more tie-breaking opportunities
             z = get_z(node_points, element)
             return sign*z
-        elif 'stiffness' in heuristic:
+        elif heuristic == 'stiffness':
             # TODO: add different variations
             # Gets faster with fewer elements
             structure = printed | {element} if forward else printed - {element}
             return score_stiffness(extrusion_path, element_from_id, structure, checker=checker) # lower is better
+        elif heuristic == 'fixed-stiffness':
+            # TODO: sort FastDownward by the (fixed) action cost
+            return stiffness_cache[element]
         elif heuristic == 'dijkstra':
             # min, max, node not in set
             # TODO: recompute online (but all at once)
@@ -106,12 +113,7 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
             distance = np.average([distance_from_node[node] for node in element])
             return sign * distance
         raise ValueError(heuristic)
-    if not fixed:
-        return fn
-    # TODO: flip for progression
-    # TODO: sort FastDownward by the (fixed) action cost
-    fixed_cache = {element: fn(elements, element) for element in elements}
-    return lambda _, element: fixed_cache[element]
+    return fn
 
 def get_z(node_points, element):
     # TODO: tiebreak by angle or x
