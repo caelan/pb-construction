@@ -30,7 +30,7 @@ CUSTOM_LIMITS = {
 }
 SUPPORT_THETA = np.math.radians(10)  # Support polygon
 
-USE_FLOOR = True
+USE_FLOOR = False
 
 ##################################################
 
@@ -281,6 +281,8 @@ ROT_TOL = 5 * np.pi / 180
 def create_stiffness_checker(extrusion_path, verbose=False):
     # TODO: the stiffness checker likely has a memory leak
     # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
+    if not os.path.exists(extrusion_path):
+        raise FileNotFoundError(extrusion_path)
     with HideOutput():
         checker = stiffness_checker(json_file_path=extrusion_path, verbose=verbose)
     #checker.set_output_json(True)

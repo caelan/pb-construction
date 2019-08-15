@@ -10,6 +10,7 @@ import random
 import time
 import os
 import datetime
+import json
 
 from itertools import product
 from multiprocessing import Pool, cpu_count, TimeoutError
@@ -22,7 +23,7 @@ from extrusion.stripstream import plan_sequence, STRIPSTREAM_ALGORITHM
 from extrusion.utils import load_world, check_connected, get_connected_structures, test_stiffness, evaluate_stiffness, \
     USE_FLOOR
 from extrusion.parsing import load_extrusion, draw_element, create_elements, \
-    draw_model, enumerate_problems, get_extrusion_path, draw_sequence
+    draw_model, enumerate_problems, get_extrusion_path, draw_sequence, affine_extrusion
 from extrusion.stream import get_print_gen_fn
 from extrusion.greedy import regression, progression, GREEDY_HEURISTICS, GREEDY_ALGORITHMS
 
@@ -187,6 +188,7 @@ def visualize_stiffness(problem, element_bodies):
 ##################################################
 
 # TODO: sort by action cost heuristic
+# http://www.fast-downward.org/Doc/Evaluator#Max_evaluator
 
 ALGORITHMS = GREEDY_ALGORITHMS #+ [STRIPSTREAM_ALGORITHM]
 
@@ -200,6 +202,20 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     set_seed(hash((time.time(), args.seed)))
     # TODO: change dir for pddlstream
     problem_path = get_extrusion_path(args.problem)
+
+    #roll = 0
+    roll = np.pi
+    tform = Pose(euler=Euler(roll=roll))
+    json_data = affine_extrusion(problem_path, tform)
+    path = 'rotated.json' # TODO: folder
+    with open(path, 'w') as f:
+        json.dump(json_data, f, indent=2, sort_keys=True)
+    problem_path = path
+    # TODO: rotate the whole robot for fun
+    # TODO: could also use the z heuristic when upside down
+
+    # TODO: lazily plan for the end-effector before each manipulation
+    # TODO: graph statistics/vertex-degree-related heuristics
     element_from_id, node_points, ground_nodes = load_extrusion(problem_path, verbose=True)
     elements = list(element_from_id.values())
     #elements, ground_nodes = downsample_nodes(elements, node_points, ground_nodes)
@@ -209,8 +225,8 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     with LockRenderer():
         draw_pose(unit_pose(), length=1.)
         obstacles, robot = load_world()
-        #color = (0, 0, 0, 1)
-        color = (0, 0, 0, 0)
+        color = (0, 0, 0, 1)
+        #color = (0, 0, 0, 0)
         element_bodies = dict(zip(elements, create_elements(
             node_points, elements, color=color)))
     # joint_weights = compute_joint_weights(robot, num=1000)

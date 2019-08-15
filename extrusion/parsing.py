@@ -5,7 +5,7 @@ import numpy as np
 
 from collections import namedtuple, OrderedDict
 from examples.pybullet.utils.pybullet_tools.utils import add_line, create_cylinder, set_point, set_quat, \
-    quat_from_euler, Euler, spaced_colors
+    quat_from_euler, Euler, spaced_colors, tform_point, multiply, tform_from_pose, pose_from_tform
 from extrusion.utils import is_ground
 
 Element = namedtuple('Element', ['id', 'layer', 'nodes'])
@@ -79,9 +79,9 @@ def parse_point(json_point, scale=DEFAULT_SCALE):
     return scale * np.array([json_point['X'], json_point['Y'], json_point['Z']])
 
 
-def parse_transform(json_transform):
+def parse_transform(json_transform, **kwargs):
     transform = np.eye(4)
-    transform[:3, 3] = parse_point(json_transform['Origin']) # Normal
+    transform[:3, 3] = parse_point(json_transform['Origin'], **kwargs) # Normal
     transform[:3, :3] = np.vstack([parse_point(json_transform[axis], scale=1)
                                    for axis in ['XAxis', 'YAxis', 'ZAxis']])
     return transform
@@ -103,6 +103,48 @@ def parse_node_points(json_data):
 
 def parse_ground_nodes(json_data):
     return {i for i, json_node in enumerate(json_data['node_list']) if json_node['is_grounded'] == 1}
+
+##################################################
+
+def json_from_point(point):
+    return dict(zip(['X', 'Y', 'Z'], point))
+
+def affine_extrusion(extrusion_path, tform):
+    with open(extrusion_path, 'r') as f:
+        data = json.loads(f.read())
+    new_data = {}
+    for key, value in data.items():
+        if key == 'base_frame_in_rob_base':
+            origin = parse_point(value['Origin'], scale=1)
+            new_origin = tform_point(tform, origin)
+            rob_from_base = pose_from_tform(parse_transform(value, scale=1))
+            new_pose = tform_from_pose(multiply(tform, rob_from_base))
+            x, y, z = new_pose[:3,3]
+            new_data[key] = {
+                'Origin': json_from_point(new_origin),
+                "OriginX": x,
+                "OriginY": y,
+                "OriginZ": z,
+                "XAxis": json_from_point(new_pose[0,:3]),
+                "YAxis": json_from_point(new_pose[1,:3]),
+                "ZAxis": json_from_point(new_pose[2,:3]),
+                "IsValid": value['IsValid'],
+            }
+        elif key == 'node_list':
+            new_data[key] = []
+            for node_data in value:
+                new_node_data = {}
+                for node_key in node_data:
+                    if node_key == 'point':
+                        point = parse_point(node_data[node_key], scale=1)
+                        new_point = tform_point(tform, point)
+                        new_node_data[node_key] = json_from_point(new_point)
+                    else:
+                        new_node_data[node_key] = node_data[node_key]
+                new_data[key].append(new_node_data)
+        else:
+            new_data[key] = value
+    return new_data
 
 ##################################################
 
