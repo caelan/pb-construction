@@ -203,14 +203,14 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     # TODO: change dir for pddlstream
     problem_path = get_extrusion_path(args.problem)
 
-    #roll = 0
-    roll = np.pi
-    tform = Pose(euler=Euler(roll=roll))
-    json_data = affine_extrusion(problem_path, tform)
-    path = 'rotated.json' # TODO: folder
-    with open(path, 'w') as f:
-        json.dump(json_data, f, indent=2, sort_keys=True)
-    problem_path = path
+    # #roll = 0
+    # roll = np.pi
+    # tform = Pose(euler=Euler(roll=roll))
+    # json_data = affine_extrusion(problem_path, tform)
+    # path = 'rotated.json' # TODO: folder
+    # with open(path, 'w') as f:
+    #     json.dump(json_data, f, indent=2, sort_keys=True)
+    # problem_path = path
     # TODO: rotate the whole robot for fun
     # TODO: could also use the z heuristic when upside down
 
@@ -225,8 +225,8 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     with LockRenderer():
         draw_pose(unit_pose(), length=1.)
         obstacles, robot = load_world()
-        color = (0, 0, 0, 1)
-        #color = (0, 0, 0, 0)
+        #color = (0, 0, 0, 1)
+        color = (0, 0, 0, 0)
         element_bodies = dict(zip(elements, create_elements(
             node_points, elements, color=color)))
     # joint_weights = compute_joint_weights(robot, num=1000)

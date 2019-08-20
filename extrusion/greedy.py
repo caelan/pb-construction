@@ -90,6 +90,10 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
         stiffness_cache.update({element: score_stiffness(extrusion_path, element_from_id, elements - {element},
                                                          checker=checker) for element in elements})
 
+    # TODO: invert the sign for regression/progression?
+    # TODO: degree
+    # TODO: element length/mass
+    # Most unstable or least unstable first
     def fn(printed, element):
         # Queue minimizes the statistic
         if heuristic is None:
@@ -159,6 +163,8 @@ def score_stiffness(extrusion_path, element_from_id, elements, checker=None):
         return INF
     #operation = np.max
     operation = np.sum # equivalently average
+    # TODO: LInf or L1 norm applied on forces
+    # TODO: looking for a colored path through the space
 
     # trans unit: meter, rot unit: rad
     trans_tol, rot_tol = checker.get_nodal_deformation_tol()
@@ -304,12 +310,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
     add_successors(initial_printed)
 
     if has_gui():
-        # TODO: recompute then sort rather than use the queue
-        sequence = []
-        while queue:
-            _, _, element = heapq.heappop(queue)
-            sequence.append(element)
-        sequence = sequence[::-1]
+        sequence = sorted(initial_printed, key=lambda e: heuristic_fn(initial_printed, e), reverse=True)
         remove_all_debug()
         draw_sequence(sequence, node_points)
         wait_for_user()
