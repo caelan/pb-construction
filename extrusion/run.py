@@ -21,7 +21,7 @@ from extrusion.experiment import Configuration, load_experiment
 from extrusion.motion import compute_motions, display_trajectories
 from extrusion.stripstream import plan_sequence, STRIPSTREAM_ALGORITHM
 from extrusion.utils import load_world, check_connected, get_connected_structures, test_stiffness, evaluate_stiffness, \
-    USE_FLOOR
+    USE_FLOOR, get_id_from_element
 from extrusion.parsing import load_extrusion, draw_element, create_elements, \
     draw_model, enumerate_problems, get_extrusion_path, draw_sequence, affine_extrusion
 from extrusion.stream import get_print_gen_fn
@@ -267,9 +267,26 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     reset_simulation()
     disconnect()
 
-    # planned_elements = [traj.element for traj in planned_trajectories]
+    id_from_element = get_id_from_element(element_from_id)
+    planned_elements = [traj.element for traj in planned_trajectories]
+    planned_ids = [id_from_element[element] for element in planned_elements]
     # random.shuffle(planned_elements)
     # planned_elements = sorted(elements, key=lambda e: max(node_points[n][2] for n in e)) # TODO: tiebreak by angle or x
+
+    plan_data = {
+        'problem':  args.problem,
+        'algorithm': args.algorithm,
+        'heuristic': args.bias,
+        'plan_extrusions': not args.disable,
+        'use_collisions': not args.cfree,
+        'use_stiffness': args.stiffness,
+        'plan': planned_ids,
+    }
+    plan_data.update(data)
+    del plan_data['sequence']
+    plan_path = '{}_solution.json'.format(args.problem)
+    with open(plan_path, 'w') as f:
+        json.dump(plan_data, f, indent=2, sort_keys=True)
 
     #verify_plan(problem_path, planned_elements)
     if watch:
