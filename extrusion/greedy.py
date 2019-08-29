@@ -76,7 +76,12 @@ GREEDY_HEURISTICS = [
     #'fixed-dijkstra',
     'stiffness', # Performs poorly with respect to stiffness
     'fixed-stiffness',
+    'length',
 ]
+
+# TODO: visualize the branching factor
+# TODO: forward stiffness evaluation
+# TODO: relative heuristics
 
 def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
     # TODO: penalize disconnected
@@ -90,24 +95,30 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
         stiffness_cache.update({element: score_stiffness(extrusion_path, element_from_id, elements - {element},
                                                          checker=checker) for element in elements})
 
-    # TODO: invert the sign for regression/progression?
-    # TODO: degree
-    # TODO: element length/mass
-    # Most unstable or least unstable first
     def fn(printed, element):
         # Queue minimizes the statistic
         if heuristic is None:
             return 0
+        elif heuristic == 'degree':
+            # TODO: online/offline and ground
+            raise NotImplementedError()
+        elif heuristic == 'length':
+            # Equivalent to mass if uniform density
+            n1, n2 = element
+            return get_distance(node_points[n2], node_points[n1])
         elif heuristic == 'z':
             # TODO: round values for more tie-breaking opportunities
             z = get_z(node_points, element)
             return sign*z
         elif heuristic == 'stiffness':
             # TODO: add different variations
+            # TODO: normalize by initial stiffness, length, or degree
+            # Most unstable or least unstable first
             # Gets faster with fewer elements
             structure = printed | {element} if forward else printed - {element}
             return score_stiffness(extrusion_path, element_from_id, structure, checker=checker) # lower is better
         elif heuristic == 'fixed-stiffness':
+            # TODO: invert the sign for regression/progression?
             # TODO: sort FastDownward by the (fixed) action cost
             return stiffness_cache[element]
         elif heuristic == 'dijkstra':
@@ -309,6 +320,8 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
     visited[initial_printed] = Node(None, None)
     add_successors(initial_printed)
 
+    # TODO: lazy hill climbing using the true stiffness heuristic
+    # Choose the first move that improves the score
     if has_gui():
         sequence = sorted(initial_printed, key=lambda e: heuristic_fn(initial_printed, e), reverse=True)
         remove_all_debug()

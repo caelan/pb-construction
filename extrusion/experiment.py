@@ -13,9 +13,15 @@ Configuration = namedtuple('Configuration', ['seed', 'problem', 'algorithm', 'bi
 #Score = namedtuple('Score', ['failure', 'runtime', 'max_trans', 'max_rot'])
 
 
+EXCLUDE = [
+    'rotated_dented_cube',
+    'robarch_tree',
+    'DJMM_bridge',
+]
+
 def score_result(result):
-    return '{{failure={:.3f}, runtime={:.3f}, max_trans={:.5f}, max_rot={:.5f}}}'.format(
-        1. - result['success'], result.get('runtime', 0),
+    return '{{failure={:.3f}, runtime={:.0f}, evaluated={:.0f}, max_trans={:.5f}, max_rot={:.5f}}}'.format(
+        1. - result['success'], result.get('runtime', 0), result.get('num_evaluated', 0),
         result.get('max_trans', 0), result.get('max_rot', 0))
 
 def max_plan_deformation(config, result):
@@ -24,6 +30,7 @@ def max_plan_deformation(config, result):
         #return 0, 0
         return TRANS_TOL, ROT_TOL
     # TODO: absence of entry means ignore
+    # TODO: inspect the number fo states searched rather than time overhead
     problem = extrusion_name_from_path(config.problem)
     problem_path = get_extrusion_path(problem)
     element_from_id, _, _ = load_extrusion(problem_path)
@@ -49,6 +56,8 @@ def load_experiment(filename, overall=True):
     data_from_problem = OrderedDict()
     for config, result in read_pickle(filename):
         #config.problem = extrusion_name_from_path(config.problem)
+        if config.problem in EXCLUDE:
+            continue
         problem = 'all' if overall else config.problem
         plan = result.get('sequence', None)
         result['success'] = (plan is not None)
@@ -79,6 +88,7 @@ def load_experiment(filename, overall=True):
             accumulated_result = {}
             for result in results:
                 for name, value in result.items():
+                    #if result['success'] or (name == 'success'):
                     accumulated_result.setdefault(name, []).append(value)
             mean_result = {name: round(np.average(values), 3) for name, values in accumulated_result.items()}
             key = {field: value for field, value in config._asdict().items()
