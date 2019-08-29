@@ -184,12 +184,14 @@ def score_stiffness(extrusion_path, element_from_id, elements, checker=None):
     relative_rot = max_rot / rot_tol # lower is better
     # More quickly approximate deformations by modifying the matrix operations incrementally
 
+    reaction_forces = np.array([d[:3] for d in fixities_reaction.values()])
+    reaction_moments = np.array([d[3:] for d in fixities_reaction.values()])
     heuristic = 'fixities_rotation'
     scores = {
         # Yijiang was suprised that fixities_translation worked
-        'fixities_translation': np.linalg.norm(fixities_reaction[:,1:4].tolist(), axis=1),
-        'fixities_rotation': np.linalg.norm(fixities_reaction[:,4:].tolist(), axis=1),
-        'nodal_translation': np.linalg.norm(nodal_displacement[:,1:4].tolist(), axis=1),
+        'fixities_translation': np.linalg.norm(reaction_forces, axis=1),
+        'fixities_rotation': np.linalg.norm(reaction_moments, axis=1),
+        'nodal_translation': np.linalg.norm(list(nodal_displacement.values()), axis=1),
         'compliance': [-checker.get_compliance()], # negated because higher is better
         'deformation': [relative_trans, relative_rot],
     }

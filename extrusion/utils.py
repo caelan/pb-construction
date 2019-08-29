@@ -6,7 +6,7 @@ import numpy as np
 
 from collections import defaultdict, deque, namedtuple
 
-from pyconmech import stiffness_checker
+from pyconmech import StiffnessChecker
 
 from examples.pybullet.utils.pybullet_tools.utils import set_point, Euler, set_joint_positions, \
     pairwise_collision, Pose, multiply, Point, load_model, HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, set_pose, \
@@ -284,14 +284,14 @@ def create_stiffness_checker(extrusion_path, verbose=False):
     if not os.path.exists(extrusion_path):
         raise FileNotFoundError(extrusion_path)
     with HideOutput():
-        checker = stiffness_checker(json_file_path=extrusion_path, verbose=verbose)
+        checker = StiffnessChecker(json_file_path=extrusion_path, verbose=verbose)
     #checker.set_output_json(True)
     #checker.set_output_json_path(file_path=os.getcwd(), file_name="stiffness-results.json")
     checker.set_self_weight_load(True)
     #checker.set_nodal_displacement_tol(transl_tol=0.005, rot_tol=10 * np.pi / 180)
     #checker.set_nodal_displacement_tol(transl_tol=0.003, rot_tol=5 * np.pi / 180)
     # checker.set_nodal_displacement_tol(transl_tol=1e-3, rot_tol=3 * (np.pi / 360))
-    checker.set_nodal_displacement_tol(transl_tol=TRANS_TOL, rot_tol=ROT_TOL)
+    checker.set_nodal_displacement_tol(trans_tol=TRANS_TOL, rot_tol=ROT_TOL)
 
     return checker
 
@@ -320,9 +320,9 @@ def evaluate_stiffness(extrusion_path, element_from_id, elements, checker=None, 
     #print("has stored results: {0}".format(checker.has_stored_result()))
     success, nodal_displacement, fixities_reaction, element_reaction = checker.get_solved_results()
     assert is_stiff == success
-    displacements = {int(d[0]): Displacement(*d[1:]) for d in nodal_displacement}
-    fixities = {int(d[0]): Reaction(*d[1:7]) for d in fixities_reaction}
-    reactions = {int(d[0]): (Reaction(*d[1:7]), Reaction(*d[7:13])) for d in element_reaction}
+    displacements = {i: Displacement(*d) for i, d in nodal_displacement.items()}
+    fixities = {i: Reaction(*d) for i, d in fixities_reaction.items()}
+    reactions = {i: (Reaction(*d[0]), Reaction(*d[1])) for i, d in element_reaction.items()}
 
     #print("nodal displacement (m/rad):\n{0}".format(nodal_displacement)) # nodes x 7
     # TODO: investigate if nodal displacement can be used to select an ordering
