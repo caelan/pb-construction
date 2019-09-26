@@ -324,6 +324,9 @@ def evaluate_stiffness(extrusion_path, element_from_id, elements, checker=None, 
     fixities = {i: Reaction(*d) for i, d in fixities_reaction.items()}
     reactions = {i: (Reaction(*d[0]), Reaction(*d[1])) for i, d in element_reaction.items()}
 
+    #translation = np.max(np.linalg.norm([d[:3] for d in displacements.values()], axis=1))
+    #rotation = np.max(np.linalg.norm([d[3:] for d in displacements.values()], axis=1))
+
     #print("nodal displacement (m/rad):\n{0}".format(nodal_displacement)) # nodes x 7
     # TODO: investigate if nodal displacement can be used to select an ordering
     #print("fixities reaction (kN, kN-m):\n{0}".format(fixities_reaction)) # ground x 7

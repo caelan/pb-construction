@@ -64,7 +64,7 @@ def load_extrusion(extrusion_path, verbose=False):
     element_from_id = OrderedDict((element.id, element.nodes) for element in elements)
     node_points = parse_node_points(json_data)
     min_z = np.min(node_points, axis=0)[2]
-    print('Min z: {}'.format(min_z))
+    #print('Min z: {}'.format(min_z))
     node_points = [np.array([0, 0, -min_z]) + point for point in node_points]
     ground_nodes = parse_ground_nodes(json_data)
     if verbose:

@@ -9,8 +9,8 @@ from collections import namedtuple
 import numpy as np
 
 from examples.pybullet.utils.pybullet_tools.utils import elapsed_time, \
-    remove_all_debug, wait_for_user, has_gui, LockRenderer, reset_simulation, disconnect
-from extrusion.parsing import load_extrusion, draw_element, draw_sequence
+    remove_all_debug, wait_for_user, has_gui, LockRenderer, reset_simulation, disconnect, set_renderer
+from extrusion.parsing import load_extrusion, draw_element, draw_sequence, draw_model
 from extrusion.stream import get_print_gen_fn
 from extrusion.utils import check_connected, test_stiffness, \
     create_stiffness_checker, get_id_from_element, load_world, get_supported_orders, get_extructed_ids
@@ -76,12 +76,12 @@ GREEDY_HEURISTICS = [
     #'fixed-dijkstra',
     'stiffness', # Performs poorly with respect to stiffness
     'fixed-stiffness',
+    'relative-stiffness',
     'length',
+    'degree',
 ]
 
 # TODO: visualize the branching factor
-# TODO: forward stiffness evaluation
-# TODO: relative heuristics
 
 def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
     # TODO: penalize disconnected
@@ -91,7 +91,7 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
     sign = +1 if forward else -1
 
     stiffness_cache = {}
-    if heuristic == 'fixed-stiffness':
+    if heuristic in ('fixed-stiffness', 'relative-stiffness'):
         stiffness_cache.update({element: score_stiffness(extrusion_path, element_from_id, elements - {element},
                                                          checker=checker) for element in elements})
 
@@ -101,6 +101,11 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
             return 0
         elif heuristic == 'degree':
             # TODO: online/offline and ground
+            #printed_nodes = {n for e in printed for n in e}
+            #n1, n2 = element
+            #node = n1 if n2 in printed_nodes else n2
+            #if node in ground_nodes:
+            #    return 0
             raise NotImplementedError()
         elif heuristic == 'length':
             # Equivalent to mass if uniform density
@@ -115,12 +120,23 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
             # TODO: normalize by initial stiffness, length, or degree
             # Most unstable or least unstable first
             # Gets faster with fewer elements
+            #old_stiffness = score_stiffness(extrusion_path, element_from_id, printed, checker=checker)
             structure = printed | {element} if forward else printed - {element}
-            return score_stiffness(extrusion_path, element_from_id, structure, checker=checker) # lower is better
+            stiffness = score_stiffness(extrusion_path, element_from_id, structure, checker=checker) # lower is better
+            return stiffness
+            #return stiffness / old_stiffness
         elif heuristic == 'fixed-stiffness':
             # TODO: invert the sign for regression/progression?
             # TODO: sort FastDownward by the (fixed) action cost
             return stiffness_cache[element]
+        elif heuristic == 'relative-stiffness':
+            structure = printed | {element} if forward else printed - {element}
+            stiffness = score_stiffness(extrusion_path, element_from_id, structure, checker=checker) # lower is better
+            length = sum(get_distance(node_points[n2], node_points[n1]) for n1, n2 in structure)
+            if length == 0:
+                return 0
+            return stiffness / length
+            #return stiffness / stiffness_cache[element]
         elif heuristic == 'dijkstra':
             # min, max, node not in set
             # TODO: recompute online (but all at once)
@@ -192,9 +208,11 @@ def score_stiffness(extrusion_path, element_from_id, elements, checker=None):
         'fixities_translation': np.linalg.norm(reaction_forces, axis=1),
         'fixities_rotation': np.linalg.norm(reaction_moments, axis=1),
         'nodal_translation': np.linalg.norm(list(nodal_displacement.values()), axis=1),
-        'compliance': [-checker.get_compliance()], # negated because higher is better
+        'compliance': [checker.get_compliance()],
         'deformation': [relative_trans, relative_rot],
     }
+    # TODO: remove pairs of elements
+    # TODO: clustering
     return operation(scores[heuristic])
     #return relative_trans
     #return max(relative_trans, relative_rot)
@@ -240,6 +258,12 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
     initial_printed = frozenset()
     visited[initial_printed] = Node(None, None)
     add_successors(initial_printed)
+
+    if has_gui():
+        sequence = sorted(initial_printed, key=lambda e: heuristic_fn(initial_printed, e), reverse=True)
+        remove_all_debug()
+        draw_sequence(sequence, node_points)
+        wait_for_user()
 
     plan = None
     min_remaining = INF
@@ -329,6 +353,13 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
         remove_all_debug()
         draw_sequence(sequence, node_points)
         wait_for_user()
+    # TODO: fixed branching factor
+    # TODO: be more careful when near the end
+    # TODO: max time spent evaluating successors (less expensive when few left)
+    # TODO: tree rollouts
+    # TODO: best-first search with a minimizing path distance cost
+    # TODO: immediately select if becomes more stable
+    # TODO: focus branching factor on most stable regions
 
     plan = None
     min_remaining = INF
@@ -346,6 +377,12 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
             num_evaluated, min_remaining, len(printed), element, id_from_element[element], elapsed_time(start_time)))
         next_printed = printed - {element}
         #draw_action(node_points, next_printed, element)
+        #if 3 < backtrack + 1:
+        #    remove_all_debug()
+        #    set_renderer(enable=True)
+        #    draw_model(next_printed, node_points, ground_nodes)
+        #    wait_for_user()
+
         if (next_printed in visited) or not check_connected(ground_nodes, next_printed) or \
                 not implies(stiffness, test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker)):
             continue

@@ -20,7 +20,7 @@ EXCLUDE = [
 ]
 
 def score_result(result):
-    return '{{failure={:.3f}, runtime={:.0f}, evaluated={:.0f}, max_trans={:.5f}, max_rot={:.5f}}}'.format(
+    return '{{failure={:.3f}, runtime={:.0f}, evaluated={:.0f}, max_trans={:.3E}, max_rot={:.3E}}}'.format(
         1. - result['success'], result.get('runtime', 0), result.get('num_evaluated', 0),
         result.get('max_trans', 0), result.get('max_rot', 0))
 
@@ -49,7 +49,12 @@ def max_plan_deformation(config, result):
         rotations.append(rot)
     return max(translations), max(rotations)
 
-def load_experiment(filename, overall=True):
+# Failed instances
+# fertility, duck, dented_cube, compas_fea_beam_tree_M, compas_fea_beam_tree, bunny_full_tri_dense, bunny_full_quad, C_shape
+
+ALL = 'all'
+
+def load_experiment(filename, overall=False):
     # TODO: maybe just pass the random seed as a separate arg
     # TODO: aggregate over all problems and score using IPC rules
     # https://ipc2018-classical.bitbucket.io/
@@ -58,7 +63,7 @@ def load_experiment(filename, overall=True):
         #config.problem = extrusion_name_from_path(config.problem)
         if config.problem in EXCLUDE:
             continue
-        problem = 'all' if overall else config.problem
+        problem = ALL if overall else config.problem
         plan = result.get('sequence', None)
         result['success'] = (plan is not None)
         result['length'] = len(plan) if result['success'] else INF
@@ -70,7 +75,13 @@ def load_experiment(filename, overall=True):
 
     for p_idx, problem in enumerate(sorted(data_from_problem)):
         print()
-        print('{}) Problem: {}'.format(p_idx, os.path.basename(os.path.abspath(problem))))
+        problem_name = os.path.basename(os.path.abspath(problem)) # TODO: this isn't a path...
+        print('{}) Problem: {}'.format(p_idx, problem_name))
+        if problem != ALL:
+            extrusion_path = get_extrusion_path(problem)
+            element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path, verbose=False)
+            print('Nodes: {} | Ground: {} | Elements: {}'.format(
+                len(node_points), len(ground_nodes), len(element_from_id)))
 
         data_from_config = OrderedDict()
         value_per_field = {}
