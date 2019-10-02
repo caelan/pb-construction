@@ -25,7 +25,7 @@ def local_reactions(extrusion_path, elements):
     element_from_id, _, _ = load_extrusion(extrusion_path)
     extruded_ids = get_extructed_ids(element_from_id, elements)
     checker = create_stiffness_checker(extrusion_path, verbose=False)
-    deformation = evaluate_stiffness(extrusion_path, element_from_id, elements)
+    deformation = evaluate_stiffness(extrusion_path, element_from_id, elements, verbose=False)
 
     reaction_from_node = {}
     nodal_loads(checker, extruded_ids, reaction_from_node)

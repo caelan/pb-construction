@@ -14,6 +14,7 @@ from extrusion.parsing import load_extrusion, draw_element, draw_sequence, draw_
 from extrusion.stream import get_print_gen_fn
 from extrusion.utils import check_connected, test_stiffness, \
     create_stiffness_checker, get_id_from_element, load_world, get_supported_orders, get_extructed_ids
+from extrusion.equilibrium import local_reactions
 
 # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
 from pybullet_tools.utils import connect, ClientSaver, wait_for_user, INF, get_distance, has_gui, remove_all_debug
@@ -80,6 +81,7 @@ GREEDY_HEURISTICS = [
     'length',
     'degree',
     'load',
+    'forces',
 ]
 
 # TODO: visualize the branching factor
@@ -100,6 +102,7 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
         # Queue minimizes the statistic
         structure = printed | {element} if forward else printed - {element}
         structure_ids = get_extructed_ids(element_from_id, structure)
+        operator = sum # sum | max
 
         if heuristic is None:
             return 0
@@ -121,7 +124,12 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
             return sign*z
         elif heuristic == 'load':
             nodal_loads = checker.get_nodal_loads(existing_ids=structure_ids, dof_flattened=False) # get_self_weight_loads
-            return sum(np.linalg.norm(wrench[:3]) for wrench in nodal_loads.values())
+            return operator(np.linalg.norm(wrench[:3]) for wrench in nodal_loads.values())
+        elif heuristic == 'forces':
+            reactions_from_nodes = local_reactions(extrusion_path, structure)
+            # Max force at a node
+            return operator(np.linalg.norm(reaction[:3]) for reactions in reactions_from_nodes.values()
+                            for reaction in reactions)
         elif heuristic == 'stiffness':
             # TODO: add different variations
             # TODO: normalize by initial stiffness, length, or degree
@@ -387,6 +395,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
         #    set_renderer(enable=True)
         #    draw_model(next_printed, node_points, ground_nodes)
         #    wait_for_user()
+        # TODO: visualize during the search
 
         if (next_printed in visited) or not check_connected(ground_nodes, next_printed) or \
                 not implies(stiffness, test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker)):
