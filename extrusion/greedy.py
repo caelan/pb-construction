@@ -14,7 +14,7 @@ from extrusion.parsing import load_extrusion, draw_element, draw_sequence, draw_
 from extrusion.stream import get_print_gen_fn
 from extrusion.utils import check_connected, test_stiffness, \
     create_stiffness_checker, get_id_from_element, load_world, get_supported_orders, get_extructed_ids
-from extrusion.equilibrium import local_reactions
+from extrusion.equilibrium import compute_node_reactions
 
 # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
 from pybullet_tools.utils import connect, ClientSaver, wait_for_user, INF, get_distance, has_gui, remove_all_debug
@@ -126,10 +126,12 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
             nodal_loads = checker.get_nodal_loads(existing_ids=structure_ids, dof_flattened=False) # get_self_weight_loads
             return operator(np.linalg.norm(wrench[:3]) for wrench in nodal_loads.values())
         elif heuristic == 'forces':
-            reactions_from_nodes = local_reactions(extrusion_path, structure)
-            # Max force at a node
+            # TODO: could try something involving the initial forces
+            reactions_from_nodes = compute_node_reactions(extrusion_path, structure, checker=checker)
             return operator(np.linalg.norm(reaction[:3]) for reactions in reactions_from_nodes.values()
                             for reaction in reactions)
+            #return max(sum(np.linalg.norm(reaction[:3]) for reaction in reactions)
+            #           for reactions in reactions_from_nodes.values())
         elif heuristic == 'stiffness':
             # TODO: add different variations
             # TODO: normalize by initial stiffness, length, or degree

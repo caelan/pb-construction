@@ -327,7 +327,7 @@ def evaluate_stiffness(extrusion_path, element_from_id, elements, checker=None, 
     is_stiff = checker.solve(exist_element_ids=extruded_ids, if_cond_num=True)
     #print("has stored results: {0}".format(checker.has_stored_result()))
     success, nodal_displacement, fixities_reaction, element_reaction = checker.get_solved_results()
-    assert is_stiff == success
+    assert is_stiff == success # TODO: this sometimes isn't true
     displacements = {i: Displacement(*d) for i, d in nodal_displacement.items()}
     fixities = {i: Reaction(*d) for i, d in fixities_reaction.items()}
     reactions = {i: (Reaction(*d[0]), Reaction(*d[1])) for i, d in element_reaction.items()}

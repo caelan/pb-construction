@@ -1,6 +1,6 @@
 import numpy as np
 
-from extrusion.equilibrium import local_reactions
+from extrusion.equilibrium import compute_node_reactions
 from extrusion.parsing import load_extrusion, sample_colors
 from extrusion.utils import get_node_neighbors
 from examples.pybullet.utils.pybullet_tools.utils import add_text, draw_pose, get_pose, wait_for_user, add_line, remove_debug, has_gui, \
@@ -61,7 +61,7 @@ def visualize_stiffness(extrusion_path):
     # Thus a low-cost state will usually be correctly identified by considering only the deflection of the cantilevered beam path
     # and approximating the rest of the beams as being infinitely stiff
 
-    reaction_from_node = local_reactions(extrusion_path, elements)
+    reaction_from_node = compute_node_reactions(extrusion_path, elements)
     #reaction_from_node = deformation.displacements # For visualizing displacements
     #test_node_forces(node_points, reaction_from_node)
     total_reaction_from_node = {node: np.sum(reactions, axis=0)[:3]
@@ -82,7 +82,7 @@ def visualize_stiffness(extrusion_path):
     for node, color in zip(nodes, colors):
         color = (0, 0, 0)
         reactions = reaction_from_node[node]
-        print(np.array(reactions))
+        #print(np.array(reactions))
         start = node_points[node]
         handles.extend(draw_point(start, color=color))
         for reaction in reactions[:1]:
