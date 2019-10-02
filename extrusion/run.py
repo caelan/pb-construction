@@ -127,16 +127,36 @@ def test_node_forces(node_points, reaction_from_node):
         for handle in handles:
             remove_debug(handle)
 
+def label_elements(element_bodies):
+    # +z points parallel to each element body
+    for element, body in element_bodies.items():
+        print(element)
+        label_nodes(element_bodies, element)
+        draw_pose(get_pose(body), length=0.02)
+        wait_for_user()
+
+def local_reactions(element_from_id, element_bodies, deformation, reaction_from_node):
+    elements = list(element_from_id.values())
+    for index, reactions in deformation.reactions.items():
+       # Yijiang assumes pointing along +x
+       element = element_from_id[index]
+       body = element_bodies[element]
+       rotation = Pose(euler=Euler(pitch=np.pi/2))
+       world_from_local = multiply(rotation, get_pose(body))
+       for node, reaction_local in zip(elements[index], reactions):
+           # TODO: apply to torques as well
+           reaction_world = tform_point(world_from_local, reaction_local[:3])
+           reaction_from_node.setdefault(node, []).append(reaction_world)
+
+def ground_reactions(deformation, reaction_from_node):
+    # The fixities are global. The reaction forces are local
+    for node, reaction in deformation.fixities.items(): # Fixities are like the ground force to resist the structure?
+        reaction_from_node.setdefault(node, []).append(reaction[:3])
+
 def visualize_stiffness(problem, element_bodies):
     if not has_gui():
         return
-    # +z points parallel to each element body
-    #for element, body in element_bodies.items():
-    #    print(element)
-    #    label_nodes(element_bodies, element)
-    #    draw_pose(get_pose(body), length=0.02)
-    #    wait_for_user()
-
+    #label_elements(element_bodies)
     element_from_id, node_points, ground_nodes = load_extrusion(problem)
     elements = list(element_from_id.values())
     draw_model(elements, node_points, ground_nodes)
@@ -149,20 +169,8 @@ def visualize_stiffness(problem, element_bodies):
     # Thus a low-cost state will usually be correctly identified by considering only the deflection of the cantilevered beam path
     # and approximating the rest of the beams as being infinitely stiff
 
-    # TODO: could recompute stability properties at each point
-    #for index, reactions in deformation.reactions.items():
-    #    # Yijiang assumes pointing along +x
-    #    element = element_from_id[index]
-    #    body = element_bodies[element]
-    #    rotation = Pose(euler=Euler(pitch=np.pi/2))
-    #    world_from_local = multiply(rotation, get_pose(body))
-    #    for node, reaction_local in zip(elements[index], reactions):
-    #        # TODO: apply to torques as well
-    #        reaction_world = tform_point(world_from_local, reaction_local[:3])
-    #        reaction_from_node.setdefault(node, []).append(reaction_world)
-    # The fixities are global. The reaction forces are local
-    for node, reaction in deformation.fixities.items(): # Fixities are like the ground force to resist the structure?
-        reaction_from_node.setdefault(node, []).append(reaction[:3])
+    #local_reactions(element_from_id, element_bodies, deformation, reaction_from_node)
+    ground_reactions(deformation, reaction_from_node)
 
     #reaction_from_node = deformation.displacements # For visualizing displacements
     #test_node_forces(node_points, reaction_from_node)
@@ -173,7 +181,7 @@ def visualize_stiffness(problem, element_bodies):
     max_force = max(force_from_node.values())
     print('Max force:', max_force)
     for i, node in enumerate(sorted(total_reaction_from_node, key=lambda n: force_from_node[n])):
-        print('{}) node={}, point={}, vector={}, magnitude={:.3f}'.format(
+        print('{}) node={}, point={}, vector={}, magnitude={:.3E}'.format(
             i, node, node_points[node], total_reaction_from_node[node], force_from_node[node]))
 
     handles = []
