@@ -315,6 +315,13 @@ def evaluate_stiffness(extrusion_path, element_from_id, elements, checker=None, 
         checker = create_stiffness_checker(extrusion_path, verbose=False)
     # TODO: load element_from_id
     extruded_ids = get_extructed_ids(element_from_id, elements)
+    #print(checker.get_element_local2global_rot_matrices())
+    #print(checker.get_element_stiffness_matrices(in_local_coordinate=False))
+
+    #nodal_loads = checker.get_nodal_loads(existing_ids=[], dof_flattened=False) # per node
+    #weight_loads = checker.get_self_weight_loads(existing_ids=[], dof_flattened=False) # get_nodal_loads = get_self_weight_loads?
+    #for node in sorted(nodal_load):
+    #    print(node, nodal_loads[node] - weight_loads[node])
 
     is_stiff = checker.solve(exist_element_ids=extruded_ids, if_cond_num=True)
     #print("has stored results: {0}".format(checker.has_stored_result()))

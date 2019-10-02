@@ -191,9 +191,12 @@ def draw_model(elements, node_points, ground_nodes):
         handles.append(draw_element(node_points, element, color=color))
     return handles
 
+def sample_colors(num, lower=0.0, upper=0.75): # for now wrap around
+    return [colorsys.hsv_to_rgb(h, s=1, v=1) for h in np.linspace(lower, upper, num, endpoint=True)]
+
 def draw_sequence(elements, node_points):
     #colors = spaced_colors(len(elements))
-    colors = [colorsys.hsv_to_rgb(h, s=1, v=1) for h in np.linspace(0, 0.75, len(elements), endpoint=True)]
+    colors = sample_colors(len(elements))
     handles = []
     for element, color in zip(elements, colors):
         handles.append(draw_element(node_points, element, color=color))

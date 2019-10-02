@@ -21,9 +21,9 @@ from extrusion.experiment import Configuration, load_experiment
 from extrusion.motion import compute_motions, display_trajectories
 from extrusion.stripstream import plan_sequence, STRIPSTREAM_ALGORITHM
 from extrusion.utils import load_world, check_connected, get_connected_structures, test_stiffness, evaluate_stiffness, \
-    USE_FLOOR, get_id_from_element
+    USE_FLOOR, get_id_from_element, create_stiffness_checker
 from extrusion.parsing import load_extrusion, draw_element, create_elements, \
-    draw_model, enumerate_problems, get_extrusion_path, draw_sequence, affine_extrusion
+    draw_model, enumerate_problems, get_extrusion_path, draw_sequence, affine_extrusion, sample_colors
 from extrusion.stream import get_print_gen_fn
 from extrusion.greedy import regression, progression, GREEDY_HEURISTICS, GREEDY_ALGORITHMS
 
@@ -31,7 +31,7 @@ from pddlstream.utils import get_python_version
 from examples.pybullet.utils.pybullet_tools.utils import connect, disconnect, get_movable_joints, add_text, \
     get_joint_positions, LockRenderer, wait_for_user, has_gui, unit_pose, \
     add_line, is_darwin, elapsed_time, write_pickle, user_input, reset_simulation, \
-    get_pose, draw_pose, tform_point, Euler, Pose, multiply, remove_debug
+    get_pose, draw_pose, tform_point, Euler, Pose, multiply, remove_debug, draw_point
 
 
 ##################################################
@@ -153,15 +153,17 @@ def ground_reactions(deformation, reaction_from_node):
     for node, reaction in deformation.fixities.items(): # Fixities are like the ground force to resist the structure?
         reaction_from_node.setdefault(node, []).append(reaction[:3])
 
-def visualize_stiffness(problem, element_bodies):
+def visualize_stiffness(extrusion_path, element_bodies):
     if not has_gui():
         return
-    #label_elements(element_bodies)
-    element_from_id, node_points, ground_nodes = load_extrusion(problem)
-    elements = list(element_from_id.values())
-    draw_model(elements, node_points, ground_nodes)
+    # TODO: sort by node self load. Node partial order
 
-    deformation = evaluate_stiffness(problem, element_from_id, elements)
+    #label_elements(element_bodies)
+    element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
+    elements = list(element_from_id.values())
+    #draw_model(elements, node_points, ground_nodes)
+
+    deformation = evaluate_stiffness(extrusion_path, element_from_id, elements)
     reaction_from_node = {}
     # Freeform Assembly Planning
     # TODO: https://arxiv.org/pdf/1801.00527.pdf
@@ -170,7 +172,12 @@ def visualize_stiffness(problem, element_bodies):
     # and approximating the rest of the beams as being infinitely stiff
 
     #local_reactions(element_from_id, element_bodies, deformation, reaction_from_node)
-    ground_reactions(deformation, reaction_from_node)
+    #ground_reactions(deformation, reaction_from_node)
+
+    checker = create_stiffness_checker(extrusion_path, verbose=False)
+    nodal_loads = checker.get_nodal_loads(existing_ids=[], dof_flattened=False) # Update the current_ids
+    for node, wrench in nodal_loads.items():
+        reaction_from_node.setdefault(node, []).append(wrench[:3])
 
     #reaction_from_node = deformation.displacements # For visualizing displacements
     #test_node_forces(node_points, reaction_from_node)
@@ -184,12 +191,19 @@ def visualize_stiffness(problem, element_bodies):
         print('{}) node={}, point={}, vector={}, magnitude={:.3E}'.format(
             i, node, node_points[node], total_reaction_from_node[node], force_from_node[node]))
 
+    nodes = total_reaction_from_node.keys()
+    nodes = sorted(nodes, key=lambda n: np.linalg.norm(total_reaction_from_node[n]))
+    colors = sample_colors(len(nodes))
     handles = []
-    for node, reaction_world in total_reaction_from_node.items():
+    for node, color in zip(nodes, colors):
+        reaction_world = total_reaction_from_node[node]
         start = node_points[node]
-        vector = 0.05 * np.array(reaction_world) / max_force
+        #handles.extend(draw_point(start, color=color))
+        vector = 0.1 * np.array(reaction_world) / max_force
         end = start + vector
         handles.append(add_line(start, end, color=(0, 1, 0)))
+
+    #draw_sequence(sequence, node_points)
     wait_for_user()
 
 

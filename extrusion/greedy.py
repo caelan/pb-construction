@@ -79,6 +79,7 @@ GREEDY_HEURISTICS = [
     'relative-stiffness',
     'length',
     'degree',
+    'load',
 ]
 
 # TODO: visualize the branching factor
@@ -97,6 +98,9 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
 
     def fn(printed, element):
         # Queue minimizes the statistic
+        structure = printed | {element} if forward else printed - {element}
+        structure_ids = get_extructed_ids(element_from_id, structure)
+
         if heuristic is None:
             return 0
         elif heuristic == 'degree':
@@ -115,13 +119,15 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
             # TODO: round values for more tie-breaking opportunities
             z = get_z(node_points, element)
             return sign*z
+        elif heuristic == 'load':
+            nodal_loads = checker.get_nodal_loads(existing_ids=structure_ids, dof_flattened=False) # get_self_weight_loads
+            return sum(np.linalg.norm(wrench[:3]) for wrench in nodal_loads.values())
         elif heuristic == 'stiffness':
             # TODO: add different variations
             # TODO: normalize by initial stiffness, length, or degree
             # Most unstable or least unstable first
             # Gets faster with fewer elements
             #old_stiffness = score_stiffness(extrusion_path, element_from_id, printed, checker=checker)
-            structure = printed | {element} if forward else printed - {element}
             stiffness = score_stiffness(extrusion_path, element_from_id, structure, checker=checker) # lower is better
             return stiffness
             #return stiffness / old_stiffness
@@ -130,7 +136,6 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
             # TODO: sort FastDownward by the (fixed) action cost
             return stiffness_cache[element]
         elif heuristic == 'relative-stiffness':
-            structure = printed | {element} if forward else printed - {element}
             stiffness = score_stiffness(extrusion_path, element_from_id, structure, checker=checker) # lower is better
             length = sum(get_distance(node_points[n2], node_points[n1]) for n1, n2 in structure)
             if length == 0:
