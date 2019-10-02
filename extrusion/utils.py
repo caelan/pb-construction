@@ -116,6 +116,10 @@ def get_node_neighbors(elements):
         node_neighbors[n2].add(e)
     return node_neighbors
 
+def nodes_from_elements(elements):
+    # TODO: always include ground nodes
+    return set(get_node_neighbors(elements))
+
 def get_element_neighbors(elements):
     node_neighbors = get_node_neighbors(elements)
     element_neighbors = defaultdict(set)

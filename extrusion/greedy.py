@@ -129,7 +129,9 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
             # TODO: could try something involving the initial forces
             reactions_from_nodes = compute_node_reactions(extrusion_path, structure, checker=checker)
             return operator(np.linalg.norm(reaction[:3]) for reactions in reactions_from_nodes.values()
-                            for reaction in reactions)
+                            for reaction in reactions) # forces
+            #return operator(np.linalg.norm(reaction[3:]) for reactions in reactions_from_nodes.values()
+            #                for reaction in reactions) # torques
             #return max(sum(np.linalg.norm(reaction[:3]) for reaction in reactions)
             #           for reactions in reactions_from_nodes.values())
         elif heuristic == 'stiffness':
