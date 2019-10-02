@@ -21,7 +21,7 @@ from extrusion.experiment import Configuration, load_experiment
 from extrusion.motion import compute_motions, display_trajectories
 from extrusion.stripstream import plan_sequence, STRIPSTREAM_ALGORITHM
 from extrusion.utils import load_world, check_connected, get_connected_structures, test_stiffness, evaluate_stiffness, \
-    USE_FLOOR, get_id_from_element, create_stiffness_checker, get_node_neighbors
+    USE_FLOOR, get_id_from_element, create_stiffness_checker, get_node_neighbors, get_extructed_ids
 from extrusion.parsing import load_extrusion, draw_element, create_elements, \
     draw_model, enumerate_problems, get_extrusion_path, draw_sequence, affine_extrusion, sample_colors
 from extrusion.stream import get_print_gen_fn
@@ -135,17 +135,32 @@ def label_elements(element_bodies):
         draw_pose(get_pose(body), length=0.02)
         wait_for_user()
 
-def local_reactions(extrusion_path, element_from_id, element_bodies, deformation, reaction_from_node):
-    # https://github.com/yijiangh/conmech/blob/master/tests/test_stiffness_checker.py#L407
-    # https://github.com/yijiangh/conmech/blob/master/src/pyconmech/frame_analysis/stiffness_checker.py
-    checker = create_stiffness_checker(extrusion_path, verbose=False)
+##################################################
 
-    nodal_loads = checker.get_nodal_loads(existing_ids=[], dof_flattened=False)
+def nodal_loads(checker, extruded_ids, reaction_from_node):
+    nodal_loads = checker.get_nodal_loads(existing_ids=extruded_ids, dof_flattened=False)
     for node, wrench in nodal_loads.items():
         reaction_from_node.setdefault(node, []).append(wrench)
-    #weight_loads = checker.get_self_weight_loads(existing_ids=[], dof_flattened=False)
+    #weight_loads = checker.get_self_weight_loads(existing_ids=extruded_ids, dof_flattened=False)
     #for node, wrench in weight_loads.items():
     #    reaction_from_node.setdefault(node, []).append(wrench)
+
+def ground_reactions(deformation, reaction_from_node):
+    # The fixities are global. The reaction forces are local
+    for node, reaction in deformation.fixities.items(): # Fixities are like the ground force to resist the structure?
+        reaction_from_node.setdefault(node, []).append(reaction)
+
+def local_reactions(extrusion_path, elements):
+    # https://github.com/yijiangh/conmech/blob/master/tests/test_stiffness_checker.py#L407
+    # https://github.com/yijiangh/conmech/blob/master/src/pyconmech/frame_analysis/stiffness_checker.py
+    element_from_id, _, _ = load_extrusion(extrusion_path)
+    extruded_ids = get_extructed_ids(element_from_id, elements)
+    checker = create_stiffness_checker(extrusion_path, verbose=False)
+    deformation = evaluate_stiffness(extrusion_path, element_from_id, elements)
+
+    reaction_from_node = {}
+    nodal_loads(checker, extruded_ids, reaction_from_node)
+    ground_reactions(deformation, reaction_from_node)
 
     local_from_globals = checker.get_element_local2global_rot_matrices()
     for element_id, (start_reaction, end_reaction) in deformation.reactions.items():
@@ -168,38 +183,30 @@ def local_reactions(extrusion_path, element_from_id, element_bodies, deformation
         reaction_from_node.setdefault(start, []).append(start_world)
         end_world = np.dot(end_rot, end_reaction)
         reaction_from_node.setdefault(end, []).append(end_world)
+    return reaction_from_node
 
-def ground_reactions(deformation, reaction_from_node):
-    # The fixities are global. The reaction forces are local
-    for node, reaction in deformation.fixities.items(): # Fixities are like the ground force to resist the structure?
-        reaction_from_node.setdefault(node, []).append(reaction)
+##################################################
 
 def draw_reaction(point, reaction, max_length=0.05, max_force=1, **kwargs):
     vector = max_length * np.array(reaction[:3]) / max_force
     end = point + vector
     return add_line(point, end, **kwargs)
 
-def visualize_stiffness(extrusion_path, element_bodies):
+def visualize_stiffness(extrusion_path):
     if not has_gui():
         return
-    # TODO: sort by node self load. Node partial order
-
     #label_elements(element_bodies)
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
     elements = list(element_from_id.values())
     #draw_model(elements, node_points, ground_nodes)
 
-    deformation = evaluate_stiffness(extrusion_path, element_from_id, elements)
-    reaction_from_node = {}
     # Freeform Assembly Planning
     # TODO: https://arxiv.org/pdf/1801.00527.pdf
     # Though assembly sequencing is often done by finding a disassembly sequence and reversing it, we will use a forward search.
     # Thus a low-cost state will usually be correctly identified by considering only the deflection of the cantilevered beam path
     # and approximating the rest of the beams as being infinitely stiff
 
-    local_reactions(extrusion_path, element_from_id, element_bodies, deformation, reaction_from_node)
-    ground_reactions(deformation, reaction_from_node)
-
+    reaction_from_node = local_reactions(extrusion_path, elements)
     #reaction_from_node = deformation.displacements # For visualizing displacements
     #test_node_forces(node_points, reaction_from_node)
     total_reaction_from_node = {node: np.sum(reactions, axis=0)[:3]
@@ -291,7 +298,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     # joint_weights = compute_joint_weights(robot, num=1000)
     initial_conf = get_joint_positions(robot, get_movable_joints(robot))
     # dump_body(robot)
-    visualize_stiffness(problem_path, element_bodies)
+    visualize_stiffness(problem_path)
     # debug_elements(robot, node_points, node_order, elements)
 
     with LockRenderer(False):
