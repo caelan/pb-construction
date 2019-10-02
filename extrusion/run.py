@@ -17,22 +17,24 @@ from multiprocessing import Pool, cpu_count, TimeoutError
 
 sys.path.append('pddlstream/')
 
+from extrusion.visualization import label_nodes, visualize_stiffness
 from extrusion.experiment import Configuration, load_experiment
 from extrusion.motion import compute_motions, display_trajectories
-from extrusion.stripstream import plan_sequence, STRIPSTREAM_ALGORITHM
-from extrusion.utils import load_world, check_connected, get_connected_structures, test_stiffness, evaluate_stiffness, \
-    USE_FLOOR, get_id_from_element, create_stiffness_checker, get_node_neighbors, get_extructed_ids
-from extrusion.parsing import load_extrusion, draw_element, create_elements, \
-    draw_model, enumerate_problems, get_extrusion_path, draw_sequence, affine_extrusion, sample_colors
+from extrusion.stripstream import plan_sequence
+from extrusion.utils import load_world, get_id_from_element
+from extrusion.parsing import load_extrusion, create_elements, \
+    enumerate_problems, get_extrusion_path
 from extrusion.stream import get_print_gen_fn
 from extrusion.greedy import regression, progression, GREEDY_HEURISTICS, GREEDY_ALGORITHMS
 
 from pddlstream.utils import get_python_version
-from examples.pybullet.utils.pybullet_tools.utils import connect, disconnect, get_movable_joints, add_text, \
-    get_joint_positions, LockRenderer, wait_for_user, has_gui, remove_all_debug, unit_pose, \
-    add_line, is_darwin, elapsed_time, write_pickle, user_input, reset_simulation, \
-    get_pose, draw_pose, tform_point, Euler, Pose, multiply, remove_debug, unit_point, draw_point, quat_from_matrix
+from examples.pybullet.utils.pybullet_tools.utils import connect, disconnect, get_movable_joints, get_joint_positions, LockRenderer, \
+    unit_pose, is_darwin, elapsed_time, write_pickle, user_input, reset_simulation, draw_pose
 
+# TODO: sort by action cost heuristic
+# http://www.fast-downward.org/Doc/Evaluator#Max_evaluator
+
+ALGORITHMS = GREEDY_ALGORITHMS #+ [STRIPSTREAM_ALGORITHM]
 
 ##################################################
 
@@ -47,13 +49,6 @@ def set_seed(seed):
     print('Seed:', seed)
 
 ##################################################
-
-def label_nodes(element_bodies, element):
-    element_body = element_bodies[element]
-    return [
-        add_text(element[0], position=(0, 0, -0.02), parent=element_body),
-        add_text(element[1], position=(0, 0, +0.02), parent=element_body),
-    ]
 
 def sample_trajectories(robot, obstacles, node_points, element_bodies, ground_nodes):
     gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes)
@@ -70,193 +65,6 @@ def sample_trajectories(robot, obstacles, node_points, element_bodies, ground_no
     return all_trajectories
 
 ##################################################
-
-def check_plan(extrusion_path, planned_elements, verbose=False):
-    element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
-    #checker = create_stiffness_checker(extrusion_name)
-
-    # TODO: construct the structure in different ways (random, connected)
-    handles = []
-    all_connected = True
-    all_stiff = True
-    extruded_elements = set()
-    for element in planned_elements:
-        extruded_elements.add(element)
-        is_connected = check_connected(ground_nodes, extruded_elements)
-        all_connected &= is_connected
-        is_stiff = test_stiffness(extrusion_path, element_from_id, extruded_elements)
-        all_stiff &= is_stiff
-        if verbose:
-            structures = get_connected_structures(extruded_elements)
-            print('Elements: {} | Structures: {} | Connected: {} | Stiff: {}'.format(
-                len(extruded_elements), len(structures), is_connected, is_stiff))
-        if has_gui():
-            is_stable = is_connected and is_stiff
-            color = (0, 1, 0) if is_stable else (1, 0, 0)
-            handles.append(draw_element(node_points, element, color))
-            #wait_for_duration(0.5)
-            if not is_stable:
-                wait_for_user()
-    # Make these counts instead
-    print('Connected: {} | Stiff: {}'.format(all_connected, all_stiff))
-    return all_connected and all_stiff
-
-def verify_plan(extrusion_path, planned_elements, use_gui=False):
-    # Path heuristic
-    # Disable shadows
-    connect(use_gui=use_gui)
-    obstacles, robot = load_world()
-    is_valid = check_plan(extrusion_path, planned_elements)
-    reset_simulation()
-    disconnect()
-    return is_valid
-
-def test_node_forces(node_points, reaction_from_node):
-    handles = []
-    for node in sorted(reaction_from_node):
-        reactions = reaction_from_node[node]
-        max_force = max(map(np.linalg.norm, reactions))
-        print('node={}, max force={:.3f}'.format(node, max_force))
-        print(list(map(np.array, reactions)))
-        start = node_points[node]
-        for reaction in reactions:
-            vector = 0.05 * np.array(reaction) / max_force
-            end = start + vector
-            handles.append(add_line(start, end, color=(0, 1, 0)))
-        wait_for_user()
-        for handle in handles:
-            remove_debug(handle)
-
-def label_elements(element_bodies):
-    # +z points parallel to each element body
-    for element, body in element_bodies.items():
-        print(element)
-        label_nodes(element_bodies, element)
-        draw_pose(get_pose(body), length=0.02)
-        wait_for_user()
-
-##################################################
-
-def nodal_loads(checker, extruded_ids, reaction_from_node):
-    nodal_loads = checker.get_nodal_loads(existing_ids=extruded_ids, dof_flattened=False)
-    for node, wrench in nodal_loads.items():
-        reaction_from_node.setdefault(node, []).append(wrench)
-    #weight_loads = checker.get_self_weight_loads(existing_ids=extruded_ids, dof_flattened=False)
-    #for node, wrench in weight_loads.items():
-    #    reaction_from_node.setdefault(node, []).append(wrench)
-
-def ground_reactions(deformation, reaction_from_node):
-    # The fixities are global. The reaction forces are local
-    for node, reaction in deformation.fixities.items(): # Fixities are like the ground force to resist the structure?
-        reaction_from_node.setdefault(node, []).append(reaction)
-
-def local_reactions(extrusion_path, elements):
-    # https://github.com/yijiangh/conmech/blob/master/tests/test_stiffness_checker.py#L407
-    # https://github.com/yijiangh/conmech/blob/master/src/pyconmech/frame_analysis/stiffness_checker.py
-    element_from_id, _, _ = load_extrusion(extrusion_path)
-    extruded_ids = get_extructed_ids(element_from_id, elements)
-    checker = create_stiffness_checker(extrusion_path, verbose=False)
-    deformation = evaluate_stiffness(extrusion_path, element_from_id, elements)
-
-    reaction_from_node = {}
-    nodal_loads(checker, extruded_ids, reaction_from_node)
-    ground_reactions(deformation, reaction_from_node)
-
-    local_from_globals = checker.get_element_local2global_rot_matrices()
-    for element_id, (start_reaction, end_reaction) in deformation.reactions.items():
-        element = element_from_id[element_id]
-        start, end = reversed(element)
-
-        global_from_local = np.linalg.inv(local_from_globals[element_id])
-        start_rot = global_from_local[:6,:6]
-        #start_force = quat_from_matrix(start_rot[:3,:3])
-        #start_torque = quat_from_matrix(start_rot[3:6,3:6])
-        #assert np.allclose(start_force, start_torque)
-
-        end_rot = global_from_local[6:,6:]
-        #end_force = quat_from_matrix(end_rot[:3,:3])
-        #end_torque = quat_from_matrix(end_rot[3:,3:])
-        #assert np.allclose(start_force, end_force)
-        #assert np.allclose(start_torque, end_torque)
-
-        start_world = np.dot(start_rot, start_reaction)
-        reaction_from_node.setdefault(start, []).append(start_world)
-        end_world = np.dot(end_rot, end_reaction)
-        reaction_from_node.setdefault(end, []).append(end_world)
-    return reaction_from_node
-
-##################################################
-
-def draw_reaction(point, reaction, max_length=0.05, max_force=1, **kwargs):
-    vector = max_length * np.array(reaction[:3]) / max_force
-    end = point + vector
-    return add_line(point, end, **kwargs)
-
-def visualize_stiffness(extrusion_path):
-    if not has_gui():
-        return
-    #label_elements(element_bodies)
-    element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
-    elements = list(element_from_id.values())
-    #draw_model(elements, node_points, ground_nodes)
-
-    # Freeform Assembly Planning
-    # TODO: https://arxiv.org/pdf/1801.00527.pdf
-    # Though assembly sequencing is often done by finding a disassembly sequence and reversing it, we will use a forward search.
-    # Thus a low-cost state will usually be correctly identified by considering only the deflection of the cantilevered beam path
-    # and approximating the rest of the beams as being infinitely stiff
-
-    reaction_from_node = local_reactions(extrusion_path, elements)
-    #reaction_from_node = deformation.displacements # For visualizing displacements
-    #test_node_forces(node_points, reaction_from_node)
-    total_reaction_from_node = {node: np.sum(reactions, axis=0)[:3]
-                                for node, reactions in reaction_from_node.items()}
-    force_from_node = {node: np.linalg.norm(reaction)
-                       for node, reaction in total_reaction_from_node.items()}
-    #max_force = max(force_from_node.values())
-    max_force = max(np.linalg.norm(reaction[:3]) for reactions in reaction_from_node.values() for reaction in reactions)
-    print('Max force:',  max_force)
-    for i, node in enumerate(sorted(total_reaction_from_node, key=lambda n: force_from_node[n])):
-        print('{}) node={}, point={}, vector={}, magnitude={:.3E}'.format(
-            i, node, node_points[node], total_reaction_from_node[node], force_from_node[node]))
-
-    neighbors_from_node = get_node_neighbors(elements)
-    nodes = sorted(reaction_from_node, key=lambda n: force_from_node[n])
-    colors = sample_colors(len(nodes))
-    handles = []
-    for node, color in zip(nodes, colors):
-        color = (0, 0, 0)
-        reactions = reaction_from_node[node]
-        print(np.array(reactions))
-        start = node_points[node]
-        handles.extend(draw_point(start, color=color))
-        for reaction in reactions[:1]:
-            handles.append(draw_reaction(start, reaction, max_force=max_force, color=(1, 0, 0)))
-        for reaction in reactions[1:]:
-            handles.append(draw_reaction(start, reaction, max_force=max_force, color=(0, 1, 0)))
-        print('Node: {} | Ground: {} | Neighbors: {} | Reactions: {}'.format(
-            node, (node in ground_nodes), len(neighbors_from_node[node]), len(reactions)))
-        print(np.sum(reactions, axis=0))
-        #handles.append(draw(start, total_reaction_from_node[node], max_force=max_force, color=(0, 0, 1)))
-        wait_for_user()
-        #for handle in handles:
-        #    remove_debug(handle)
-        #handles = []
-        #remove_all_debug()
-
-    # TODO: could compute the least balanced node with respect to original forces
-    # TODO: sum the norms of all the forces in the structure
-
-    #draw_sequence(sequence, node_points)
-    wait_for_user()
-
-
-##################################################
-
-# TODO: sort by action cost heuristic
-# http://www.fast-downward.org/Doc/Evaluator#Max_evaluator
-
-ALGORITHMS = GREEDY_ALGORITHMS #+ [STRIPSTREAM_ALGORITHM]
 
 def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=False):
     # TODO: setCollisionFilterGroupMask
