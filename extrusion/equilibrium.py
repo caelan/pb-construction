@@ -3,7 +3,8 @@ from collections import namedtuple
 import numpy as np
 
 from extrusion.parsing import load_extrusion
-from extrusion.utils import get_extructed_ids, create_stiffness_checker, evaluate_stiffness, Reaction, nodes_from_elements
+from extrusion.utils import get_extructed_ids, create_stiffness_checker, evaluate_stiffness, Reaction, \
+    force_from_reaction, compute_element_distance
 from examples.pybullet.utils.pybullet_tools.utils import get_unit_vector
 
 ReactionForces = namedtuple('Reactions', ['loads', 'fixities', 'reactions'])
@@ -23,16 +24,21 @@ def compute_global_reactions(element_from_id, checker, deformation):
     return reactions
 
 def compute_all_reactions(extrusion_path, elements, checker=None):
-    element_from_id, _, _ = load_extrusion(extrusion_path)
+    element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
     extruded_ids = get_extructed_ids(element_from_id, elements)
     #if checker is None:
     # TODO: some strange issue when reusing here
     checker = create_stiffness_checker(extrusion_path, verbose=False)
     deformation = evaluate_stiffness(extrusion_path, element_from_id, elements, checker=checker, verbose=False)
     # TODO: slight torque due to the load
-    nodal_loads = checker.get_nodal_loads(existing_ids=extruded_ids, dof_flattened=False)
-    #nodal_loads = checker.get_self_weight_loads(existing_ids=extruded_ids, dof_flattened=False)
+    #nodal_loads = checker.get_nodal_loads(existing_ids=extruded_ids, dof_flattened=False)
+    nodal_loads = checker.get_self_weight_loads(existing_ids=extruded_ids, dof_flattened=False)
+    #total_load = np.linalg.norm(force_from_reaction(sum(nodal_loads.values())))
     reactions = compute_global_reactions(element_from_id, checker, deformation)
+    #distance = compute_element_distance(node_points, elements)
+    #density = total_load / distance
+    #nodes = nodes_from_elements(elements) | ground_nodes
+    #print(len(elements), total_load, density)
     return ReactionForces(nodal_loads, deformation.fixities, reactions)
 
 def add_reactions(reactions, reaction_from_node):

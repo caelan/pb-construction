@@ -87,8 +87,8 @@ def visualize_stiffness(extrusion_path):
             handles.append(draw_reaction(start, reaction, max_force=max_force, color=(1, 0, 0)))
         for reaction in reactions[1:]:
             handles.append(draw_reaction(start, reaction, max_force=max_force, color=(0, 1, 0)))
-        print('Node: {} | Ground: {} | Neighbors: {} | Reactions: {}'.format(
-            node, (node in ground_nodes), len(neighbors_from_node[node]), len(reactions)))
+        print('Node: {} | Ground: {} | Neighbors: {} | Reactions: {} | Magnitude: {:.3E}'.format(
+            node, (node in ground_nodes), len(neighbors_from_node[node]), len(reactions), force_from_node[node]))
         print('Total:', np.sum(reactions, axis=0))
         wait_for_user()
         #for handle in handles:

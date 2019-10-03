@@ -10,7 +10,7 @@ from pyconmech import StiffnessChecker
 
 from examples.pybullet.utils.pybullet_tools.utils import set_point, Euler, set_joint_positions, \
     pairwise_collision, Pose, multiply, Point, load_model, HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, set_pose, \
-    get_aabb
+    get_aabb, get_distance
 from pddlstream.utils import get_connected_components
 
 KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
@@ -208,6 +208,9 @@ def get_other_node(node1, element):
 
 def is_ground(element, ground_nodes):
     return any(n in ground_nodes for n in element)
+
+def compute_element_distance(node_points, elements):
+    return sum(get_distance(node_points[n1], node_points[n2]) for n1, n2 in elements)
 
 ##################################################
 

@@ -12,7 +12,7 @@ from examples.pybullet.utils.pybullet_tools.utils import elapsed_time, \
     remove_all_debug, wait_for_user, has_gui, LockRenderer, reset_simulation, disconnect, set_renderer
 from extrusion.parsing import load_extrusion, draw_element, draw_sequence, draw_model
 from extrusion.stream import get_print_gen_fn
-from extrusion.utils import check_connected, torque_from_reaction, force_from_reaction, test_stiffness, \
+from extrusion.utils import check_connected, torque_from_reaction, force_from_reaction, compute_element_distance, test_stiffness, \
     create_stiffness_checker, get_id_from_element, load_world, get_supported_orders, get_extructed_ids, nodes_from_elements
 from extrusion.equilibrium import compute_node_reactions, compute_all_reactions
 
@@ -105,8 +105,12 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
         structure = printed | {element} if forward else printed - {element}
         structure_ids = get_extructed_ids(element_from_id, structure)
 
+        distance = 1
+        #distance = len(structure)
+        #distance = compute_element_distance(node_points, elements)
+
         operator = sum # sum | max
-        fn = force_from_reaction  # force_from_reaction | torque_from_reaction
+        fn = torque_from_reaction  # force_from_reaction | torque_from_reaction
 
         if heuristic == 'none':
             return 0
@@ -129,17 +133,22 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
             return sign*z
         elif heuristic == 'load':
             nodal_loads = checker.get_nodal_loads(existing_ids=structure_ids, dof_flattened=False) # get_self_weight_loads
-            return operator(np.linalg.norm(force_from_reaction(wrench)) for wrench in nodal_loads.values())
+            return operator(np.linalg.norm(force_from_reaction(reaction)) for reaction in nodal_loads.values())
         elif heuristic == 'fixed-forces':
             #printed = elements # disable to use most up-to-date
+            # TODO: relative to the load introduced
             if printed not in reaction_cache:
                 reaction_cache[printed] = compute_all_reactions(extrusion_path, elements, checker=checker)
-            return operator(np.linalg.norm(fn(reaction)) for reaction in reaction_cache[printed].reactions[element])
+            force = operator(np.linalg.norm(fn(reaction)) for reaction in reaction_cache[printed].reactions[element])
+            return force / distance
         elif heuristic == 'forces':
-            # TODO: equilibrium torque
             reactions_from_nodes = compute_node_reactions(extrusion_path, structure, checker=checker)
-            return operator(np.linalg.norm(fn(reaction)) for reactions in reactions_from_nodes.values()
-                            for reaction in reactions) # torques
+            #torque = sum(np.linalg.norm(np.sum([torque_from_reaction(reaction) for reaction in reactions], axis=0))
+            #            for reactions in reactions_from_nodes.values())
+            #return torque / distance
+            total = operator(np.linalg.norm(fn(reaction)) for reactions in reactions_from_nodes.values()
+                            for reaction in reactions) # torqueßs
+            return total / distance
             #return max(sum(np.linalg.norm(fn(reaction)) for reaction in reactions)
             #               for reactions in reactions_from_nodes.values())
         elif heuristic == 'stiffness':
@@ -149,18 +158,17 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
             # Gets faster with fewer elements
             #old_stiffness = score_stiffness(extrusion_path, element_from_id, printed, checker=checker)
             stiffness = score_stiffness(extrusion_path, element_from_id, structure, checker=checker) # lower is better
-            return stiffness
+            return stiffness / distance
             #return stiffness / old_stiffness
         elif heuristic == 'fixed-stiffness':
             # TODO: invert the sign for regression/progression?
             # TODO: sort FastDownward by the (fixed) action cost
-            return stiffness_cache[element]
+            return stiffness_cache[element] / distance
         elif heuristic == 'relative-stiffness':
             stiffness = score_stiffness(extrusion_path, element_from_id, structure, checker=checker) # lower is better
-            length = sum(get_distance(node_points[n2], node_points[n1]) for n1, n2 in structure)
-            if length == 0:
+            if distance == 0:
                 return 0
-            return stiffness / length
+            return stiffness / distance
             #return stiffness / stiffness_cache[element]
         elif heuristic == 'dijkstra':
             # min, max, node not in set
