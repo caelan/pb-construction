@@ -13,7 +13,7 @@ import json
 
 sys.path.append('pddlstream/')
 
-from extrusion.visualization import label_nodes
+from extrusion.visualization import label_nodes, visualize_stiffness
 from extrusion.experiment import load_experiment, train_parallel
 from extrusion.motion import compute_motions, display_trajectories
 from extrusion.stripstream import plan_sequence

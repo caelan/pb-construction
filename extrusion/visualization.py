@@ -2,7 +2,7 @@ import numpy as np
 
 from extrusion.equilibrium import compute_node_reactions
 from extrusion.parsing import load_extrusion, sample_colors
-from extrusion.utils import get_node_neighbors
+from extrusion.utils import get_node_neighbors, force_from_reaction
 from examples.pybullet.utils.pybullet_tools.utils import add_text, draw_pose, get_pose, wait_for_user, add_line, remove_debug, has_gui, \
     draw_point
 
@@ -64,23 +64,21 @@ def visualize_stiffness(extrusion_path):
     reaction_from_node = compute_node_reactions(extrusion_path, elements)
     #reaction_from_node = deformation.displacements # For visualizing displacements
     #test_node_forces(node_points, reaction_from_node)
-    total_reaction_from_node = {node: np.sum(reactions, axis=0)[:3]
-                                for node, reactions in reaction_from_node.items()}
-    force_from_node = {node: np.linalg.norm(reaction)
-                       for node, reaction in total_reaction_from_node.items()}
+    force_from_node = {node: sum(np.linalg.norm(force_from_reaction(reaction)) for reaction in reactions)
+                       for node, reactions in reaction_from_node.items()}
+    sorted_nodes = sorted(reaction_from_node, key=lambda n: force_from_node[n], reverse=True)
+    for i, node in enumerate(sorted_nodes):
+        print('{}) node={}, point={}, magnitude={:.3E}'.format(
+            i, node, node_points[node], force_from_node[node]))
+
     #max_force = max(force_from_node.values())
     max_force = max(np.linalg.norm(reaction[:3]) for reactions in reaction_from_node.values() for reaction in reactions)
     print('Max force:',  max_force)
-    for i, node in enumerate(sorted(total_reaction_from_node, key=lambda n: force_from_node[n])):
-        print('{}) node={}, point={}, vector={}, magnitude={:.3E}'.format(
-            i, node, node_points[node], total_reaction_from_node[node], force_from_node[node]))
-
     neighbors_from_node = get_node_neighbors(elements)
-    nodes = sorted(reaction_from_node, key=lambda n: force_from_node[n])
-    colors = sample_colors(len(nodes))
+    colors = sample_colors(len(sorted_nodes))
     handles = []
-    for node, color in zip(nodes, colors):
-        color = (0, 0, 0)
+    for node, color in zip(sorted_nodes, colors):
+        #color = (0, 0, 0)
         reactions = reaction_from_node[node]
         #print(np.array(reactions))
         start = node_points[node]
@@ -91,8 +89,7 @@ def visualize_stiffness(extrusion_path):
             handles.append(draw_reaction(start, reaction, max_force=max_force, color=(0, 1, 0)))
         print('Node: {} | Ground: {} | Neighbors: {} | Reactions: {}'.format(
             node, (node in ground_nodes), len(neighbors_from_node[node]), len(reactions)))
-        print(np.sum(reactions, axis=0))
-        #handles.append(draw(start, total_reaction_from_node[node], max_force=max_force, color=(0, 0, 1)))
+        print('Total:', np.sum(reactions, axis=0))
         wait_for_user()
         #for handle in handles:
         #    remove_debug(handle)

@@ -25,8 +25,9 @@ def compute_global_reactions(element_from_id, checker, deformation):
 def compute_all_reactions(extrusion_path, elements, checker=None):
     element_from_id, _, _ = load_extrusion(extrusion_path)
     extruded_ids = get_extructed_ids(element_from_id, elements)
-    if checker is None:
-        checker = create_stiffness_checker(extrusion_path, verbose=False)
+    #if checker is None:
+    # TODO: some strange issue when reusing here
+    checker = create_stiffness_checker(extrusion_path, verbose=False)
     deformation = evaluate_stiffness(extrusion_path, element_from_id, elements, checker=checker, verbose=False)
     # TODO: slight torque due to the load
     nodal_loads = checker.get_nodal_loads(existing_ids=extruded_ids, dof_flattened=False)
@@ -58,6 +59,7 @@ def compute_node_reactions(extrusion_path, elements, **kwargs):
     reaction_from_node = add_reactions(reactions, reaction_from_node)
     #nodes = nodes_from_elements(elements) # | ground_nodes
     #assert set(reaction_from_node) == nodes
+    # TODO: check that they are balanced
     return reaction_from_node
 
 def partial_forces(reaction_forces, elements):
