@@ -12,12 +12,12 @@ from examples.pybullet.utils.pybullet_tools.utils import elapsed_time, \
     remove_all_debug, wait_for_user, has_gui, LockRenderer, reset_simulation, disconnect, set_renderer
 from extrusion.parsing import load_extrusion, draw_element, draw_sequence, draw_model
 from extrusion.stream import get_print_gen_fn
-from extrusion.utils import check_connected, test_stiffness, \
+from extrusion.utils import check_connected, torque_from_reaction, force_from_reaction, test_stiffness, \
     create_stiffness_checker, get_id_from_element, load_world, get_supported_orders, get_extructed_ids
-from extrusion.equilibrium import compute_node_reactions
+from extrusion.equilibrium import compute_node_reactions, compute_all_reactions
 
 # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
-from pybullet_tools.utils import connect, ClientSaver, wait_for_user, INF, get_distance, has_gui, remove_all_debug
+from pybullet_tools.utils import connect, ClientSaver, wait_for_user, INF, get_distance, has_gui, remove_all_debug, wait_for_duration
 from pddlstream.utils import neighbors_from_orders, adjacent_from_edges, implies
 
 State = namedtuple('State', ['element', 'printed', 'plan'])
@@ -82,6 +82,7 @@ GREEDY_HEURISTICS = [
     'degree',
     'load',
     'forces',
+    'fixed-forces',
 ]
 
 # TODO: visualize the branching factor
@@ -97,6 +98,9 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
     if heuristic in ('fixed-stiffness', 'relative-stiffness'):
         stiffness_cache.update({element: score_stiffness(extrusion_path, element_from_id, elements - {element},
                                                          checker=checker) for element in elements})
+    reaction_forces = None
+    if heuristic == 'fixed-forces':
+        reaction_forces = compute_all_reactions(extrusion_path, elements, checker=checker)
 
     def fn(printed, element):
         # Queue minimizes the statistic
@@ -108,6 +112,7 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
             return 0
         elif heuristic == 'degree':
             # TODO: online/offline and ground
+            # TODO: other graph statistics
             #printed_nodes = {n for e in printed for n in e}
             #n1, n2 = element
             #node = n1 if n2 in printed_nodes else n2
@@ -124,16 +129,24 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
             return sign*z
         elif heuristic == 'load':
             nodal_loads = checker.get_nodal_loads(existing_ids=structure_ids, dof_flattened=False) # get_self_weight_loads
-            return operator(np.linalg.norm(wrench[:3]) for wrench in nodal_loads.values())
+            return operator(np.linalg.norm(force_from_reaction(wrench)) for wrench in nodal_loads.values())
+        elif heuristic == 'fixed-forces':
+            # TODO: could recompute once per state
+            total_force = sum(np.linalg.norm(force_from_reaction(reaction))
+                              for reaction in reaction_forces.reactions[element])
+            #return total_force
+            total_torque = sum(np.linalg.norm(torque_from_reaction(reaction))
+                               for reaction in reaction_forces.reactions[element])
+            return total_torque
         elif heuristic == 'forces':
             # TODO: could try something involving the initial forces
             reactions_from_nodes = compute_node_reactions(extrusion_path, structure, checker=checker)
-            return operator(np.linalg.norm(reaction[:3]) for reactions in reactions_from_nodes.values()
+            return operator(np.linalg.norm(force_from_reaction(reaction)) for reactions in reactions_from_nodes.values()
                             for reaction in reactions) # forces
-            #return operator(np.linalg.norm(reaction[3:]) for reactions in reactions_from_nodes.values()
+            #return operator(np.linalg.norm(torque_from_reaction(reaction)) for reactions in reactions_from_nodes.values()
             #                for reaction in reactions) # torques
-            #return max(sum(np.linalg.norm(reaction[:3]) for reaction in reactions)
-            #           for reactions in reactions_from_nodes.values())
+            #return max(sum(np.linalg.norm(force_from_reaction(reaction)) for reaction in reactions)
+            #               for reactions in reactions_from_nodes.values())
         elif heuristic == 'stiffness':
             # TODO: add different variations
             # TODO: normalize by initial stiffness, length, or degree
@@ -217,11 +230,11 @@ def score_stiffness(extrusion_path, element_from_id, elements, checker=None):
     relative_rot = max_rot / rot_tol # lower is better
     # More quickly approximate deformations by modifying the matrix operations incrementally
 
-    reaction_forces = np.array([d[:3] for d in fixities_reaction.values()])
-    reaction_moments = np.array([d[3:] for d in fixities_reaction.values()])
+    reaction_forces = np.array([force_from_reaction(d) for d in fixities_reaction.values()])
+    reaction_moments = np.array([torque_from_reaction(d) for d in fixities_reaction.values()])
     heuristic = 'fixities_rotation'
     scores = {
-        # Yijiang was suprised that fixities_translation worked
+        # Yijiang was surprised that fixities_translation worked
         'fixities_translation': np.linalg.norm(reaction_forces, axis=1),
         'fixities_rotation': np.linalg.norm(reaction_moments, axis=1),
         'nodal_translation': np.linalg.norm(list(nodal_displacement.values()), axis=1),
@@ -388,8 +401,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
         if max_backtrack <= backtrack:
             continue
         num_evaluated += 1
-        if num_remaining < min_remaining:
-            min_remaining = num_remaining
+
         print('Iteration: {} | Best: {} | Printed: {} | Element: {} | Index: {} | Time: {:.3f}'.format(
             num_evaluated, min_remaining, len(printed), element, id_from_element[element], elapsed_time(start_time)))
         next_printed = printed - {element}
@@ -399,7 +411,6 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
         #    set_renderer(enable=True)
         #    draw_model(next_printed, node_points, ground_nodes)
         #    wait_for_user()
-        # TODO: visualize during the search
 
         if (next_printed in visited) or not check_connected(ground_nodes, next_printed) or \
                 not implies(stiffness, test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker)):
@@ -407,6 +418,16 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
         command = sample_extrusion(print_gen_fn, ground_nodes, next_printed, element)
         if command is None:
             continue
+
+        if num_remaining < min_remaining:
+            min_remaining = num_remaining
+            print('New best: {}'.format(num_remaining))
+            #if has_gui():
+            #    # TODO: change link transparency
+            #    remove_all_debug()
+            #    draw_model(next_printed, node_points, ground_nodes)
+            #    wait_for_duration(0.5)
+
         visited[next_printed] = Node(command, printed) # TODO: be careful when multiple trajs
         if not next_printed:
             min_remaining = 0

@@ -311,6 +311,14 @@ Deformation = namedtuple('Deformation', ['success', 'displacements', 'fixities',
 Displacement = namedtuple('Displacement', ['dx', 'dy', 'dz', 'theta_x', 'theta_y', 'theta_z'])
 Reaction = namedtuple('Reaction', ['fx', 'fy', 'fz', 'mx', 'my', 'mz'])
 
+def force_from_reaction(reaction):
+    return reaction[:3]
+
+def torque_from_reaction(reaction):
+    return reaction[3:]
+
+##################################################
+
 def evaluate_stiffness(extrusion_path, element_from_id, elements, checker=None, verbose=True):
     # TODO: check each component individually
     if not elements:

@@ -9,16 +9,12 @@ import numpy as np
 import random
 import time
 import os
-import datetime
 import json
-
-from itertools import product
-from multiprocessing import Pool, cpu_count, TimeoutError
 
 sys.path.append('pddlstream/')
 
-from extrusion.visualization import label_nodes, visualize_stiffness
-from extrusion.experiment import Configuration, load_experiment
+from extrusion.visualization import label_nodes
+from extrusion.experiment import load_experiment, train_parallel
 from extrusion.motion import compute_motions, display_trajectories
 from extrusion.stripstream import plan_sequence
 from extrusion.utils import load_world, get_id_from_element
@@ -26,10 +22,10 @@ from extrusion.parsing import load_extrusion, create_elements, \
     enumerate_problems, get_extrusion_path
 from extrusion.stream import get_print_gen_fn
 from extrusion.greedy import regression, progression, GREEDY_HEURISTICS, GREEDY_ALGORITHMS
+from extrusion.validator import verify_plan
 
-from pddlstream.utils import get_python_version
 from examples.pybullet.utils.pybullet_tools.utils import connect, disconnect, get_movable_joints, get_joint_positions, LockRenderer, \
-    unit_pose, is_darwin, elapsed_time, write_pickle, user_input, reset_simulation, draw_pose
+    unit_pose, reset_simulation, draw_pose
 
 # TODO: sort by action cost heuristic
 # http://www.fast-downward.org/Doc/Evaluator#Max_evaluator
@@ -85,11 +81,10 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     # with open(path, 'w') as f:
     #     json.dump(json_data, f, indent=2, sort_keys=True)
     # problem_path = path
-    # TODO: rotate the whole robot for fun
+    # TODO: rotate the whole robot as well
     # TODO: could also use the z heuristic when upside down
 
     # TODO: lazily plan for the end-effector before each manipulation
-    # TODO: graph statistics/vertex-degree-related heuristics
     element_from_id, node_points, ground_nodes = load_extrusion(problem_path, verbose=True)
     elements = list(element_from_id.values())
     #elements, ground_nodes = downsample_nodes(elements, node_points, ground_nodes)
@@ -106,7 +101,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     # joint_weights = compute_joint_weights(robot, num=1000)
     initial_conf = get_joint_positions(robot, get_movable_joints(robot))
     # dump_body(robot)
-    visualize_stiffness(problem_path)
+    #visualize_stiffness(problem_path)
     # debug_elements(robot, node_points, node_order, elements)
 
     with LockRenderer(False):
@@ -146,6 +141,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     planned_ids = [id_from_element[element] for element in planned_elements]
     # random.shuffle(planned_elements)
     # planned_elements = sorted(elements, key=lambda e: max(node_points[n][2] for n in e)) # TODO: tiebreak by angle or x
+    valid = verify_plan(problem_path, planned_elements, use_gui=viewer)
 
     plan_data = {
         'problem':  args.problem,
@@ -155,6 +151,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
         'use_collisions': not args.cfree,
         'use_stiffness': args.stiffness,
         'plan': planned_ids,
+        'valid': valid,
     }
     plan_data.update(data)
     del plan_data['sequence']
@@ -162,63 +159,11 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     with open(plan_path, 'w') as f:
         json.dump(plan_data, f, indent=2, sort_keys=True)
 
-    #verify_plan(problem_path, planned_elements)
     if watch:
         display_trajectories(node_points, ground_nodes, planned_trajectories, animate=not args.disable)
     if not verbose:
         sys.stdout.close()
     return args, data
-
-##################################################
-
-def train_parallel(num=10, max_time=30*60):
-    initial_time = time.time()
-    print('Trials:', num)
-    print('Max time:', max_time)
-
-    problems = list(enumerate_problems())
-    #problems = ['simple_frame']
-    print('Problems ({}): {}'.format(len(problems), problems))
-    #problems = [path for path in problems if 'simple_frame' in path]
-    cfree = False
-    disable = True
-    stiffness = True # store_false
-    motions = False
-    configurations = [Configuration(*c) for c in product(
-        range(num), problems, ALGORITHMS, GREEDY_HEURISTICS, [max_time],
-        [cfree], [disable], [stiffness], [motions])]
-    print('Configurations: {}'.format(len(configurations)))
-
-    serial = is_darwin()
-    available_cores = cpu_count()
-    num_cores = max(1, min(1 if serial else available_cores - 3, len(configurations)))
-    print('Max Cores:', available_cores)
-    print('Serial:', serial)
-    print('Using Cores:', num_cores)
-    date = datetime.datetime.now().strftime('%y-%m-%d_%H-%M-%S')
-    filename = '{}.pk{}'.format(date, get_python_version())
-    path = os.path.join('experiments', filename)
-    print('Data path:', path)
-
-    user_input('Begin?')
-    pool = Pool(processes=num_cores)  # , initializer=mute)
-    generator = pool.imap_unordered(plan_extrusion, configurations, chunksize=1)
-    results = []
-    while True:
-        start_time = time.time()
-        try:
-            configuration, data = generator.next(timeout=2 * max_time)
-            print(len(results), configuration, data)
-            results.append((configuration, data))
-            if results:
-                write_pickle(path, results)
-                print('Saved', path)
-        except StopIteration:
-            break
-        except TimeoutError:
-            print('Error! Timed out after {:.3f} seconds'.format(elapsed_time(start_time)))
-            break
-    print('Total time:', elapsed_time(initial_time))
 
 ##################################################
 

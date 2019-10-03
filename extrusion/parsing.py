@@ -5,7 +5,7 @@ import numpy as np
 
 from collections import namedtuple, OrderedDict
 from examples.pybullet.utils.pybullet_tools.utils import add_line, create_cylinder, set_point, set_quat, \
-    quat_from_euler, Euler, spaced_colors, tform_point, multiply, tform_from_pose, pose_from_tform
+    quat_from_euler, Euler, spaced_colors, tform_point, multiply, tform_from_pose, pose_from_tform, LockRenderer
 from extrusion.utils import is_ground
 
 Element = namedtuple('Element', ['id', 'layer', 'nodes'])
@@ -186,9 +186,10 @@ def draw_element(node_points, element, color=(1, 0, 0)):
 
 def draw_model(elements, node_points, ground_nodes):
     handles = []
-    for element in elements:
-        color = (0, 0, 1) if is_ground(element, ground_nodes) else (1, 0, 0)
-        handles.append(draw_element(node_points, element, color=color))
+    with LockRenderer():
+        for element in elements:
+            color = (0, 0, 1) if is_ground(element, ground_nodes) else (1, 0, 0)
+            handles.append(draw_element(node_points, element, color=color))
     return handles
 
 def sample_colors(num, lower=0.0, upper=0.75): # for now wrap around

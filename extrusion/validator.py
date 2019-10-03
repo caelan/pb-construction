@@ -1,6 +1,7 @@
 from extrusion.parsing import load_extrusion, draw_element
 from extrusion.utils import check_connected, test_stiffness, get_connected_structures, load_world
-from examples.pybullet.utils.pybullet_tools.utils import has_gui, wait_for_user, connect, reset_simulation, disconnect
+from examples.pybullet.utils.pybullet_tools.utils import has_gui, wait_for_user, connect, reset_simulation, \
+    disconnect, wait_for_duration
 
 
 def check_plan(extrusion_path, planned_elements, verbose=False):
@@ -26,7 +27,7 @@ def check_plan(extrusion_path, planned_elements, verbose=False):
             is_stable = is_connected and is_stiff
             color = (0, 1, 0) if is_stable else (1, 0, 0)
             handles.append(draw_element(node_points, element, color))
-            #wait_for_duration(0.5)
+            wait_for_duration(0.5)
             if not is_stable:
                 wait_for_user()
     # Make these counts instead

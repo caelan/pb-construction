@@ -1,12 +1,20 @@
+import datetime
 import os
+import time
+from itertools import product
+from multiprocessing import cpu_count, Pool
+from multiprocessing.context import TimeoutError
+
 import numpy as np
 
 from collections import namedtuple, OrderedDict
 
-from extrusion.parsing import load_extrusion, get_extrusion_path, extrusion_name_from_path
+from extrusion.greedy import GREEDY_HEURISTICS
+from extrusion.parsing import load_extrusion, get_extrusion_path, extrusion_name_from_path, enumerate_problems
 from extrusion.utils import evaluate_stiffness, create_stiffness_checker, TRANS_TOL, ROT_TOL
-from pddlstream.utils import str_from_object, INF
+from pddlstream.utils import str_from_object, INF, get_python_version
 from examples.pybullet.utils.pybullet_tools.utils import read_pickle
+from pybullet_tools.utils import is_darwin, user_input, write_pickle, elapsed_time
 
 Configuration = namedtuple('Configuration', ['seed', 'problem', 'algorithm', 'bias', 'max_time',
                                              'cfree', 'disable', 'stiffness', 'motions'])
@@ -18,6 +26,8 @@ EXCLUDE = [
     'robarch_tree',
     'DJMM_bridge',
 ]
+
+##################################################
 
 def score_result(result):
     return '{{failure={:.3f}, runtime={:.0f}, evaluated={:.0f}, max_trans={:.3E}, max_rot={:.3E}}}'.format(
@@ -106,3 +116,55 @@ def load_experiment(filename, overall=False):
                    if 2 <= len(value_per_field[field])}
             score = score_result(mean_result)
             print('{}) {} ({}): {}'.format(c_idx, str_from_object(key), len(results), str_from_object(score)))
+
+##################################################
+
+def train_parallel(num=10, max_time=30*60):
+    from extrusion.run import ALGORITHMS, plan_extrusion
+    initial_time = time.time()
+    print('Trials:', num)
+    print('Max time:', max_time)
+
+    problems = list(enumerate_problems())
+    #problems = ['simple_frame']
+    print('Problems ({}): {}'.format(len(problems), problems))
+    #problems = [path for path in problems if 'simple_frame' in path]
+    cfree = False
+    disable = True
+    stiffness = True # store_false
+    motions = False
+    configurations = [Configuration(*c) for c in product(
+        range(num), problems, ALGORITHMS, GREEDY_HEURISTICS, [max_time],
+        [cfree], [disable], [stiffness], [motions])]
+    print('Configurations: {}'.format(len(configurations)))
+
+    serial = is_darwin()
+    available_cores = cpu_count()
+    num_cores = max(1, min(1 if serial else available_cores - 3, len(configurations)))
+    print('Max Cores:', available_cores)
+    print('Serial:', serial)
+    print('Using Cores:', num_cores)
+    date = datetime.datetime.now().strftime('%y-%m-%d_%H-%M-%S')
+    filename = '{}.pk{}'.format(date, get_python_version())
+    path = os.path.join('experiments', filename)
+    print('Data path:', path)
+
+    user_input('Begin?')
+    pool = Pool(processes=num_cores)  # , initializer=mute)
+    generator = pool.imap_unordered(plan_extrusion, configurations, chunksize=1)
+    results = []
+    while True:
+        start_time = time.time()
+        try:
+            configuration, data = generator.next(timeout=2 * max_time)
+            print(len(results), configuration, data)
+            results.append((configuration, data))
+            if results:
+                write_pickle(path, results)
+                print('Saved', path)
+        except StopIteration:
+            break
+        except TimeoutError:
+            print('Error! Timed out after {:.3f} seconds'.format(elapsed_time(start_time)))
+            break
+    print('Total time:', elapsed_time(initial_time))
