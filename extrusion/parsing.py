@@ -195,7 +195,7 @@ def draw_model(elements, node_points, ground_nodes):
 def sample_colors(num, lower=0.0, upper=0.75): # for now wrap around
     return [colorsys.hsv_to_rgb(h, s=1, v=1) for h in np.linspace(lower, upper, num, endpoint=True)]
 
-def draw_sequence(elements, node_points):
+def draw_ordered(elements, node_points):
     #colors = spaced_colors(len(elements))
     colors = sample_colors(len(elements))
     handles = []

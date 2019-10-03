@@ -10,7 +10,7 @@ import numpy as np
 
 from examples.pybullet.utils.pybullet_tools.utils import elapsed_time, \
     remove_all_debug, wait_for_user, has_gui, LockRenderer, reset_simulation, disconnect, set_renderer
-from extrusion.parsing import load_extrusion, draw_element, draw_sequence, draw_model
+from extrusion.parsing import load_extrusion, draw_element, draw_ordered, draw_model
 from extrusion.stream import get_print_gen_fn
 from extrusion.utils import check_connected, torque_from_reaction, force_from_reaction, compute_element_distance, test_stiffness, \
     create_stiffness_checker, get_id_from_element, load_world, get_supported_orders, get_extructed_ids, nodes_from_elements
@@ -20,7 +20,7 @@ from extrusion.equilibrium import compute_node_reactions, compute_all_reactions
 from pybullet_tools.utils import connect, ClientSaver, wait_for_user, INF, get_distance, has_gui, remove_all_debug, wait_for_duration
 from pddlstream.utils import neighbors_from_orders, adjacent_from_edges, implies
 
-State = namedtuple('State', ['element', 'printed', 'plan'])
+#State = namedtuple('State', ['element', 'printed', 'plan'])
 Node = namedtuple('Node', ['action', 'state'])
 
 def retrace_plan(visited, current_state):
@@ -105,12 +105,12 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
         structure = printed | {element} if forward else printed - {element}
         structure_ids = get_extructed_ids(element_from_id, structure)
 
-        distance = 1
+        #distance = 1
         #distance = len(structure)
-        #distance = compute_element_distance(node_points, elements)
+        distance = compute_element_distance(node_points, elements)
 
         operator = sum # sum | max
-        fn = torque_from_reaction  # force_from_reaction | torque_from_reaction
+        fn = force_from_reaction  # force_from_reaction | torque_from_reaction
 
         if heuristic == 'none':
             return 0
@@ -275,12 +275,26 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
         num_remaining = len(remaining) - 1
         assert 0 <= num_remaining
         nodes = ground_nodes | nodes_from_elements(printed)
+        bias_from_element = {}
         for element in sorted(remaining, key=lambda e: get_z(node_points, e)):
             if not any(n in nodes for n in element):
                 continue
             bias = heuristic_fn(printed, element)
             priority = (num_remaining, bias, random.random())
             heapq.heappush(queue, (priority, printed, element))
+            bias_from_element[element] = bias
+
+        if has_gui():
+            handles = []
+            with LockRenderer():
+                remove_all_debug()
+                for element in printed:
+                    handles.append(draw_element(node_points, element, color=(0, 0, 0)))
+                successors = sorted(bias_from_element, key=lambda e: bias_from_element[e])
+                handles.extend(draw_ordered(successors, node_points))
+            print('Min: {:.3E} | Max: {:.3E}'.format(bias_from_element[successors[0]], bias_from_element[successors[-1]]))
+            wait_for_user()
+
 
     final_printed = frozenset(element_bodies)
     if not check_connected(ground_nodes, final_printed) or \
@@ -295,11 +309,11 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
     visited[initial_printed] = Node(None, None)
     add_successors(initial_printed)
 
-    if has_gui():
-        sequence = sorted(initial_printed, key=lambda e: heuristic_fn(initial_printed, e), reverse=True)
-        remove_all_debug()
-        draw_sequence(sequence, node_points)
-        wait_for_user()
+    #if has_gui():
+    #    sequence = sorted(initial_printed, key=lambda e: heuristic_fn(initial_printed, e), reverse=True)
+    #    remove_all_debug()
+    #    draw_ordered(sequence, node_points)
+    #    wait_for_user()
 
     plan = None
     min_remaining = INF
@@ -387,7 +401,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
     if has_gui():
         sequence = sorted(initial_printed, key=lambda e: heuristic_fn(initial_printed, e), reverse=True)
         remove_all_debug()
-        draw_sequence(sequence, node_points)
+        draw_ordered(sequence, node_points)
         wait_for_user()
     # TODO: fixed branching factor
     # TODO: be more careful when near the end

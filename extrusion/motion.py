@@ -9,7 +9,7 @@ from examples.pybullet.utils.pybullet_tools.utils import get_movable_joints, set
 
 from extrusion.utils import get_disabled_collisions, MotionTrajectory, load_world, PrintTrajectory, is_ground, \
     TOOL_NAME
-from extrusion.parsing import draw_sequence
+from extrusion.parsing import draw_ordered
 from extrusion.stream import SELF_COLLISIONS
 
 JOINT_WEIGHTS = [0.3078557810844393, 0.443600199302506, 0.23544367607317915,
@@ -61,7 +61,7 @@ def display_trajectories(node_points, ground_nodes, trajectories, animate=True, 
     movable_joints = get_movable_joints(robot)
     if not animate:
         planned_elements = [traj.element for traj in trajectories]
-        draw_sequence(planned_elements, node_points)
+        draw_ordered(planned_elements, node_points)
         wait_for_user()
         disconnect()
         return
