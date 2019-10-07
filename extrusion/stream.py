@@ -1,7 +1,7 @@
 import numpy as np
 import random
 
-from examples.pybullet.utils.pybullet_tools.utils import get_movable_joints, get_joint_positions, multiply, invert, \
+from pybullet_tools.utils import get_movable_joints, get_joint_positions, multiply, invert, \
     set_joint_positions, inverse_kinematics, get_link_pose, get_distance, point_from_pose, wrap_angle, get_sample_fn, \
     link_from_name, get_pose, get_collision_fn, dump_body, get_link_subtree, wait_for_user, clone_body, \
     get_all_links, set_color, set_pose, pairwise_collision

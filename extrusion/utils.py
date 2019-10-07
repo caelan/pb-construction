@@ -8,7 +8,7 @@ from collections import defaultdict, deque, namedtuple
 
 from pyconmech import StiffnessChecker
 
-from examples.pybullet.utils.pybullet_tools.utils import set_point, Euler, set_joint_positions, \
+from pybullet_tools.utils import set_point, Euler, set_joint_positions, \
     pairwise_collision, Pose, multiply, Point, load_model, HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, set_pose, \
     get_aabb, get_distance
 from pddlstream.utils import get_connected_components

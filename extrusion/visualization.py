@@ -3,7 +3,7 @@ import numpy as np
 from extrusion.equilibrium import compute_node_reactions
 from extrusion.parsing import load_extrusion, sample_colors
 from extrusion.utils import get_node_neighbors, force_from_reaction
-from examples.pybullet.utils.pybullet_tools.utils import add_text, draw_pose, get_pose, wait_for_user, add_line, remove_debug, has_gui, \
+from pybullet_tools.utils import add_text, draw_pose, get_pose, wait_for_user, add_line, remove_debug, has_gui, \
     draw_point
 
 

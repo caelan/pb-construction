@@ -1,7 +1,10 @@
 from __future__ import print_function
 
 import sys
-sys.path.append('pddlstream/')
+sys.path.extend([
+    'pddlstream/',
+    'ss-pybullet/',
+])
 
 import argparse
 import cProfile
@@ -17,7 +20,7 @@ import numpy as np
 from extrusion.utils import get_disabled_collisions, get_custom_limits, MotionTrajectory
 from extrusion.parsing import parse_point, parse_transform
 
-from examples.pybullet.utils.pybullet_tools.utils import get_movable_joints, link_from_name, set_pose, \
+from pybullet_tools.utils import get_movable_joints, link_from_name, set_pose, \
     multiply, invert, inverse_kinematics, plan_direct_joint_motion, Attachment, set_joint_positions, plan_joint_motion, \
     get_configuration, wait_for_interrupt, point_from_pose, HideOutput, load_pybullet, draw_pose, unit_quat, create_obj, \
     add_body_name, get_pose, pose_from_tform, connect, WorldSaver, get_sample_fn, \

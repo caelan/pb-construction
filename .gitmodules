@@ -11,3 +11,6 @@
 [submodule "conmech"]
 	path = conmech
 	url = https://github.com/yijiangh/conmech
+[submodule "ss-pybullet"]
+	path = ss-pybullet
+	url = https://github.com/caelan/ss-pybullet.git

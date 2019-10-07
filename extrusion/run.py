@@ -11,7 +11,10 @@ import time
 import os
 import json
 
-sys.path.append('pddlstream/')
+sys.path.extend([
+    'pddlstream/',
+    'ss-pybullet/',
+])
 
 from extrusion.visualization import label_nodes, visualize_stiffness
 from extrusion.experiment import load_experiment, train_parallel
@@ -24,7 +27,7 @@ from extrusion.stream import get_print_gen_fn
 from extrusion.greedy import regression, progression, GREEDY_HEURISTICS, GREEDY_ALGORITHMS
 from extrusion.validator import verify_plan
 
-from examples.pybullet.utils.pybullet_tools.utils import connect, disconnect, get_movable_joints, get_joint_positions, LockRenderer, \
+from pybullet_tools.utils import connect, disconnect, get_movable_joints, get_joint_positions, LockRenderer, \
     unit_pose, reset_simulation, draw_pose
 
 # TODO: sort by action cost heuristic

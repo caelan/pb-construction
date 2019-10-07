@@ -4,7 +4,7 @@ import colorsys
 import numpy as np
 
 from collections import namedtuple, OrderedDict
-from examples.pybullet.utils.pybullet_tools.utils import add_line, create_cylinder, set_point, set_quat, \
+from pybullet_tools.utils import add_line, create_cylinder, set_point, set_quat, \
     quat_from_euler, Euler, spaced_colors, tform_point, multiply, tform_from_pose, pose_from_tform, LockRenderer
 from extrusion.utils import is_ground
 

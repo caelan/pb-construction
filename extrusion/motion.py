@@ -3,7 +3,7 @@ from __future__ import print_function
 import time
 import numpy as np
 
-from examples.pybullet.utils.pybullet_tools.utils import get_movable_joints, set_joint_positions, plan_joint_motion, \
+from pybullet_tools.utils import get_movable_joints, set_joint_positions, plan_joint_motion, \
     connect, wait_for_interrupt, point_from_pose, get_link_pose, link_from_name, add_line, \
     wait_for_duration, disconnect, elapsed_time, reset_simulation, wait_for_user
 

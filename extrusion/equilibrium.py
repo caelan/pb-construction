@@ -5,7 +5,7 @@ import numpy as np
 from extrusion.parsing import load_extrusion
 from extrusion.utils import get_extructed_ids, create_stiffness_checker, evaluate_stiffness, Reaction, \
     force_from_reaction, compute_element_distance
-from examples.pybullet.utils.pybullet_tools.utils import get_unit_vector
+from pybullet_tools.utils import get_unit_vector
 
 ReactionForces = namedtuple('Reactions', ['loads', 'fixities', 'reactions'])
 

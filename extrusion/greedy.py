@@ -8,7 +8,7 @@ from collections import namedtuple
 
 import numpy as np
 
-from examples.pybullet.utils.pybullet_tools.utils import elapsed_time, \
+from pybullet_tools.utils import elapsed_time, \
     remove_all_debug, wait_for_user, has_gui, LockRenderer, reset_simulation, disconnect, set_renderer
 from extrusion.parsing import load_extrusion, draw_element, draw_ordered, draw_model
 from extrusion.stream import get_print_gen_fn

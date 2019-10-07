@@ -13,8 +13,7 @@ from extrusion.greedy import GREEDY_HEURISTICS
 from extrusion.parsing import load_extrusion, get_extrusion_path, extrusion_name_from_path, enumerate_problems
 from extrusion.utils import evaluate_stiffness, create_stiffness_checker, TRANS_TOL, ROT_TOL
 from pddlstream.utils import str_from_object, INF, get_python_version
-from examples.pybullet.utils.pybullet_tools.utils import read_pickle
-from pybullet_tools.utils import is_darwin, user_input, write_pickle, elapsed_time
+from pybullet_tools.utils import read_pickle, is_darwin, user_input, write_pickle, elapsed_time
 
 Configuration = namedtuple('Configuration', ['seed', 'problem', 'algorithm', 'bias', 'max_time',
                                              'cfree', 'disable', 'stiffness', 'motions'])

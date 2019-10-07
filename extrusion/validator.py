@@ -1,6 +1,6 @@
 from extrusion.parsing import load_extrusion, draw_element
 from extrusion.utils import check_connected, test_stiffness, get_connected_structures, load_world
-from examples.pybullet.utils.pybullet_tools.utils import has_gui, wait_for_user, connect, reset_simulation, \
+from pybullet_tools.utils import has_gui, wait_for_user, connect, reset_simulation, \
     disconnect, wait_for_duration
 
 
