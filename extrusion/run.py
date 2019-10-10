@@ -26,6 +26,7 @@ from extrusion.parsing import load_extrusion, create_elements, \
 from extrusion.stream import get_print_gen_fn
 from extrusion.greedy import regression, progression, GREEDY_HEURISTICS, GREEDY_ALGORITHMS
 from extrusion.validator import verify_plan
+from extrusion.deadend import deadend
 
 from pybullet_tools.utils import connect, disconnect, get_movable_joints, get_joint_positions, LockRenderer, \
     unit_pose, reset_simulation, draw_pose
@@ -125,6 +126,10 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
             planned_trajectories, data = regression(robot, obstacles, element_bodies, problem_path, heuristic=args.bias,
                                                     max_time=args.max_time, collisions=not args.cfree,
                                                     disable=args.disable, stiffness=args.stiffness)
+        elif args.algorithm == 'deadend':
+            planned_trajectories, data = deadend(robot, obstacles, element_bodies, problem_path, heuristic=args.bias,
+                                                 max_time=args.max_time, collisions=not args.cfree,
+                                                 disable=args.disable, stiffness=args.stiffness)
         else:
             raise ValueError(args.algorithm)
         pr.disable()

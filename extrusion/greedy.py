@@ -36,6 +36,7 @@ def retrace_plan(visited, current_state):
 
 def sample_extrusion(print_gen_fn, ground_nodes, printed, element):
     next_nodes = {n for e in printed for n in e} | set(ground_nodes)
+    # TODO: could always reverse these trajectories
     for node in element:
         if node in next_nodes:
             try:
@@ -147,7 +148,7 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
             #            for reactions in reactions_from_nodes.values())
             #return torque / distance
             total = operator(np.linalg.norm(fn(reaction)) for reactions in reactions_from_nodes.values()
-                            for reaction in reactions) # torqueßs
+                            for reaction in reactions)
             return total / distance
             #return max(sum(np.linalg.norm(fn(reaction)) for reaction in reactions)
             #               for reactions in reactions_from_nodes.values())
@@ -221,8 +222,8 @@ def score_stiffness(extrusion_path, element_from_id, elements, checker=None):
     success, nodal_displacement, fixities_reaction, _ = checker.get_solved_results()
     if not success:
         return INF
-    #operation = np.max
-    operation = np.sum # equivalently average
+    operation = np.max
+    #operation = np.sum # equivalently average
     # TODO: LInf or L1 norm applied on forces
     # TODO: looking for a colored path through the space
 
@@ -235,7 +236,7 @@ def score_stiffness(extrusion_path, element_from_id, elements, checker=None):
 
     reaction_forces = np.array([force_from_reaction(d) for d in fixities_reaction.values()])
     reaction_moments = np.array([torque_from_reaction(d) for d in fixities_reaction.values()])
-    heuristic = 'fixities_rotation'
+    heuristic = 'fixities_translation'
     scores = {
         # Yijiang was surprised that fixities_translation worked
         'fixities_translation': np.linalg.norm(reaction_forces, axis=1),
@@ -255,6 +256,31 @@ def score_stiffness(extrusion_path, element_from_id, elements, checker=None):
 
 ##################################################
 
+def add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, printed):
+    remaining = elements - printed
+    num_remaining = len(remaining) - 1
+    assert 0 <= num_remaining
+    nodes = ground_nodes | nodes_from_elements(printed)
+    bias_from_element = {}
+    for element in sorted(remaining, key=lambda e: get_z(node_points, e)):
+        if not any(n in nodes for n in element):
+            continue
+        bias = heuristic_fn(printed, element)
+        priority = (num_remaining, bias, random.random())
+        heapq.heappush(queue, (priority, printed, element))
+        bias_from_element[element] = bias
+
+    if has_gui():
+        handles = []
+        with LockRenderer():
+            remove_all_debug()
+            for element in printed:
+                handles.append(draw_element(node_points, element, color=(0, 0, 0)))
+            successors = sorted(bias_from_element, key=lambda e: bias_from_element[e])
+            handles.extend(draw_ordered(successors, node_points))
+        print('Min: {:.3E} | Max: {:.3E}'.format(bias_from_element[successors[0]], bias_from_element[successors[-1]]))
+        wait_for_user()
+
 def progression(robot, obstacles, element_bodies, extrusion_path,
                 heuristic='z', max_time=INF, max_backtrack=INF, stiffness=True, **kwargs):
 
@@ -268,34 +294,6 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
     elements = frozenset(element_bodies)
     heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=True)
 
-    queue = []
-    visited = {}
-    def add_successors(printed):
-        remaining = elements - printed
-        num_remaining = len(remaining) - 1
-        assert 0 <= num_remaining
-        nodes = ground_nodes | nodes_from_elements(printed)
-        bias_from_element = {}
-        for element in sorted(remaining, key=lambda e: get_z(node_points, e)):
-            if not any(n in nodes for n in element):
-                continue
-            bias = heuristic_fn(printed, element)
-            priority = (num_remaining, bias, random.random())
-            heapq.heappush(queue, (priority, printed, element))
-            bias_from_element[element] = bias
-
-        if has_gui():
-            handles = []
-            with LockRenderer():
-                remove_all_debug()
-                for element in printed:
-                    handles.append(draw_element(node_points, element, color=(0, 0, 0)))
-                successors = sorted(bias_from_element, key=lambda e: bias_from_element[e])
-                handles.extend(draw_ordered(successors, node_points))
-            print('Min: {:.3E} | Max: {:.3E}'.format(bias_from_element[successors[0]], bias_from_element[successors[-1]]))
-            wait_for_user()
-
-
     final_printed = frozenset(element_bodies)
     if not check_connected(ground_nodes, final_printed) or \
             not test_stiffness(extrusion_path, element_from_id, final_printed):
@@ -306,14 +304,10 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
         return None, data
 
     initial_printed = frozenset()
-    visited[initial_printed] = Node(None, None)
-    add_successors(initial_printed)
-
-    #if has_gui():
-    #    sequence = sorted(initial_printed, key=lambda e: heuristic_fn(initial_printed, e), reverse=True)
-    #    remove_all_debug()
-    #    draw_ordered(sequence, node_points)
-    #    wait_for_user()
+    queue = []
+    visited = {initial_printed: Node(None, None)}
+    #add_successors(initial_printed)
+    add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, initial_printed)
 
     plan = None
     min_remaining = INF
@@ -342,7 +336,8 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
             min_remaining = 0
             plan = retrace_plan(visited, next_printed)
             break
-        add_successors(next_printed)
+        #add_successors(next_printed)
+        add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, next_printed)
 
     sequence = None
     if plan is not None:

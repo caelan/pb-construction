@@ -6,7 +6,7 @@ import numpy as np
 
 from examples.pybullet.construction.extrusion.utils import TOOL_NAME, create_elements, get_grasp_pose, sample_direction
 from pybullet_tools.utils import get_movable_joints, get_joint_name, get_sample_fn, \
-    set_joint_positions, wait_for_interrupt, link_from_name, inverse_kinematics, get_link_pose, Pose, Euler, Point, \
+    set_joint_positions, wait_for_user, link_from_name, inverse_kinematics, get_link_pose, Pose, Euler, Point, \
     multiply, set_pose, get_pose, invert, draw_pose
 from extrusion.utils import doubly_printable, get_node_neighbors, element_supports, get_supported_orders, \
     retrace_supporters
@@ -25,7 +25,7 @@ def test_confs(robot, num_samples=10):
         print('Iteration:', i)
         conf = sample_fn()
         set_joint_positions(robot, joints, conf)
-        wait_for_interrupt()
+        wait_for_user()
 
 
 def get_test_cfree(element_bodies):
@@ -88,7 +88,7 @@ def test_ik(robot, node_order, node_points):
         link_point, link_quat = get_link_pose(robot, link)
         #print(point, link_point)
         #user_input('Continue?')
-        wait_for_interrupt()
+        wait_for_user()
     # TODO: draw the transforms
 
 
@@ -100,7 +100,7 @@ def test_grasps(robot, node_points, elements):
     link = link_from_name(robot, TOOL_NAME)
     link_pose = get_link_pose(robot, link)
     draw_pose(link_pose) #, parent=robot, parent_link=link)
-    wait_for_interrupt()
+    wait_for_user()
 
     n1, n2 = element
     p1 = node_points[n1]
@@ -117,7 +117,7 @@ def test_grasps(robot, node_points, elements):
             grasp_pose = multiply(angle, direction, translation)
             element_pose = multiply(link_pose, grasp_pose)
             set_pose(element_body, element_pose)
-            wait_for_interrupt()
+            wait_for_user()
             #user_input('Continue?')
 
     #for theta in np.linspace(0, 2 * np.pi, 10, endpoint=False):
@@ -127,7 +127,7 @@ def test_grasps(robot, node_points, elements):
     #        grasp_pose = get_grasp_pose(t, phi, theta)
     #        element_pose = multiply(link_pose, grasp_pose)
     #        set_pose(element_body, element_pose)
-    #        wait_for_interrupt()
+    #        wait_for_user()
     #        #user_input('Continue?')
 
 
@@ -135,7 +135,7 @@ def test_print(robot, node_points, elements):
     #elements = [elements[0]]
     elements = [elements[-1]]
     [element_body] = create_elements(node_points, elements)
-    wait_for_interrupt()
+    wait_for_user()
 
     phi = 0
     #grasp_rotations = [Pose(euler=Euler(roll=np.pi/2, pitch=phi, yaw=theta))
@@ -162,7 +162,7 @@ def test_print(robot, node_points, elements):
             element_pose = get_pose(element_body)
             link_pose = multiply(element_pose, invert(grasp_pose))
             conf = inverse_kinematics(robot, link, link_pose)
-            wait_for_interrupt()
+            wait_for_user()
             #user_input('Continue?')
 
 
@@ -211,7 +211,7 @@ def debug_elements(robot, node_points, node_order, elements):
     for element in elements:
        color = (0, 0, 1) if doubly_printable(element, node_points) else (1, 0, 0)
        draw_element(node_points, element, color=color)
-    wait_for_interrupt('Continue?')
+    wait_for_user('Continue?')
 
     # TODO: topological sort
     node = node_order[40]
@@ -227,7 +227,7 @@ def debug_elements(robot, node_points, node_order, elements):
     retrace_supporters(element, incoming_edges, supporters)
     for e in supporters:
        draw_element(node_points, e, (1, 0, 0))
-    wait_for_interrupt('Continue?')
+    wait_for_user('Continue?')
 
     #for name, args in plan:
     #   n1, e, n2 = args
