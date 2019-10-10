@@ -29,7 +29,7 @@ from extrusion.validator import verify_plan
 from extrusion.deadend import deadend
 
 from pybullet_tools.utils import connect, disconnect, get_movable_joints, get_joint_positions, LockRenderer, \
-    unit_pose, reset_simulation, draw_pose
+    unit_pose, reset_simulation, draw_pose, apply_alpha, BLACK, set_camera_pose
 
 # TODO: sort by action cost heuristic
 # http://www.fast-downward.org/Doc/Evaluator#Max_evaluator
@@ -98,10 +98,12 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     with LockRenderer():
         draw_pose(unit_pose(), length=1.)
         obstacles, robot = load_world()
-        #color = (0, 0, 0, 1)
-        color = (0, 0, 0, 0)
+        alpha = 1 # 0
         element_bodies = dict(zip(elements, create_elements(
-            node_points, elements, color=color)))
+            node_points, elements, color=apply_alpha(BLACK, alpha))))
+        centroid = np.average(node_points, axis=0)
+        set_camera_pose(camera_point=centroid + 0.25*np.array([1, -1, 1]), target_point=centroid)
+
     # joint_weights = compute_joint_weights(robot, num=1000)
     initial_conf = get_joint_positions(robot, get_movable_joints(robot))
     # dump_body(robot)
@@ -149,7 +151,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     planned_ids = [id_from_element[element] for element in planned_elements]
     # random.shuffle(planned_elements)
     # planned_elements = sorted(elements, key=lambda e: max(node_points[n][2] for n in e)) # TODO: tiebreak by angle or x
-    valid = verify_plan(problem_path, planned_elements, use_gui=viewer)
+    valid = verify_plan(problem_path, planned_elements, use_gui=False)
 
     plan_data = {
         'problem':  args.problem,

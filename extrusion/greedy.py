@@ -10,7 +10,8 @@ import numpy as np
 
 from pybullet_tools.utils import elapsed_time, \
     remove_all_debug, wait_for_user, has_gui, LockRenderer, reset_simulation, disconnect, set_renderer
-from extrusion.parsing import load_extrusion, draw_element, draw_ordered, draw_model
+from extrusion.parsing import load_extrusion
+from extrusion.visualization import draw_element, draw_model, draw_ordered
 from extrusion.stream import get_print_gen_fn
 from extrusion.utils import check_connected, torque_from_reaction, force_from_reaction, compute_element_distance, test_stiffness, \
     create_stiffness_checker, get_id_from_element, load_world, get_supported_orders, get_extructed_ids, nodes_from_elements
@@ -259,7 +260,7 @@ def score_stiffness(extrusion_path, element_from_id, elements, checker=None):
 
 ##################################################
 
-def add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, printed):
+def add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, printed, visualize=False):
     remaining = elements - printed
     num_remaining = len(remaining) - 1
     assert 0 <= num_remaining
@@ -273,7 +274,7 @@ def add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, pri
         heapq.heappush(queue, (priority, printed, element))
         bias_from_element[element] = bias
 
-    if has_gui():
+    if visualize and has_gui():
         handles = []
         with LockRenderer():
             remove_all_debug()

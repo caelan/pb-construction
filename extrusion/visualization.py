@@ -1,10 +1,12 @@
+import colorsys
+
 import numpy as np
 
 from extrusion.equilibrium import compute_node_reactions
-from extrusion.parsing import load_extrusion, sample_colors
-from extrusion.utils import get_node_neighbors, force_from_reaction
+from extrusion.parsing import load_extrusion
+from extrusion.utils import get_node_neighbors, force_from_reaction, is_ground
 from pybullet_tools.utils import add_text, draw_pose, get_pose, wait_for_user, add_line, remove_debug, has_gui, \
-    draw_point
+    draw_point, LockRenderer
 
 
 def label_nodes(element_bodies, element):
@@ -101,3 +103,33 @@ def visualize_stiffness(extrusion_path):
 
     #draw_sequence(sequence, node_points)
     wait_for_user()
+
+##################################################
+
+def draw_element(node_points, element, color=(1, 0, 0)):
+    n1, n2 = element
+    p1 = node_points[n1]
+    p2 = node_points[n2]
+    return add_line(p1, p2, color=color[:3])
+
+
+def draw_model(elements, node_points, ground_nodes):
+    handles = []
+    with LockRenderer():
+        for element in elements:
+            color = (0, 0, 1) if is_ground(element, ground_nodes) else (1, 0, 0)
+            handles.append(draw_element(node_points, element, color=color))
+    return handles
+
+
+def sample_colors(num, lower=0.0, upper=0.75): # for now wrap around
+    return [colorsys.hsv_to_rgb(h, s=1, v=1) for h in np.linspace(lower, upper, num, endpoint=True)]
+
+
+def draw_ordered(elements, node_points):
+    #colors = spaced_colors(len(elements))
+    colors = sample_colors(len(elements))
+    handles = []
+    for element, color in zip(elements, colors):
+        handles.append(draw_element(node_points, element, color=color))
+    return handles

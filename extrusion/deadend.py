@@ -10,7 +10,8 @@ import numpy as np
 
 from pybullet_tools.utils import elapsed_time, \
     remove_all_debug, wait_for_user, has_gui, LockRenderer, reset_simulation, disconnect, set_renderer, randomize
-from extrusion.parsing import load_extrusion, draw_element, draw_ordered, draw_model
+from extrusion.parsing import load_extrusion
+from extrusion.visualization import draw_element, draw_model, draw_ordered
 from extrusion.stream import get_print_gen_fn
 from extrusion.utils import check_connected, torque_from_reaction, force_from_reaction, compute_element_distance, test_stiffness, \
     create_stiffness_checker, get_id_from_element, load_world, get_supported_orders, get_extructed_ids, nodes_from_elements
@@ -21,6 +22,27 @@ from pybullet_tools.utils import connect, ClientSaver, wait_for_user, INF, get_d
 from pddlstream.utils import neighbors_from_orders, adjacent_from_edges, implies
 
 from extrusion.greedy import get_heuristic_fn, get_z, Node, retrace_plan, sample_extrusion, add_successors, compute_printed_nodes
+
+def cache_fns(elements, print_gen_fn):
+    gen_from_element = {element: print_gen_fn(None, element) for element in elements}
+    trajs_from_element = defaultdict(list)
+
+    def enumerate_extrusions(element):
+        for traj in trajs_from_element[element]:
+            yield traj
+        with LockRenderer():
+            for traj, in gen_from_element[element]: # TODO: islice for the num to sample
+                trajs_from_element[element].append(traj)
+                yield traj
+
+    def sample_traj(printed, element):
+        # TODO: condition on the printed elements
+        for traj in enumerate_extrusions(element):
+            # TODO: lazy collision checking
+            if not (traj.colliding & printed):
+                return traj
+        return None
+    return sample_traj
 
 def deadend(robot, obstacles, element_bodies, extrusion_path,
             heuristic='z', max_time=INF, max_backtrack=INF, stiffness=True, **kwargs):
@@ -35,9 +57,13 @@ def deadend(robot, obstacles, element_bodies, extrusion_path,
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                     precompute_collisions=False, supports=False, bidirectional=False, ee_only=False,
                                     max_directions=50, max_attempts=10, **kwargs)
+    full_print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
+                                         precompute_collisions=True, supports=False, bidirectional=True, ee_only=False,
+                                         max_directions=50, max_attempts=10, **kwargs)
+    # TODO: could just check kinematics instead of collision
     ee_print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                         precompute_collisions=True, supports=False, bidirectional=True, ee_only=True,
-                                        max_directions=25, max_attempts=10, **kwargs)
+                                        max_directions=50, max_attempts=10, **kwargs)
     id_from_element = get_id_from_element(element_from_id)
     elements = frozenset(element_bodies)
     heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=True)
@@ -51,28 +77,12 @@ def deadend(robot, obstacles, element_bodies, extrusion_path,
         }
         return None, data
 
-    gen_from_element = {element: ee_print_gen_fn(None, element) for element in elements}
-    trajs_from_element = defaultdict(list)
+    full_sample_traj = cache_fns(elements, full_print_gen_fn)
+    ee_sample_traj = cache_fns(elements, ee_print_gen_fn)
 
-    def enumerate_extrusions(element):
-        for traj in trajs_from_element[element]:
-            yield traj
-        for traj, in gen_from_element[element]:
-            trajs_from_element[element].append(traj)
-            yield traj
-
-    def sample_traj(printed, element):
-        # TODO: condition on the printed elements
-        for traj in enumerate_extrusions(element):
-            # TODO: lazy collision checking
-            if not (traj.colliding & printed):
-                return traj
-        return None
-
-    def sample_remaining(printed):
+    def sample_remaining(printed, sample_fn):
         # TODO: only check nodes that can be immediately printed?
-        return all(sample_traj(printed, element) is not None
-                   for element in randomize(elements - printed))
+        return all(sample_fn(printed, element) is not None for element in randomize(elements - printed))
 
     initial_printed = frozenset()
     queue = []
@@ -106,17 +116,22 @@ def deadend(robot, obstacles, element_bodies, extrusion_path,
         # Constraint propagation
         # forward checking / lookahead: prove infeasibility quickly
         # https://en.wikipedia.org/wiki/Look-ahead_(backtracking)
-        if not sample_remaining(next_printed):
-            # Soft dead-end
-            continue
+        #if not sample_remaining(next_printed, ee_sample_traj):
+        #    # Soft dead-end
+        #    continue
 
-        command = sample_extrusion(print_gen_fn, ground_nodes, printed, element)
-        #command = sample_traj(printed, element)
+        #command = sample_extrusion(print_gen_fn, ground_nodes, printed, element)
+        command = full_sample_traj(printed, element)
         if command is None:
             # Soft dead-end
             continue
         if command.trajectories[0].n1 not in printed_nodes:
             command = command.reverse()
+        # TODO: sample several EE trajectories and then sort by non-dominated
+
+        if not sample_remaining(next_printed, full_sample_traj):
+            # Soft dead-end
+            continue
 
         # TODO: test end-effector here first
         # TODO: separate parameters for dead-end versus transition

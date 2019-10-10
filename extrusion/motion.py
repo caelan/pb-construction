@@ -5,11 +5,11 @@ import numpy as np
 
 from pybullet_tools.utils import get_movable_joints, set_joint_positions, plan_joint_motion, \
     connect, point_from_pose, get_link_pose, link_from_name, add_line, \
-    wait_for_duration, disconnect, elapsed_time, reset_simulation, wait_for_user
+    wait_for_duration, disconnect, elapsed_time, reset_simulation, wait_for_user, set_camera_pose
 
 from extrusion.utils import get_disabled_collisions, MotionTrajectory, load_world, PrintTrajectory, is_ground, \
     TOOL_NAME
-from extrusion.parsing import draw_ordered
+from extrusion.visualization import draw_ordered
 from extrusion.stream import SELF_COLLISIONS
 
 JOINT_WEIGHTS = [0.3078557810844393, 0.443600199302506, 0.23544367607317915,
@@ -57,6 +57,8 @@ def display_trajectories(node_points, ground_nodes, trajectories, animate=True, 
     if trajectories is None:
         return
     connect(use_gui=True)
+    centroid = np.average(node_points, axis=0)
+    set_camera_pose(camera_point=centroid + 0.25 * np.array([1, -1, 1]), target_point=centroid)
     obstacles, robot = load_world()
     movable_joints = get_movable_joints(robot)
     if not animate:

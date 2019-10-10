@@ -1,12 +1,10 @@
 import json
 import os
-import colorsys
 import numpy as np
 
 from collections import namedtuple, OrderedDict
-from pybullet_tools.utils import add_line, create_cylinder, set_point, set_quat, \
-    quat_from_euler, Euler, spaced_colors, tform_point, multiply, tform_from_pose, pose_from_tform, LockRenderer
-from extrusion.utils import is_ground
+from pybullet_tools.utils import create_cylinder, set_point, set_quat, \
+    quat_from_euler, Euler, tform_point, multiply, tform_from_pose, pose_from_tform
 
 Element = namedtuple('Element', ['id', 'layer', 'nodes'])
 
@@ -174,31 +172,3 @@ def create_elements(node_points, elements, color=(1, 0, 0, 1)):
         set_quat(body, quat_from_euler(Euler(pitch=theta, yaw=phi)))
         # p1 is z=-height/2, p2 is z=+height/2
     return element_bodies
-
-##################################################
-
-def draw_element(node_points, element, color=(1, 0, 0)):
-    n1, n2 = element
-    p1 = node_points[n1]
-    p2 = node_points[n2]
-    return add_line(p1, p2, color=color[:3])
-
-
-def draw_model(elements, node_points, ground_nodes):
-    handles = []
-    with LockRenderer():
-        for element in elements:
-            color = (0, 0, 1) if is_ground(element, ground_nodes) else (1, 0, 0)
-            handles.append(draw_element(node_points, element, color=color))
-    return handles
-
-def sample_colors(num, lower=0.0, upper=0.75): # for now wrap around
-    return [colorsys.hsv_to_rgb(h, s=1, v=1) for h in np.linspace(lower, upper, num, endpoint=True)]
-
-def draw_ordered(elements, node_points):
-    #colors = spaced_colors(len(elements))
-    colors = sample_colors(len(elements))
-    handles = []
-    for element, color in zip(elements, colors):
-        handles.append(draw_element(node_points, element, color=color))
-    return handles
