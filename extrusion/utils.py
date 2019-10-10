@@ -1,16 +1,14 @@
 from __future__ import print_function
 
 import os
-import random
 import numpy as np
 
 from collections import defaultdict, deque, namedtuple
 
 from pyconmech import StiffnessChecker
 
-from pybullet_tools.utils import set_point, Euler, set_joint_positions, \
-    pairwise_collision, Pose, multiply, Point, load_model, HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, set_pose, \
-    get_aabb, get_distance
+from pybullet_tools.utils import set_point, set_joint_positions, \
+    Point, load_model, HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, get_aabb, get_distance
 from pddlstream.utils import get_connected_components
 
 KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
@@ -33,55 +31,6 @@ SUPPORT_THETA = np.math.radians(10)  # Support polygon
 USE_FLOOR = False
 
 ##################################################
-
-def check_command_collision(tool_body, tool_from_root, command, bodies):
-    # TODO: each new addition makes collision checking more expensive
-    #offset = 4
-    #for robot_conf in trajectory[offset:-offset]:
-    collisions = [False for _ in range(len(bodies))]
-
-    # TODO: separate into another method. Sort paths by tool poses first
-    for trajectory in command.trajectories:
-        indices = list(range(len(trajectory.path)))
-        random.shuffle(indices)  # TODO: bisect
-        for k in indices:
-            tool_pose = trajectory.tool_path[k]
-            set_pose(tool_body, multiply(tool_pose, tool_from_root))
-            for i, body in enumerate(bodies):
-                if not collisions[i]:
-                    collisions[i] |= pairwise_collision(tool_body, body)
-        for k in indices:
-            robot_conf = trajectory.path[k]
-            set_joint_positions(trajectory.robot, trajectory.joints, robot_conf)
-            for i, body in enumerate(bodies):
-                if not collisions[i]:
-                    collisions[i] |= pairwise_collision(trajectory.robot, body)
-    return collisions
-
-#def get_grasp_rotation(direction, angle):
-    #return Pose(euler=Euler(roll=np.pi / 2, pitch=direction, yaw=angle))
-    #rot = Pose(euler=Euler(roll=np.pi / 2))
-    #thing = (unit_point(), quat_from_vector_angle(direction, angle))
-    #return multiply(thing, rot)
-
-def sample_direction():
-    ##roll = random.uniform(0, np.pi)
-    #roll = np.pi/4
-    #pitch = random.uniform(0, 2*np.pi)
-    #return Pose(euler=Euler(roll=np.pi / 2 + roll, pitch=pitch))
-    roll = random.uniform(-np.pi/2, np.pi/2)
-    pitch = random.uniform(-np.pi/2, np.pi/2)
-    return Pose(euler=Euler(roll=roll, pitch=pitch))
-
-
-def get_grasp_pose(translation, direction, angle, reverse, offset=1e-3):
-    #direction = Pose(euler=Euler(roll=np.pi / 2, pitch=direction))
-    return multiply(Pose(point=Point(z=offset)),
-                    Pose(euler=Euler(yaw=angle)),
-                    direction,
-                    Pose(point=Point(z=translation)),
-                    Pose(euler=Euler(roll=(1-reverse) * np.pi)))
-
 
 def load_world(use_floor=USE_FLOOR):
     root_directory = os.path.dirname(os.path.abspath(__file__))
