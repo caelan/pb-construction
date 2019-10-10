@@ -289,7 +289,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
     checker = create_stiffness_checker(extrusion_path, verbose=False)
     #checker = None
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                    precompute_collisions=False, max_attempts=500, **kwargs)
+                                    precompute_collisions=False, max_directions=500, **kwargs)
     id_from_element = get_id_from_element(element_from_id)
     elements = frozenset(element_bodies)
     heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=True)
@@ -366,7 +366,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
     checker = create_stiffness_checker(extrusion_path, verbose=False)
     #checker = None
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                    precompute_collisions=False, max_attempts=500, **kwargs)
+                                    precompute_collisions=False, max_directions=500, **kwargs)
     heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=False)
     # TODO: compute the heuristic function once and fix
 

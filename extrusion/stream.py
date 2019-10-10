@@ -202,7 +202,7 @@ def compute_direction_path(robot, tool, tool_from_root,
 
 def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground_nodes,
                      precompute_collisions=True, supports=True,
-                     collisions=True, disable=False, max_attempts=MAX_ATTEMPTS):
+                     collisions=True, disable=False, max_directions=MAX_ATTEMPTS):
     # TODO: print on full sphere and just check for collisions with the printed element
     # TODO: can slide a component of the element down
     # TODO: prioritize choices that don't collide with too many edges
@@ -253,7 +253,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                                         custom_limits={}) # TODO: get_custom_limits
         trajectories = []
         for num in irange(INF):
-            for attempt in irange(max_attempts):
+            for attempt in irange(max_directions):
                 direction = sample_direction()
                 command = compute_direction_path(robot, tool_body, tool_from_root,
                                                  length, reverse, element_bodies, element,
@@ -279,7 +279,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                     return
             else:
                 print('{}) {}->{} | Supporters: {} | Attempts: {} | Max attempts exceeded!'.format(
-                    num, n1, n2, len(supporters), max_attempts))
+                    num, n1, n2, len(supporters), max_directions))
                 return
     return gen_fn
 

@@ -28,7 +28,7 @@ CUSTOM_LIMITS = {
 }
 SUPPORT_THETA = np.math.radians(10)  # Support polygon
 
-USE_FLOOR = False
+USE_FLOOR = True
 
 ##################################################
 
