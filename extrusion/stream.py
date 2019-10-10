@@ -4,10 +4,9 @@ import random
 from pybullet_tools.utils import get_movable_joints, get_joint_positions, multiply, invert, \
     set_joint_positions, inverse_kinematics, get_link_pose, get_distance, point_from_pose, wrap_angle, get_sample_fn, \
     link_from_name, get_pose, get_collision_fn, dump_body, get_link_subtree, wait_for_user, clone_body, \
-    get_all_links, set_color, set_pose, pairwise_collision, get_relative_pose, Pose, Euler, Point
+    get_all_links, set_color, set_pose, pairwise_collision, get_relative_pose, Pose, Euler, Point, interval_generator
 from extrusion.utils import TOOL_NAME, get_disabled_collisions, get_node_neighbors, \
-    PrintTrajectory, retrace_supporters, \
-    get_supported_orders, prune_dominated, Command
+    PrintTrajectory, retrace_supporters, get_supported_orders, prune_dominated, Command
 #from extrusion.run import USE_IKFAST, get_supported_orders, retrace_supporters, SELF_COLLISIONS, USE_CONMECH
 from pddlstream.language.stream import WildOutput
 from pddlstream.utils import neighbors_from_orders, irange, user_input, INF
@@ -47,13 +46,15 @@ MAX_ATTEMPTS = 1000  # 150 | 300
 
 
 def get_direction_generator():
-    while True:
+    lower = [-np.pi/2, -np.pi/2]
+    upper = [+np.pi/2, +np.pi/2]
+    for [roll, pitch] in interval_generator(lower, upper, use_halton=True):
         ##roll = random.uniform(0, np.pi)
         #roll = np.pi/4
         #pitch = random.uniform(0, 2*np.pi)
         #return Pose(euler=Euler(roll=np.pi / 2 + roll, pitch=pitch))
-        roll = random.uniform(-np.pi/2, np.pi/2)
-        pitch = random.uniform(-np.pi/2, np.pi/2)
+        #roll = random.uniform(-np.pi/2, np.pi/2)
+        #pitch = random.uniform(-np.pi/2, np.pi/2)
         pose = Pose(euler=Euler(roll=roll, pitch=pitch))
         yield pose
 
@@ -171,7 +172,7 @@ def compute_direction_path(robot, tool, tool_from_root,
     element_pose = get_pose(element_bodies[element])
 
     #initial_angles = [wrap_angle(angle) for angle in np.linspace(0, 2*np.pi, num_angles, endpoint=False)]
-    initial_angles = list(map(wrap_angle, np.random.uniform(0, 2*np.pi, num_angles)))
+    initial_angles = list(map(wrap_angle, np.random.uniform(0, 2*np.pi, num_angles))) # TODO: halton
     initial_angles = [angle for angle in initial_angles if not tool_path_collision(
         tool, tool_from_root, element_pose, translation_path, direction, angle, reverse, obstacles)]
 
@@ -203,7 +204,7 @@ def compute_direction_path(robot, tool, tool_from_root,
 ##################################################
 
 def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground_nodes,
-                     precompute_collisions=True, supports=True,
+                     precompute_collisions=True, supports=True, bidirectional=False,
                      collisions=True, disable=False,
                      max_directions=MAX_ATTEMPTS, max_attempts=1):
     # TODO: print on full sphere and just check for collisions with the printed element
@@ -261,6 +262,8 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
             for attempt in irange(max_directions):
                 direction = next(direction_generator)
                 for _ in range(max_attempts):
+                    if bidirectional:
+                        reverse = random.choice([False, True])
                     command = compute_direction_path(robot, tool_body, tool_from_root,
                                                      length, reverse, element_bodies, element,
                                                      direction, obstacles, collision_fn)
