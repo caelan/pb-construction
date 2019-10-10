@@ -114,11 +114,11 @@ class PrintTrajectory(object):
         self.path = path
         self.tool_path = tool_path
         self.is_reverse = is_reverse
-        assert len(self.path) == len(self.tool_path)
-        self.n1, self.n2 = reversed(element) if self.is_reverse else element
+        #assert len(self.path) == len(self.tool_path)
         self.element = element
-    def direction(self):
-        return self.n1, self.n2
+        self.n1, self.n2 = reversed(element) if self.is_reverse else element
+    def directed_element(self):
+        return (self.n1, self.n2)
     def reverse(self):
         return self.__class__(self.robot, self.joints, self.path[::-1],
                               self.tool_path[::-1], self.element, self.is_reverse)

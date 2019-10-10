@@ -4,7 +4,7 @@ import random
 from pybullet_tools.utils import get_movable_joints, get_joint_positions, multiply, invert, \
     set_joint_positions, inverse_kinematics, get_link_pose, get_distance, point_from_pose, wrap_angle, get_sample_fn, \
     link_from_name, get_pose, get_collision_fn, dump_body, get_link_subtree, wait_for_user, clone_body, \
-    get_all_links, set_color, set_pose, pairwise_collision, get_relative_pose, Pose, Euler, Point, interval_generator
+    get_all_links, set_color, set_pose, pairwise_collision, get_relative_pose, Pose, Euler, Point, interval_generator, randomize
 from extrusion.utils import TOOL_NAME, get_disabled_collisions, get_node_neighbors, \
     PrintTrajectory, retrace_supporters, get_supported_orders, prune_dominated, Command
 #from extrusion.run import USE_IKFAST, get_supported_orders, retrace_supporters, SELF_COLLISIONS, USE_CONMECH
@@ -93,16 +93,12 @@ def command_collision(tool_body, tool_from_root, command, bodies):
 
     # TODO: separate into another method. Sort paths by tool poses first
     for trajectory in command.trajectories:
-        indices = list(range(len(trajectory.path)))
-        random.shuffle(indices)  # TODO: bisect
-        for k in indices:
-            tool_pose = trajectory.tool_path[k]
+        for tool_pose in randomize(trajectory.tool_path): # TODO: bisect
             set_pose(tool_body, multiply(tool_pose, tool_from_root))
             for i, body in enumerate(bodies):
                 if not collisions[i]:
                     collisions[i] |= pairwise_collision(tool_body, body)
-        for k in indices:
-            robot_conf = trajectory.path[k]
+        for robot_conf in randomize(trajectory.path):
             set_joint_positions(trajectory.robot, trajectory.joints, robot_conf)
             for i, body in enumerate(bodies):
                 if not collisions[i]:
@@ -153,7 +149,7 @@ def optimize_angle(robot, tool, tool_from_root, tool_link, element_pose,
 
 def compute_direction_path(robot, tool, tool_from_root,
                            length, reverse, element_bodies, element, direction,
-                           obstacles, collision_fn, num_angles=1):
+                           obstacles, collision_fn, num_angles=1, ee_only=False):
     """
     :param robot:
     :param length: element's length
@@ -175,6 +171,15 @@ def compute_direction_path(robot, tool, tool_from_root,
     initial_angles = list(map(wrap_angle, np.random.uniform(0, 2*np.pi, num_angles))) # TODO: halton
     initial_angles = [angle for angle in initial_angles if not tool_path_collision(
         tool, tool_from_root, element_pose, translation_path, direction, angle, reverse, obstacles)]
+    if not initial_angles:
+        return None
+
+    if ee_only:
+        initial_angle = random.choice(initial_angles)
+        tool_path = compute_tool_path(element_pose, translation_path, direction, initial_angle, reverse)
+        robot_path = []
+        print_traj = PrintTrajectory(robot, get_movable_joints(robot), robot_path, tool_path, element, reverse)
+        return Command([print_traj])
 
     tool_link = link_from_name(robot, TOOL_NAME)
     initial_angle, current_conf = optimize_angle(robot, tool, tool_from_root, tool_link, element_pose,
@@ -206,7 +211,7 @@ def compute_direction_path(robot, tool, tool_from_root,
 def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground_nodes,
                      precompute_collisions=True, supports=True, bidirectional=False,
                      collisions=True, disable=False,
-                     max_directions=MAX_ATTEMPTS, max_attempts=1):
+                     max_directions=MAX_ATTEMPTS, max_attempts=1, **kwargs):
     # TODO: print on full sphere and just check for collisions with the printed element
     # TODO: can slide a component of the element down
     # TODO: prioritize choices that don't collide with too many edges
@@ -266,7 +271,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                         reverse = random.choice([False, True])
                     command = compute_direction_path(robot, tool_body, tool_from_root,
                                                      length, reverse, element_bodies, element,
-                                                     direction, obstacles, collision_fn)
+                                                     direction, obstacles, collision_fn, **kwargs)
                     if command is None:
                         continue
                     if precompute_collisions:

@@ -34,8 +34,11 @@ def retrace_plan(visited, current_state):
 
 ##################################################
 
+def compute_printed_nodes(ground_nodes, printed):
+    return {n for e in printed for n in e} | set(ground_nodes)
+
 def sample_extrusion(print_gen_fn, ground_nodes, printed, element):
-    next_nodes = {n for e in printed for n in e} | set(ground_nodes)
+    next_nodes =  compute_printed_nodes(ground_nodes, printed)
     # TODO: could always reverse these trajectories
     for node in element:
         if node in next_nodes:

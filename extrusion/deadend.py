@@ -20,7 +20,7 @@ from extrusion.equilibrium import compute_node_reactions, compute_all_reactions
 from pybullet_tools.utils import connect, ClientSaver, wait_for_user, INF, get_distance, has_gui, remove_all_debug, wait_for_duration
 from pddlstream.utils import neighbors_from_orders, adjacent_from_edges, implies
 
-from extrusion.greedy import get_heuristic_fn, get_z, Node, retrace_plan, sample_extrusion, add_successors
+from extrusion.greedy import get_heuristic_fn, get_z, Node, retrace_plan, sample_extrusion, add_successors, compute_printed_nodes
 
 def deadend(robot, obstacles, element_bodies, extrusion_path,
             heuristic='z', max_time=INF, max_backtrack=INF, stiffness=True, **kwargs):
@@ -33,8 +33,11 @@ def deadend(robot, obstacles, element_bodies, extrusion_path,
     checker = create_stiffness_checker(extrusion_path, verbose=False)
     #checker = None
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                    precompute_collisions=True, supports=False, bidirectional=True,
+                                    precompute_collisions=False, supports=False, bidirectional=False, ee_only=False,
                                     max_directions=50, max_attempts=10, **kwargs)
+    ee_print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
+                                        precompute_collisions=True, supports=False, bidirectional=True, ee_only=True,
+                                        max_directions=25, max_attempts=10, **kwargs)
     id_from_element = get_id_from_element(element_from_id)
     elements = frozenset(element_bodies)
     heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=True)
@@ -48,7 +51,7 @@ def deadend(robot, obstacles, element_bodies, extrusion_path,
         }
         return None, data
 
-    gen_from_element = {element: print_gen_fn(None, element) for element in elements}
+    gen_from_element = {element: ee_print_gen_fn(None, element) for element in elements}
     trajs_from_element = defaultdict(list)
 
     def enumerate_extrusions(element):
@@ -91,19 +94,29 @@ def deadend(robot, obstacles, element_bodies, extrusion_path,
             min_remaining = num_remaining
         print('Iteration: {} | Best: {} | Printed: {} | Element: {} | Index: {} | Time: {:.3f}'.format(
             num_evaluated, min_remaining, len(printed), element, id_from_element[element], elapsed_time(start_time)))
+        printed_nodes = compute_printed_nodes(ground_nodes, printed)
 
         next_printed = printed | {element}
         if (next_printed in visited) or not check_connected(ground_nodes, next_printed) or \
                 (stiffness and not test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker)):
             # Hard dead-end
             continue
-        command = sample_traj(printed, element)
-        if command is None:
-            # Soft dead-end
-            continue
+
+        # TODO: before or after sampling?
+        # Constraint propagation
+        # forward checking / lookahead: prove infeasibility quickly
+        # https://en.wikipedia.org/wiki/Look-ahead_(backtracking)
         if not sample_remaining(next_printed):
             # Soft dead-end
             continue
+
+        command = sample_extrusion(print_gen_fn, ground_nodes, printed, element)
+        #command = sample_traj(printed, element)
+        if command is None:
+            # Soft dead-end
+            continue
+        if command.trajectories[0].n1 not in printed_nodes:
+            command = command.reverse()
 
         # TODO: test end-effector here first
         # TODO: separate parameters for dead-end versus transition
