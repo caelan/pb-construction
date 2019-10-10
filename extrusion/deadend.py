@@ -1,29 +1,22 @@
 from __future__ import print_function
 
 import heapq
-import random
 import time
+from collections import defaultdict
 
-from collections import namedtuple, defaultdict
-
-import numpy as np
-
-from pybullet_tools.utils import elapsed_time, \
-    remove_all_debug, wait_for_user, has_gui, LockRenderer, reset_simulation, disconnect, set_renderer, randomize
+from extrusion.greedy import get_heuristic_fn, Node, retrace_plan, add_successors, compute_printed_nodes
 from extrusion.parsing import load_extrusion
-from extrusion.visualization import draw_element, draw_model, draw_ordered
 from extrusion.stream import get_print_gen_fn
-from extrusion.utils import check_connected, torque_from_reaction, force_from_reaction, compute_element_distance, test_stiffness, \
-    create_stiffness_checker, get_id_from_element, load_world, get_supported_orders, get_extructed_ids, nodes_from_elements
-from extrusion.equilibrium import compute_node_reactions, compute_all_reactions
-
+from extrusion.utils import check_connected, test_stiffness, \
+    create_stiffness_checker, get_id_from_element
+from extrusion.visualization import color_structure
 # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
-from pybullet_tools.utils import connect, ClientSaver, wait_for_user, INF, get_distance, has_gui, remove_all_debug, wait_for_duration
-from pddlstream.utils import neighbors_from_orders, adjacent_from_edges, implies
+from pybullet_tools.utils import INF, has_gui
+from pybullet_tools.utils import elapsed_time, \
+    LockRenderer, randomize
 
-from extrusion.greedy import get_heuristic_fn, get_z, Node, retrace_plan, sample_extrusion, add_successors, compute_printed_nodes
 
-def cache_fns(elements, print_gen_fn):
+def get_sample_traj(elements, print_gen_fn):
     gen_from_element = {element: print_gen_fn(None, element) for element in elements}
     trajs_from_element = defaultdict(list)
 
@@ -77,8 +70,8 @@ def deadend(robot, obstacles, element_bodies, extrusion_path,
         }
         return None, data
 
-    full_sample_traj = cache_fns(elements, full_print_gen_fn)
-    ee_sample_traj = cache_fns(elements, ee_print_gen_fn)
+    full_sample_traj = get_sample_traj(elements, full_print_gen_fn)
+    ee_sample_traj = get_sample_traj(elements, ee_print_gen_fn)
 
     def sample_remaining(printed, sample_fn):
         # TODO: only check nodes that can be immediately printed?
@@ -105,6 +98,8 @@ def deadend(robot, obstacles, element_bodies, extrusion_path,
         print('Iteration: {} | Best: {} | Printed: {} | Element: {} | Index: {} | Time: {:.3f}'.format(
             num_evaluated, min_remaining, len(printed), element, id_from_element[element], elapsed_time(start_time)))
         printed_nodes = compute_printed_nodes(ground_nodes, printed)
+        if has_gui():
+            color_structure(element_bodies, printed, element)
 
         next_printed = printed | {element}
         if (next_printed in visited) or not check_connected(ground_nodes, next_printed) or \
@@ -116,9 +111,9 @@ def deadend(robot, obstacles, element_bodies, extrusion_path,
         # Constraint propagation
         # forward checking / lookahead: prove infeasibility quickly
         # https://en.wikipedia.org/wiki/Look-ahead_(backtracking)
-        #if not sample_remaining(next_printed, ee_sample_traj):
-        #    # Soft dead-end
-        #    continue
+        if not sample_remaining(next_printed, ee_sample_traj):
+            # Soft dead-end
+            continue
 
         #command = sample_extrusion(print_gen_fn, ground_nodes, printed, element)
         command = full_sample_traj(printed, element)

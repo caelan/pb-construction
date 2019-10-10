@@ -16,7 +16,7 @@ sys.path.extend([
     'ss-pybullet/',
 ])
 
-from extrusion.visualization import label_nodes, visualize_stiffness
+from extrusion.visualization import label_nodes, set_extrusion_camera
 from extrusion.experiment import load_experiment, train_parallel
 from extrusion.motion import compute_motions, display_trajectories
 from extrusion.stripstream import plan_sequence
@@ -29,7 +29,7 @@ from extrusion.validator import verify_plan
 from extrusion.deadend import deadend
 
 from pybullet_tools.utils import connect, disconnect, get_movable_joints, get_joint_positions, LockRenderer, \
-    unit_pose, reset_simulation, draw_pose, apply_alpha, BLACK, set_camera_pose
+    unit_pose, reset_simulation, draw_pose, apply_alpha, BLACK
 
 # TODO: sort by action cost heuristic
 # http://www.fast-downward.org/Doc/Evaluator#Max_evaluator
@@ -101,8 +101,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
         alpha = 1 # 0
         element_bodies = dict(zip(elements, create_elements(
             node_points, elements, color=apply_alpha(BLACK, alpha))))
-        centroid = np.average(node_points, axis=0)
-        set_camera_pose(camera_point=centroid + 0.25*np.array([1, -1, 1]), target_point=centroid)
+        set_extrusion_camera(node_points)
 
     # joint_weights = compute_joint_weights(robot, num=1000)
     initial_conf = get_joint_positions(robot, get_movable_joints(robot))

@@ -109,6 +109,7 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
         # Queue minimizes the statistic
         structure = printed | {element} if forward else printed - {element}
         structure_ids = get_extructed_ids(element_from_id, structure)
+        # TODO: build away from the robot
 
         #distance = 1
         #distance = len(structure)
