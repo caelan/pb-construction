@@ -46,14 +46,16 @@ MAX_ATTEMPTS = 1000  # 150 | 300
     #return multiply(thing, rot)
 
 
-def sample_direction():
-    ##roll = random.uniform(0, np.pi)
-    #roll = np.pi/4
-    #pitch = random.uniform(0, 2*np.pi)
-    #return Pose(euler=Euler(roll=np.pi / 2 + roll, pitch=pitch))
-    roll = random.uniform(-np.pi/2, np.pi/2)
-    pitch = random.uniform(-np.pi/2, np.pi/2)
-    return Pose(euler=Euler(roll=roll, pitch=pitch))
+def get_direction_generator():
+    while True:
+        ##roll = random.uniform(0, np.pi)
+        #roll = np.pi/4
+        #pitch = random.uniform(0, 2*np.pi)
+        #return Pose(euler=Euler(roll=np.pi / 2 + roll, pitch=pitch))
+        roll = random.uniform(-np.pi/2, np.pi/2)
+        pitch = random.uniform(-np.pi/2, np.pi/2)
+        pose = Pose(euler=Euler(roll=roll, pitch=pitch))
+        yield pose
 
 
 def get_grasp_pose(translation, direction, angle, reverse, offset=1e-3):
@@ -202,7 +204,8 @@ def compute_direction_path(robot, tool, tool_from_root,
 
 def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground_nodes,
                      precompute_collisions=True, supports=True,
-                     collisions=True, disable=False, max_directions=MAX_ATTEMPTS):
+                     collisions=True, disable=False,
+                     max_directions=MAX_ATTEMPTS, max_attempts=1):
     # TODO: print on full sphere and just check for collisions with the printed element
     # TODO: can slide a component of the element down
     # TODO: prioritize choices that don't collide with too many edges
@@ -251,36 +254,41 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                                         attachments=[], self_collisions=SELF_COLLISIONS,
                                         disabled_collisions=disabled_collisions,
                                         custom_limits={}) # TODO: get_custom_limits
+
+        direction_generator = get_direction_generator()
         trajectories = []
         for num in irange(INF):
             for attempt in irange(max_directions):
-                direction = sample_direction()
-                command = compute_direction_path(robot, tool_body, tool_from_root,
-                                                 length, reverse, element_bodies, element,
-                                                 direction, obstacles, collision_fn)
-                if command is None:
-                    continue
-                if precompute_collisions:
-                    bodies_order = [element_bodies[e] for e in elements_order]
-                    colliding = command_collision(tool_body, tool_from_root, command, bodies_order)
-                    command.colliding = {e for k, e in enumerate(elements_order) if colliding[k]}
-                if (node_neighbors[n1] <= command.colliding) and not any(n in ground_nodes for n in element):
-                    continue
-                trajectories.append(command)
-                prune_dominated(trajectories)
-                if command not in trajectories:
-                    continue
-                print('{}) {}->{} | Supporters: {} | Attempts: {} | Trajectories: {} | Colliding: {}'.format(
-                    num, n1, n2, len(supporters), attempt, len(trajectories),
-                    sorted(len(t.colliding) for t in trajectories)))
-                yield (command,)
-                if not command.colliding:
-                    print('Reevaluated already non-colliding trajectory!')
-                    return
+                direction = next(direction_generator)
+                for _ in range(max_attempts):
+                    command = compute_direction_path(robot, tool_body, tool_from_root,
+                                                     length, reverse, element_bodies, element,
+                                                     direction, obstacles, collision_fn)
+                    if command is None:
+                        continue
+                    if precompute_collisions:
+                        bodies_order = [element_bodies[e] for e in elements_order]
+                        colliding = command_collision(tool_body, tool_from_root, command, bodies_order)
+                        command.colliding = {e for k, e in enumerate(elements_order) if colliding[k]}
+                    if (node_neighbors[n1] <= command.colliding) and not any(n in ground_nodes for n in element):
+                        continue
+                    trajectories.append(command)
+                    prune_dominated(trajectories)
+                    if command not in trajectories:
+                        continue
+                    print('{}) {}->{} | Supporters: {} | Attempts: {} | Trajectories: {} | Colliding: {}'.format(
+                        num, n1, n2, len(supporters), attempt, len(trajectories),
+                        sorted(len(t.colliding) for t in trajectories)))
+                    yield (command,)
+                    if precompute_collisions and not command.colliding:
+                        print('Reevaluated already non-colliding trajectory!')
+                        return
+                    break
             else:
                 print('{}) {}->{} | Supporters: {} | Attempts: {} | Max attempts exceeded!'.format(
                     num, n1, n2, len(supporters), max_directions))
                 return
+                #yield None
     return gen_fn
 
 ##################################################
