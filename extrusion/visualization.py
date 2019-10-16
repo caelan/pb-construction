@@ -6,10 +6,10 @@ from extrusion.equilibrium import compute_node_reactions
 from extrusion.parsing import load_extrusion
 from extrusion.utils import get_node_neighbors, force_from_reaction, is_ground
 from pybullet_tools.utils import add_text, draw_pose, get_pose, wait_for_user, add_line, remove_debug, has_gui, \
-    draw_point, LockRenderer, set_camera_pose, set_color, apply_alpha, RED, BLUE, GREEN
+    draw_point, LockRenderer, set_camera_pose, set_color, apply_alpha, RED, BLUE, GREEN, get_visual_data
 
 
-def label_nodes(element_bodies, element):
+def label_element(element_bodies, element):
     element_body = element_bodies[element]
     return [
         add_text(element[0], position=(0, 0, -0.02), parent=element_body),
@@ -21,18 +21,27 @@ def label_elements(element_bodies):
     # +z points parallel to each element body
     for element, body in element_bodies.items():
         print(element)
-        label_nodes(element_bodies, element)
+        label_element(element_bodies, element)
         draw_pose(get_pose(body), length=0.02)
         wait_for_user()
 
+def label_nodes(node_points, **kwargs):
+    return [add_text(node, position=point, **kwargs) for node, point in enumerate(node_points)]
+
 def color_structure(element_bodies, printed, next_element):
+    # TODO: could also do this with debug segments
+    element_colors = {}
     for element in printed:
-        set_color(element_bodies[element], color=apply_alpha(BLUE, alpha=1))
-    set_color(element_bodies[next_element], color=apply_alpha(GREEN, alpha=1))
+        element_colors[element] = apply_alpha(BLUE, alpha=1)
+    element_colors[next_element] = apply_alpha(GREEN, alpha=1)
     remaining = set(element_bodies) - printed - {next_element}
     for element in remaining:
-        set_color(element_bodies[element], color=apply_alpha(RED, alpha=0.5))
-
+        element_colors[element] = apply_alpha(RED, alpha=0.5)
+    for element, color in element_colors.items():
+        body = element_bodies[element]
+        [shape] = get_visual_data(body)
+        if color != shape.rgbaColor:
+            set_color(body, color=color)
 
 def draw_reaction(point, reaction, max_length=0.05, max_force=1, **kwargs):
     vector = max_length * np.array(reaction[:3]) / max_force

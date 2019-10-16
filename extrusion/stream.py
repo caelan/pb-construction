@@ -45,10 +45,10 @@ MAX_ATTEMPTS = 1000  # 150 | 300
     #return multiply(thing, rot)
 
 
-def get_direction_generator():
+def get_direction_generator(**kwargs):
     lower = [-np.pi/2, -np.pi/2]
     upper = [+np.pi/2, +np.pi/2]
-    for [roll, pitch] in interval_generator(lower, upper, use_halton=True):
+    for [roll, pitch] in interval_generator(lower, upper, **kwargs):
         ##roll = random.uniform(0, np.pi)
         #roll = np.pi/4
         #pitch = random.uniform(0, 2*np.pi)
@@ -232,7 +232,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
     tool_link = link_from_name(robot, TOOL_NAME)
     tool_from_root = get_relative_pose(robot, root_link, tool_link)
 
-    def gen_fn(node1, element, extruded=[]): # fluents=[]):
+    def gen_fn(node1, element, extruded=[], trajectories=[]): # fluents=[]):
         reverse = (node1 != element[0])
         if disable:
             path, tool_path = [], []
@@ -261,8 +261,8 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                                         disabled_collisions=disabled_collisions,
                                         custom_limits={}) # TODO: get_custom_limits
 
-        direction_generator = get_direction_generator()
-        trajectories = []
+        direction_generator = get_direction_generator(use_halton=False)
+        trajectories = list(trajectories)
         for num in irange(INF):
             for attempt in irange(max_directions):
                 direction = next(direction_generator)

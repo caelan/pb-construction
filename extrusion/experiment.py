@@ -26,6 +26,10 @@ EXCLUDE = [
     'DJMM_bridge',
 ]
 
+# Geometric: python3 -m extrusion.run -l experiments/19-08-09_01-58-34.pk3
+# CFree: python3 -m extrusion.run -l experiments/19-08-14_10-46-35.pk3
+# Disable: python3 -m extrusion.run -l experiments/19-08-14_01-33-13.pk3
+
 ##################################################
 
 def score_result(result):

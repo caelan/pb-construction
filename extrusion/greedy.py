@@ -435,6 +435,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
         if (next_printed in visited) or not check_connected(ground_nodes, next_printed) or \
                 not implies(stiffness, test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker)):
             continue
+        # TODO: could do this eagerly to inspect the full branching factor
         command = sample_extrusion(print_gen_fn, ground_nodes, next_printed, element)
         if command is None:
             continue

@@ -32,7 +32,9 @@ def get_extrusion_dir():
     return os.path.abspath(os.path.join(root_directory, EXTRUSION_DIRECTORY))
 
 def get_extrusion_path(extrusion_name):
-    if extrusion_name in EXTRUSION_FILENAMES:
+    if extrusion_name.endswith('.json'):
+        filename = os.path.basename(extrusion_name)
+    elif extrusion_name in EXTRUSION_FILENAMES:
         filename = EXTRUSION_FILENAMES[extrusion_name]
     else:
         filename = '{}.json'.format(extrusion_name)

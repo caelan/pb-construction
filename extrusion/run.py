@@ -16,7 +16,7 @@ sys.path.extend([
     'ss-pybullet/',
 ])
 
-from extrusion.visualization import label_nodes, set_extrusion_camera
+from extrusion.visualization import label_element, set_extrusion_camera, label_nodes
 from extrusion.experiment import load_experiment, train_parallel
 from extrusion.motion import compute_motions, display_trajectories
 from extrusion.stripstream import plan_sequence
@@ -26,7 +26,7 @@ from extrusion.parsing import load_extrusion, create_elements, \
 from extrusion.stream import get_print_gen_fn
 from extrusion.greedy import regression, progression, GREEDY_HEURISTICS, GREEDY_ALGORITHMS
 from extrusion.validator import verify_plan
-from extrusion.deadend import deadend
+from extrusion.deadend import lookahead
 
 from pybullet_tools.utils import connect, disconnect, get_movable_joints, get_joint_positions, LockRenderer, \
     unit_pose, reset_simulation, draw_pose, apply_alpha, BLACK
@@ -54,7 +54,7 @@ def sample_trajectories(robot, obstacles, node_points, element_bodies, ground_no
     gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes)
     all_trajectories = []
     for index, (element, element_body) in enumerate(element_bodies.items()):
-        label_nodes(element_bodies, element)
+        label_element(element_bodies, element)
         trajectories = []
         for node1 in element:
             for traj, in gen_fn(node1, element):
@@ -102,6 +102,8 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
         element_bodies = dict(zip(elements, create_elements(
             node_points, elements, color=apply_alpha(BLACK, alpha))))
         set_extrusion_camera(node_points)
+        if viewer:
+            label_nodes(node_points)
 
     # joint_weights = compute_joint_weights(robot, num=1000)
     initial_conf = get_joint_positions(robot, get_movable_joints(robot))
@@ -128,9 +130,9 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
                                                     max_time=args.max_time, collisions=not args.cfree,
                                                     disable=args.disable, stiffness=args.stiffness)
         elif args.algorithm == 'deadend':
-            planned_trajectories, data = deadend(robot, obstacles, element_bodies, problem_path, heuristic=args.bias,
-                                                 max_time=args.max_time, collisions=not args.cfree,
-                                                 disable=args.disable, stiffness=args.stiffness)
+            planned_trajectories, data = lookahead(robot, obstacles, element_bodies, problem_path, heuristic=args.bias,
+                                                   max_time=args.max_time, ee_only=args.ee_only, collisions=not args.cfree,
+                                                   disable=args.disable, stiffness=args.stiffness)
         else:
             raise ValueError(args.algorithm)
         pr.disable()
@@ -196,6 +198,8 @@ def main():
                         help='Disables collisions with obstacles')
     parser.add_argument('-d', '--disable', action='store_true',
                         help='Disables trajectory planning')
+    parser.add_argument('-e', '--ee_only', action='store_true',
+                        help='Disables arm planning')
     parser.add_argument('-m', '--motions', action='store_true',
                         help='Plans motions between each extrusion')
     parser.add_argument('-n', '--num', default=0, type=int,
