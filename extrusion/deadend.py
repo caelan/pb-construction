@@ -2,6 +2,7 @@ from __future__ import print_function
 
 import heapq
 import time
+import numpy as np
 from collections import defaultdict
 
 from extrusion.greedy import get_heuristic_fn, Node, retrace_plan, add_successors, compute_printed_nodes
@@ -36,7 +37,7 @@ def get_sample_traj(elements, print_gen_fn):
             if not (traj.colliding & printed):
                 return traj
         return None
-    return sample_traj
+    return sample_traj, trajs_from_element
 
 def lookahead(robot, obstacles, element_bodies, extrusion_path,
               heuristic='z', max_time=INF, max_backtrack=INF,
@@ -73,19 +74,33 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
         }
         return None, data
 
-    full_sample_traj = get_sample_traj(elements, full_print_gen_fn)
-    ee_sample_traj = get_sample_traj(elements, ee_print_gen_fn)
+    full_sample_traj, _ = get_sample_traj(elements, full_print_gen_fn)
+    ee_sample_traj, ee_trajs_from_element = get_sample_traj(elements, ee_print_gen_fn)
+    if ee_only:
+        full_sample_traj = ee_sample_traj
 
     def sample_remaining(printed, sample_fn):
         # TODO: only check nodes that can be immediately printed?
         return all(sample_fn(printed, element) is not None for element in randomize(elements - printed))
 
-    #def conflict_fn(printed, element):
-    #    # TODO: condition on a fixed last history to reflect the fact that we don't really want to backtrack
+    def conflict_fn(printed, element):
+        # TODO: condition on a fixed last history to reflect the fact that we don't really want to backtrack
+        # TODO: could add element if desired
+        order = retrace_plan(visited, printed)
+        printed = set(order[:-1])
+        scores = [len(traj.colliding) for traj in ee_trajs_from_element[element] if not (traj.colliding & printed)]
+        # TODO: could evaluate more to get a better estimate
+        assert scores
+        return -max(scores) # hardest
+        #return min(scores) # easiest
+        #return np.average(scores)
+        #return np.random.random()
 
     initial_printed = frozenset()
     queue = []
     visited = {initial_printed: Node(None, None)}
+    sample_remaining(initial_printed, ee_sample_traj)
+    heuristic_fn = conflict_fn
     add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, initial_printed)
 
     plan = None
