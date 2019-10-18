@@ -5,7 +5,7 @@ import time
 import numpy as np
 from collections import defaultdict
 
-from extrusion.greedy import get_heuristic_fn, Node, retrace_plan, add_successors, compute_printed_nodes
+from extrusion.greedy import get_heuristic_fn, Node, retrace_trajectories, retrace_elements, add_successors, compute_printed_nodes
 from extrusion.parsing import load_extrusion
 from extrusion.stream import get_print_gen_fn
 from extrusion.utils import check_connected, test_stiffness, \
@@ -39,6 +39,11 @@ def get_sample_traj(elements, print_gen_fn):
         return None
     return sample_traj, trajs_from_element
 
+def topological_sort(robot, obstacles, element_bodies, extrusion_path):
+    # TODO: take fewest collision samples and attempt to topological sort
+    # Repeat if a cycle is detected
+    raise NotImplementedError()
+
 def lookahead(robot, obstacles, element_bodies, extrusion_path,
               heuristic='z', max_time=INF, max_backtrack=INF,
               ee_only=False, stiffness=True, steps=1, **kwargs):
@@ -63,7 +68,6 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
     elements = frozenset(element_bodies)
     heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=True)
     # TODO: 2-step lookahead based on neighbors or spatial proximity
-    # TODO: sort heuristic by most future colliding edges
 
     final_printed = frozenset(element_bodies)
     if not check_connected(ground_nodes, final_printed) or \
@@ -80,40 +84,48 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
         full_sample_traj = ee_sample_traj
 
     def sample_remaining(printed, sample_fn):
-        # TODO: only check nodes that can be immediately printed?
-        return all(sample_fn(printed, element) is not None for element in randomize(elements - printed))
+        # TODO: only check nodes that can be printed given the current nodes?
+        # TODO: condition on a fixed last history to reflect the fact that we don't really want to backtrack
+        return all(sample_fn(printed, element) is not None
+                   for element in randomize(elements - printed))
 
     def conflict_fn(printed, element):
-        # TODO: condition on a fixed last history to reflect the fact that we don't really want to backtrack
         # TODO: could add element if desired
-        order = retrace_plan(visited, printed)
-        printed = set(order[:-1])
-        scores = [len(traj.colliding) for traj in ee_trajs_from_element[element]
-                  if not (traj.colliding & printed)]
+        #return np.random.random()
+        #return 0 # Dead-end detection without stability performs well
+        order = retrace_elements(visited, printed)
+        printed = frozenset(order[:-1]) # Remove last element (to ensure at least one traj)
+        #remaining = list(elements - printed)
+        #requires_replan = [all(element in traj.colliding for traj in ee_trajs_from_element[e2]
+        #                       if not (traj.colliding & printed)) for e2 in remaining if e2 != element]
+        #return len(requires_replan)
+
+        num_colliding = [len(traj.colliding) for traj in ee_trajs_from_element[element]
+                         if not (traj.colliding & printed)]
         # TODO: could evaluate more to get a better estimate
         # TODO: could sort by the number of trajectories need replanning if printed
-        assert scores
-        return -max(scores) # hardest
-        #return min(scores) # easiest
-        #return np.average(scores)
+        assert num_colliding
+        return -max(num_colliding) # hardest
+        #return min(num_colliding) # easiest
+        #return np.average(num_colliding)
         #return np.random.random()
 
     initial_printed = frozenset()
     queue = []
     visited = {initial_printed: Node(None, None)}
     sample_remaining(initial_printed, ee_sample_traj)
-    heuristic_fn = conflict_fn
+    #priority_fn = heuristic_fn
+    #priority_fn = conflict_fn
+    priority_fn = lambda *args: (conflict_fn(*args), heuristic_fn(*args))
     add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, initial_printed)
 
     plan = None
     min_remaining = INF
-    num_evaluated = 0
-    worst_backtrack = 0
-    num_deadends = 0
+    num_evaluated = worst_backtrack = num_deadends = 0
     while queue and (elapsed_time(start_time) < max_time):
         # TODO: store robot configuration
         num_evaluated += 1
-        _, printed, element = heapq.heappop(queue)
+        priority, printed, element = heapq.heappop(queue)
         num_remaining = len(elements) - len(printed)
         backtrack = num_remaining - min_remaining
         if max_backtrack < backtrack: # backtrack_bound
@@ -134,12 +146,16 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
             # Hard dead-end
             #num_deadends += 1
             continue
-        #order = retrace_plan(visited, next_printed)
+        #order = retrace_elements(visited, next_printed)
 
         # TODO: before or after sampling?
-        # Constraint propagation
-        # forward checking / lookahead: prove infeasibility quickly
-        # https://en.wikipedia.org/wiki/Look-ahead_(backtracking)
+        # TODO: plan trajectories between elements
+        # TODO: locally optimize solution by conditioning on discrete decisions
+        # TODO: prioritize elements that are nearby
+        # TODO: anytime algorithm
+        # TODO: maximize stability while printing
+
+        # TODO: the directionality actually matters for the printing orientation
         if (steps != 0) and not sample_remaining(next_printed, ee_sample_traj):
             # Soft dead-end
             num_deadends += 1
@@ -162,14 +178,13 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
             num_deadends += 1
             continue
 
-        # TODO: test end-effector here first
         # TODO: separate parameters for dead-end versus transition
         visited[next_printed] = Node(command, printed)
         if elements <= next_printed:
             min_remaining = 0
-            plan = retrace_plan(visited, next_printed)
+            plan = retrace_trajectories(visited, next_printed)
             break
-        add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, next_printed)
+        add_successors(queue, elements, node_points, ground_nodes, priority_fn, next_printed)
 
     sequence = None
     if plan is not None:

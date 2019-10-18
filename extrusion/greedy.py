@@ -9,7 +9,7 @@ from collections import namedtuple
 import numpy as np
 
 from pybullet_tools.utils import elapsed_time, \
-    remove_all_debug, wait_for_user, has_gui, LockRenderer, reset_simulation, disconnect, set_renderer
+    remove_all_debug, wait_for_user, has_gui, LockRenderer, reset_simulation, disconnect, set_renderer, randomize
 from extrusion.parsing import load_extrusion
 from extrusion.visualization import draw_element, draw_model, draw_ordered
 from extrusion.stream import get_print_gen_fn
@@ -24,14 +24,15 @@ from pddlstream.utils import neighbors_from_orders, adjacent_from_edges, implies
 #State = namedtuple('State', ['element', 'printed', 'plan'])
 Node = namedtuple('Node', ['action', 'state'])
 
-def retrace_plan(visited, current_state):
+def retrace_trajectories(visited, current_state):
     command, prev_state = visited[current_state]
     if prev_state is None:
         return []
-    return retrace_plan(visited, prev_state) + [traj for traj in command.trajectories]
-
+    return retrace_trajectories(visited, prev_state) + [traj for traj in command.trajectories]
     # TODO: search over local stability for each node
-    # TODO: progression search
+
+def retrace_elements(visited, current_state):
+    return [traj.element for traj in retrace_trajectories(visited, current_state)]
 
 ##################################################
 
@@ -111,9 +112,9 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
         structure_ids = get_extructed_ids(element_from_id, structure)
         # TODO: build away from the robot
 
-        #distance = 1
+        distance = 1
         #distance = len(structure)
-        distance = compute_element_distance(node_points, elements)
+        #distance = compute_element_distance(node_points, elements)
 
         operator = sum # sum | max
         fn = force_from_reaction  # force_from_reaction | torque_from_reaction
@@ -227,8 +228,8 @@ def score_stiffness(extrusion_path, element_from_id, elements, checker=None):
     success, nodal_displacement, fixities_reaction, _ = checker.get_solved_results()
     if not success:
         return INF
-    operation = np.max
-    #operation = np.sum # equivalently average
+    #operation = np.max
+    operation = np.sum # equivalently average
     # TODO: LInf or L1 norm applied on forces
     # TODO: looking for a colored path through the space
 
@@ -241,7 +242,7 @@ def score_stiffness(extrusion_path, element_from_id, elements, checker=None):
 
     reaction_forces = np.array([force_from_reaction(d) for d in fixities_reaction.values()])
     reaction_moments = np.array([torque_from_reaction(d) for d in fixities_reaction.values()])
-    heuristic = 'fixities_translation'
+    heuristic = 'fixities_rotation'
     scores = {
         # Yijiang was surprised that fixities_translation worked
         'fixities_translation': np.linalg.norm(reaction_forces, axis=1),
@@ -267,7 +268,7 @@ def add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, pri
     assert 0 <= num_remaining
     nodes = compute_printed_nodes(ground_nodes, printed)
     bias_from_element = {}
-    for element in sorted(remaining, key=lambda e: get_z(node_points, e)):
+    for element in randomize(remaining):
         if any(n in nodes for n in element):
             bias = heuristic_fn(printed, element)
             priority = (num_remaining, bias, random.random())
@@ -338,7 +339,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
         visited[next_printed] = Node(command, printed)
         if elements <= next_printed:
             min_remaining = 0
-            plan = retrace_plan(visited, next_printed)
+            plan = retrace_trajectories(visited, next_printed)
             break
         #add_successors(next_printed)
         add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, next_printed)
@@ -451,7 +452,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
         visited[next_printed] = Node(command, printed) # TODO: be careful when multiple trajs
         if not next_printed:
             min_remaining = 0
-            plan = list(reversed(retrace_plan(visited, next_printed)))
+            plan = list(reversed(retrace_trajectories(visited, next_printed)))
             break
         add_successors(next_printed)
 
