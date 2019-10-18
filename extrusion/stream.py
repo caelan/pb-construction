@@ -246,6 +246,8 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
         # if delta[2] < 0:
         #    continue
         length = np.linalg.norm(delta)  # 5cm
+        neighboring_elements = node_neighbors[n1] & node_neighbors[n2]
+        grounded = any(n in ground_nodes for n in element)
 
         #supporters = {e for e in node_neighbors[n1] if element_supports(e, n1, node_points)}
         supporters = []
@@ -269,6 +271,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                 for _ in range(max_attempts):
                     if bidirectional:
                         reverse = random.choice([False, True])
+                    n1, n2 = reversed(element) if reverse else element
                     command = compute_direction_path(robot, tool_body, tool_from_root,
                                                      length, reverse, element_bodies, element,
                                                      direction, obstacles, collision_fn, **kwargs)
@@ -278,12 +281,13 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                         bodies_order = [element_bodies[e] for e in elements_order]
                         colliding = command_collision(tool_body, tool_from_root, command, bodies_order)
                         command.colliding = {e for k, e in enumerate(elements_order) if colliding[k]}
-                    if (node_neighbors[n1] <= command.colliding) and not any(n in ground_nodes for n in element):
-                        continue
+                    if not grounded and (neighboring_elements <= command.colliding):
+                        continue # If all neighbors collide
                     trajectories.append(command)
                     prune_dominated(trajectories)
                     if command not in trajectories:
                         continue
+                    # TODO: can add collision elements if a single collision
                     print('{}) {}->{} | Supporters: {} | Attempts: {} | Trajectories: {} | Colliding: {}'.format(
                         num, n1, n2, len(supporters), attempt, len(trajectories),
                         sorted(len(t.colliding) for t in trajectories)))

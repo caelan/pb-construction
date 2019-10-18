@@ -36,7 +36,7 @@ def retrace_plan(visited, current_state):
 ##################################################
 
 def compute_printed_nodes(ground_nodes, printed):
-    return {n for e in printed for n in e} | set(ground_nodes)
+    return nodes_from_elements(printed) | set(ground_nodes)
 
 def sample_extrusion(print_gen_fn, ground_nodes, printed, element):
     next_nodes =  compute_printed_nodes(ground_nodes, printed)
@@ -265,15 +265,14 @@ def add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, pri
     remaining = elements - printed
     num_remaining = len(remaining) - 1
     assert 0 <= num_remaining
-    nodes = ground_nodes | nodes_from_elements(printed)
+    nodes = compute_printed_nodes(ground_nodes, printed)
     bias_from_element = {}
     for element in sorted(remaining, key=lambda e: get_z(node_points, e)):
-        if not any(n in nodes for n in element):
-            continue
-        bias = heuristic_fn(printed, element)
-        priority = (num_remaining, bias, random.random())
-        heapq.heappush(queue, (priority, printed, element))
-        bias_from_element[element] = bias
+        if any(n in nodes for n in element):
+            bias = heuristic_fn(printed, element)
+            priority = (num_remaining, bias, random.random())
+            heapq.heappush(queue, (priority, printed, element))
+            bias_from_element[element] = bias
 
     if visualize and has_gui():
         handles = []

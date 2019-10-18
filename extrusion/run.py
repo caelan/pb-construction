@@ -21,7 +21,7 @@ from extrusion.experiment import load_experiment, train_parallel
 from extrusion.motion import compute_motions, display_trajectories
 from extrusion.stripstream import plan_sequence
 from extrusion.utils import load_world, get_id_from_element
-from extrusion.parsing import load_extrusion, create_elements, \
+from extrusion.parsing import load_extrusion, create_elements_bodies, \
     enumerate_problems, get_extrusion_path
 from extrusion.stream import get_print_gen_fn
 from extrusion.greedy import regression, progression, GREEDY_HEURISTICS, GREEDY_ALGORITHMS
@@ -99,7 +99,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
         draw_pose(unit_pose(), length=1.)
         obstacles, robot = load_world()
         alpha = 1 # 0
-        element_bodies = dict(zip(elements, create_elements(
+        element_bodies = dict(zip(elements, create_elements_bodies(
             node_points, elements, color=apply_alpha(BLACK, alpha))))
         set_extrusion_camera(node_points)
         if viewer:
@@ -147,12 +147,13 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     reset_simulation()
     disconnect()
 
-    id_from_element = get_id_from_element(element_from_id)
-    planned_elements = [traj.element for traj in planned_trajectories]
-    planned_ids = [id_from_element[element] for element in planned_elements]
+    #id_from_element = get_id_from_element(element_from_id)
+    #planned_ids = [id_from_element[traj.element] for traj in planned_trajectories]
+    planned_elements = [traj.directed_element for traj in planned_trajectories]
     # random.shuffle(planned_elements)
     # planned_elements = sorted(elements, key=lambda e: max(node_points[n][2] for n in e)) # TODO: tiebreak by angle or x
-    valid = verify_plan(problem_path, planned_elements, use_gui=False)
+    animate = not (args.disable or args.ee_only)
+    valid = verify_plan(problem_path, planned_elements, use_gui=not animate)
 
     plan_data = {
         'problem':  args.problem,
@@ -161,7 +162,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
         'plan_extrusions': not args.disable,
         'use_collisions': not args.cfree,
         'use_stiffness': args.stiffness,
-        'plan': planned_ids,
+        'plan': planned_elements,
         'valid': valid,
     }
     plan_data.update(data)
@@ -171,7 +172,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
         json.dump(plan_data, f, indent=2, sort_keys=True)
 
     if watch:
-        display_trajectories(node_points, ground_nodes, planned_trajectories, animate=not args.disable)
+        display_trajectories(node_points, ground_nodes, planned_trajectories, animate=animate)
     if not verbose:
         sys.stdout.close()
     return args, data

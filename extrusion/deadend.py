@@ -54,11 +54,11 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
                                     max_directions=50, max_attempts=10, **kwargs)
     full_print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                          precompute_collisions=True, supports=False, bidirectional=True, ee_only=ee_only,
-                                         max_directions=1000, max_attempts=1, **kwargs)
+                                         max_directions=250, max_attempts=1, **kwargs)
     # TODO: could just check kinematics instead of collision
     ee_print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                         precompute_collisions=True, supports=False, bidirectional=True, ee_only=True,
-                                        max_directions=1000, max_attempts=1, **kwargs)
+                                        max_directions=250, max_attempts=1, **kwargs)
     id_from_element = get_id_from_element(element_from_id)
     elements = frozenset(element_bodies)
     heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=True)
@@ -88,8 +88,10 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
         # TODO: could add element if desired
         order = retrace_plan(visited, printed)
         printed = set(order[:-1])
-        scores = [len(traj.colliding) for traj in ee_trajs_from_element[element] if not (traj.colliding & printed)]
+        scores = [len(traj.colliding) for traj in ee_trajs_from_element[element]
+                  if not (traj.colliding & printed)]
         # TODO: could evaluate more to get a better estimate
+        # TODO: could sort by the number of trajectories need replanning if printed
         assert scores
         return -max(scores) # hardest
         #return min(scores) # easiest
@@ -109,6 +111,7 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
     worst_backtrack = 0
     num_deadends = 0
     while queue and (elapsed_time(start_time) < max_time):
+        # TODO: store robot configuration
         num_evaluated += 1
         _, printed, element = heapq.heappop(queue)
         num_remaining = len(elements) - len(printed)
@@ -149,6 +152,7 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
             # Soft dead-end
             #num_deadends += 1
             continue
+        assert any(n in printed_nodes for n in command.trajectories[0].element)
         if command.trajectories[0].n1 not in printed_nodes:
             command = command.reverse()
         # TODO: sample several EE trajectories and then sort by non-dominated
@@ -169,7 +173,7 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
 
     sequence = None
     if plan is not None:
-        sequence = [traj.element for traj in plan]
+        sequence = [traj.directed_element for traj in plan]
     data = {
         'sequence': sequence,
         'runtime': elapsed_time(start_time),

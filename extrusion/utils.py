@@ -67,7 +67,7 @@ def get_node_neighbors(elements):
 
 def nodes_from_elements(elements):
     # TODO: always include ground nodes
-    return set(get_node_neighbors(elements))
+    return {n for e in elements for n in e}
 
 def get_element_neighbors(elements):
     node_neighbors = get_node_neighbors(elements)
@@ -108,7 +108,7 @@ class MotionTrajectory(object):
         return 'm({},{})'.format(len(self.joints), len(self.path))
 
 class PrintTrajectory(object):
-    def __init__(self, robot, joints, path, tool_path, element, is_reverse):
+    def __init__(self, robot, joints, path, tool_path, element, is_reverse=False):
         self.robot = robot
         self.joints = joints
         self.path = path
@@ -117,11 +117,12 @@ class PrintTrajectory(object):
         #assert len(self.path) == len(self.tool_path)
         self.element = element
         self.n1, self.n2 = reversed(element) if self.is_reverse else element
+    @property
     def directed_element(self):
         return (self.n1, self.n2)
     def reverse(self):
         return self.__class__(self.robot, self.joints, self.path[::-1],
-                              self.tool_path[::-1], self.element, self.is_reverse)
+                              self.tool_path[::-1], self.element, not self.is_reverse)
     def iterate(self):
         for conf in self.path[1:]:
             set_joint_positions(self.robot, self.joints, conf)
@@ -255,9 +256,15 @@ def create_stiffness_checker(extrusion_path, verbose=False):
 def get_id_from_element(element_from_id):
     return {e: i for i, e in element_from_id.items()}
 
-def get_extructed_ids(element_from_id, elements):
+def get_extructed_ids(element_from_id, directed_elements):
     id_from_element = get_id_from_element(element_from_id)
-    return sorted(id_from_element[e] for e in elements)
+    extruded_ids = []
+    for directed in directed_elements:
+        is_reverse = directed not in id_from_element
+        assert (directed in id_from_element) != is_reverse
+        element = directed[::-1] if is_reverse else directed
+        extruded_ids.append(id_from_element[element])
+    return sorted(extruded_ids)
 
 Deformation = namedtuple('Deformation', ['success', 'displacements', 'fixities', 'reactions']) # TODO: get_max_nodal_deformation
 Displacement = namedtuple('Displacement', ['dx', 'dy', 'dz', 'theta_x', 'theta_y', 'theta_z'])
