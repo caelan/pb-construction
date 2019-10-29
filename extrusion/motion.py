@@ -12,11 +12,11 @@ from extrusion.utils import get_disabled_collisions, MotionTrajectory, load_worl
 from extrusion.visualization import draw_ordered, set_extrusion_camera
 from extrusion.stream import SELF_COLLISIONS
 
-JOINT_WEIGHTS = [0.3078557810844393, 0.443600199302506, 0.23544367607317915,
-                 0.03637161028426032, 0.04644626184081511, 0.015054267683041092]
+JOINT_WEIGHTS = np.array([0.3078557810844393, 0.443600199302506, 0.23544367607317915,
+                          0.03637161028426032, 0.04644626184081511, 0.015054267683041092])
 
 def compute_motion(robot, fixed_obstacles, element_bodies, printed_elements, start_conf, end_conf, collisions=True):
-    weights = np.array(JOINT_WEIGHTS)
+    weights = JOINT_WEIGHTS
     resolutions = np.divide(0.005*np.ones(weights.shape), weights)
     disabled_collisions = get_disabled_collisions(robot)
     movable_joints = get_movable_joints(robot)

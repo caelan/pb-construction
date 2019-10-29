@@ -132,8 +132,20 @@ class PrintTrajectory(object):
 
 class Command(object):
     def __init__(self, trajectories=[], colliding=set()):
-        self.trajectories = tuple(trajectories)
+        self.trajectories = list(trajectories)
         self.colliding = set(colliding)
+    @property
+    def print_trajectory(self):
+        for traj in self.trajectories:
+            if isinstance(traj, PrintTrajectory):
+                return traj
+        return None
+    @property
+    def start_conf(self):
+        return self.trajectories[0].path[0]
+    @property
+    def end_conf(self):
+        return self.trajectories[-1].path[-1]
     def reverse(self):
         return self.__class__([traj.reverse() for traj in reversed(self.trajectories)],
                               colliding=self.colliding)

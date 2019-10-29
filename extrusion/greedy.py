@@ -14,7 +14,7 @@ from extrusion.parsing import load_extrusion
 from extrusion.visualization import draw_element, draw_model, draw_ordered
 from extrusion.stream import get_print_gen_fn
 from extrusion.utils import check_connected, torque_from_reaction, force_from_reaction, compute_element_distance, test_stiffness, \
-    create_stiffness_checker, get_id_from_element, load_world, get_supported_orders, get_extructed_ids, nodes_from_elements
+    create_stiffness_checker, get_id_from_element, load_world, get_supported_orders, get_extructed_ids, nodes_from_elements, PrintTrajectory
 from extrusion.equilibrium import compute_node_reactions, compute_all_reactions
 
 # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
@@ -32,7 +32,8 @@ def retrace_trajectories(visited, current_state):
     # TODO: search over local stability for each node
 
 def retrace_elements(visited, current_state):
-    return [traj.element for traj in retrace_trajectories(visited, current_state)]
+    return [traj.element for traj in retrace_trajectories(visited, current_state)
+            if isinstance(traj, PrintTrajectory)]
 
 ##################################################
 
@@ -262,7 +263,8 @@ def score_stiffness(extrusion_path, element_from_id, elements, checker=None):
 
 ##################################################
 
-def add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, printed, visualize=False):
+def add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, printed, conf,
+                   visualize=False):
     remaining = elements - printed
     num_remaining = len(remaining) - 1
     assert 0 <= num_remaining
@@ -270,9 +272,9 @@ def add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, pri
     bias_from_element = {}
     for element in randomize(remaining):
         if any(n in nodes for n in element):
-            bias = heuristic_fn(printed, element)
+            bias = heuristic_fn(printed, element, conf)
             priority = (num_remaining, bias, random.random())
-            heapq.heappush(queue, (priority, printed, element))
+            heapq.heappush(queue, (priority, printed, element, conf))
             bias_from_element[element] = bias
 
     if visualize and has_gui():
@@ -308,11 +310,12 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
         }
         return None, data
 
+    initial_conf = None
     initial_printed = frozenset()
     queue = []
     visited = {initial_printed: Node(None, None)}
     #add_successors(initial_printed)
-    add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, initial_printed)
+    add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, initial_printed, initial_conf)
 
     plan = None
     min_remaining = INF
@@ -342,7 +345,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
             plan = retrace_trajectories(visited, next_printed)
             break
         #add_successors(next_printed)
-        add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, next_printed)
+        add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, next_printed, initial_conf)
 
     sequence = None
     if plan is not None:
