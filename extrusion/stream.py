@@ -215,6 +215,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
     # TODO: print on full sphere and just check for collisions with the printed element
     # TODO: can slide a component of the element down
     # TODO: prioritize choices that don't collide with too many edges
+    # TODO: sort by number of end-effector collisions
 
     movable_joints = get_movable_joints(robot)
     disabled_collisions = get_disabled_collisions(robot)
@@ -277,7 +278,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                                                      direction, obstacles, collision_fn, **kwargs)
                     if command is None:
                         continue
-                    if precompute_collisions:
+                    if collisions and precompute_collisions:
                         bodies_order = [element_bodies[e] for e in elements_order]
                         colliding = command_collision(tool_body, tool_from_root, command, bodies_order)
                         command.colliding = {e for k, e in enumerate(elements_order) if colliding[k]}
@@ -287,13 +288,15 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                     prune_dominated(trajectories)
                     if command not in trajectories:
                         continue
-                    # TODO: can add collision elements if a single collision
+                    if collisions and (len(command.colliding) == 1):
+                        [colliding_element] = command.colliding
+                        obstacles.add(element_bodies[colliding_element])
                     print('{}) {}->{} | Supporters: {} | Attempts: {} | Trajectories: {} | Colliding: {}'.format(
                         num, n1, n2, len(supporters), attempt, len(trajectories),
                         sorted(len(t.colliding) for t in trajectories)))
                     yield (command,)
                     if precompute_collisions and not command.colliding:
-                        print('Reevaluated already non-colliding trajectory!')
+                        #print('Reevaluated already non-colliding trajectory!')
                         return
                     break
             else:

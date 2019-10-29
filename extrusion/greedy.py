@@ -274,7 +274,8 @@ def add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, pri
         if any(n in nodes for n in element):
             bias = heuristic_fn(printed, element, conf)
             priority = (num_remaining, bias, random.random())
-            heapq.heappush(queue, (priority, printed, element, conf))
+            visits = 0
+            heapq.heappush(queue, (visits, priority, printed, element, conf))
             bias_from_element[element] = bias
 
     if visualize and has_gui():
