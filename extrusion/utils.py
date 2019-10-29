@@ -7,7 +7,7 @@ from collections import defaultdict, deque, namedtuple
 
 from pyconmech import StiffnessChecker
 
-from pybullet_tools.utils import set_point, set_joint_positions, \
+from pybullet_tools.utils import get_link_pose, BodySaver, set_point, set_joint_positions, \
     Point, load_model, HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, get_aabb, get_distance
 from pddlstream.utils import get_connected_components
 
@@ -29,6 +29,11 @@ CUSTOM_LIMITS = {
 SUPPORT_THETA = np.math.radians(10)  # Support polygon
 
 USE_FLOOR = True
+
+
+RESOLUTION = 0.005
+JOINT_WEIGHTS = np.array([0.3078557810844393, 0.443600199302506, 0.23544367607317915,
+                          0.03637161028426032, 0.04644626184081511, 0.015054267683041092])
 
 ##################################################
 
@@ -92,26 +97,40 @@ def get_custom_limits(robot):
 
 ##################################################
 
-class MotionTrajectory(object):
-    def __init__(self, robot, joints, path, attachments=[]):
+class Trajectory(object):
+    def __init__(self, robot, joints, path):
         self.robot = robot
         self.joints = joints
         self.path = path
-        self.attachments = attachments
+        self.path_from_link = {}
+    def get_link_path(self, link_name=TOOL_NAME):
+        link = link_from_name(self.robot, link_name)
+        if link not in self.path_from_link:
+            with BodySaver(self.robot):
+                self.path_from_link[link] = []
+                for conf in self.path:
+                    set_joint_positions(self.robot, self.joints, conf)
+                    self.path_from_link[link].append(get_link_pose(self.robot, link))
+        return self.path_from_link[link]
     def reverse(self):
-        return self.__class__(self.robot, self.joints, self.path[::-1], self.attachments)
+        raise NotImplementedError()
     def iterate(self):
         for conf in self.path[1:]:
             set_joint_positions(self.robot, self.joints, conf)
             yield
+
+class MotionTrajectory(Trajectory):
+    def __init__(self, robot, joints, path, attachments=[]):
+        super(MotionTrajectory, self).__init__(robot, joints, path)
+        self.attachments = attachments
+    def reverse(self):
+        return self.__class__(self.robot, self.joints, self.path[::-1], self.attachments)
     def __repr__(self):
         return 'm({},{})'.format(len(self.joints), len(self.path))
 
-class PrintTrajectory(object):
+class PrintTrajectory(Trajectory):
     def __init__(self, robot, joints, path, tool_path, element, is_reverse=False):
-        self.robot = robot
-        self.joints = joints
-        self.path = path
+        super(PrintTrajectory, self).__init__(robot, joints, path)
         self.tool_path = tool_path
         self.is_reverse = is_reverse
         #assert len(self.path) == len(self.tool_path)
@@ -120,13 +139,13 @@ class PrintTrajectory(object):
     @property
     def directed_element(self):
         return (self.n1, self.n2)
+    def get_link_path(self, link_name=TOOL_NAME):
+        if link_name == TOOL_NAME:
+            return self.tool_path
+        return super(PrintTrajectory, self).get_link_path(link_name)
     def reverse(self):
         return self.__class__(self.robot, self.joints, self.path[::-1],
                               self.tool_path[::-1], self.element, not self.is_reverse)
-    def iterate(self):
-        for conf in self.path[1:]:
-            set_joint_positions(self.robot, self.joints, conf)
-            yield
     def __repr__(self):
         return '{}->{}'.format(self.n1, self.n2)
 

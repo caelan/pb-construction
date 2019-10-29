@@ -9,9 +9,9 @@ from extrusion.greedy import get_heuristic_fn, Node, retrace_trajectories, retra
 from extrusion.parsing import load_extrusion
 from extrusion.stream import get_print_gen_fn
 from extrusion.utils import check_connected, test_stiffness, \
-    create_stiffness_checker, get_id_from_element, PrintTrajectory
+    create_stiffness_checker, get_id_from_element, PrintTrajectory, JOINT_WEIGHTS
 from extrusion.visualization import color_structure
-from extrusion.motion import compute_motion, JOINT_WEIGHTS
+from extrusion.motion import compute_motion
 # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
 from pybullet_tools.utils import INF, has_gui, elapsed_time, LockRenderer, randomize, \
     wait_for_user, get_movable_joints, get_joint_positions, get_distance_fn
@@ -186,8 +186,9 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
             # Soft dead-end
             #num_deadends += 1
             continue
-        assert any(n in printed_nodes for n in command.trajectories[0].element)
-        if command.trajectories[0].n1 not in printed_nodes:
+        print_traj = command.print_trajectory
+        assert any(n in printed_nodes for n in print_traj.element)
+        if print_traj.n1 not in printed_nodes:
             command = command.reverse()
         # TODO: sample several EE trajectories and then sort by non-dominated
 

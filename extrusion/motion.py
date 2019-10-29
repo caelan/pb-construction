@@ -5,19 +5,17 @@ import numpy as np
 
 from pybullet_tools.utils import get_movable_joints, set_joint_positions, plan_joint_motion, \
     connect, point_from_pose, get_link_pose, link_from_name, add_line, \
-    wait_for_duration, disconnect, elapsed_time, reset_simulation, wait_for_user, set_camera_pose
+    wait_for_duration, disconnect, elapsed_time, reset_simulation, wait_for_user
 
 from extrusion.utils import get_disabled_collisions, MotionTrajectory, load_world, PrintTrajectory, is_ground, \
-    TOOL_NAME
+    TOOL_NAME, RESOLUTION, JOINT_WEIGHTS
 from extrusion.visualization import draw_ordered, set_extrusion_camera
 from extrusion.stream import SELF_COLLISIONS
 
-JOINT_WEIGHTS = np.array([0.3078557810844393, 0.443600199302506, 0.23544367607317915,
-                          0.03637161028426032, 0.04644626184081511, 0.015054267683041092])
 
 def compute_motion(robot, fixed_obstacles, element_bodies, printed_elements, start_conf, end_conf, collisions=True):
     weights = JOINT_WEIGHTS
-    resolutions = np.divide(0.005*np.ones(weights.shape), weights)
+    resolutions = np.divide(RESOLUTION * np.ones(weights.shape), weights)
     disabled_collisions = get_disabled_collisions(robot)
     movable_joints = get_movable_joints(robot)
     set_joint_positions(robot, movable_joints, start_conf)
@@ -97,8 +95,10 @@ def display_trajectories(node_points, ground_nodes, trajectories, animate=True, 
                     color = (0, 0, 1) if is_ground(trajectory.element, ground_nodes) else (1, 0, 0)
                     handles.append(add_line(last_point, current_point, color=color))
                 last_point = current_point
-            wait_for_duration(time_step)
-        #wait_for_user()
+            if time_step is None:
+                wait_for_user()
+            else:
+                wait_for_duration(time_step)
 
         if isinstance(trajectory, PrintTrajectory):
             is_connected = (trajectory.n1 in connected_nodes) # and (trajectory.n2 in connected_nodes)

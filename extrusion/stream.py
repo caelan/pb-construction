@@ -4,9 +4,11 @@ import random
 from pybullet_tools.utils import get_movable_joints, get_joint_positions, multiply, invert, \
     set_joint_positions, inverse_kinematics, get_link_pose, get_distance, point_from_pose, wrap_angle, get_sample_fn, \
     link_from_name, get_pose, get_collision_fn, dump_body, get_link_subtree, wait_for_user, clone_body, \
-    get_all_links, set_color, set_pose, pairwise_collision, get_relative_pose, Pose, Euler, Point, interval_generator, randomize
+    get_all_links, set_color, set_pose, pairwise_collision, get_relative_pose, Pose, Euler, Point, interval_generator, \
+    randomize, get_extend_fn
 from extrusion.utils import TOOL_NAME, get_disabled_collisions, get_node_neighbors, \
-    PrintTrajectory, retrace_supporters, get_supported_orders, prune_dominated, Command
+    PrintTrajectory, retrace_supporters, get_supported_orders, prune_dominated, Command, MotionTrajectory, RESOLUTION, \
+    JOINT_WEIGHTS
 #from extrusion.run import USE_IKFAST, get_supported_orders, retrace_supporters, SELF_COLLISIONS, USE_CONMECH
 from pddlstream.language.stream import WildOutput
 from pddlstream.utils import neighbors_from_orders, irange, user_input, INF
@@ -93,7 +95,7 @@ def command_collision(tool_body, tool_from_root, command, bodies):
 
     # TODO: separate into another method. Sort paths by tool poses first
     for trajectory in command.trajectories:
-        for tool_pose in randomize(trajectory.tool_path): # TODO: bisect
+        for tool_pose in randomize(trajectory.get_link_path()): # TODO: bisect
             set_pose(tool_body, multiply(tool_pose, tool_from_root))
             for i, body in enumerate(bodies):
                 if not collisions[i]:
@@ -146,6 +148,41 @@ def optimize_angle(robot, tool, tool_from_root, tool_link, element_pose,
     return best_angle, best_conf
 
 ##################################################
+
+APPROACH_DISTANCE = 0.01
+
+def plan_approach(robot, print_traj, collision_fn):
+    if APPROACH_DISTANCE == 0:
+        return Command([print_traj])
+    joints = get_movable_joints(robot)
+    weights = JOINT_WEIGHTS
+    resolutions = np.divide(0.25*RESOLUTION*np.ones(weights.shape), weights)
+    extend_fn = get_extend_fn(robot, joints, resolutions=resolutions)
+    tool_link = link_from_name(robot, TOOL_NAME)
+    approach_pose = Pose(Point(z=-APPROACH_DISTANCE))
+
+    start_conf = print_traj.path[0]
+    set_joint_positions(robot, joints, start_conf)
+    initial_pose = multiply(print_traj.tool_path[0], approach_pose)
+    initial_conf = inverse_kinematics(robot, tool_link, initial_pose)
+    if initial_conf is None:
+        return None
+    initial_path = [initial_conf] + list(extend_fn(initial_conf, start_conf))
+    if any(map(collision_fn, initial_path)):
+        return None
+    initial_traj = MotionTrajectory(robot, joints, initial_path)
+
+    end_conf = print_traj.path[-1]
+    set_joint_positions(robot, joints, end_conf)
+    final_pose = multiply(print_traj.tool_path[-1], approach_pose)
+    final_conf = inverse_kinematics(robot, tool_link, final_pose)
+    if final_conf is None:
+        return None
+    final_path = [end_conf] + list(extend_fn(end_conf, final_conf)) # TODO: version that includes the endpoints
+    if any(map(collision_fn, final_path)):
+        return None
+    final_traj = MotionTrajectory(robot, joints, final_path)
+    return Command([initial_traj, print_traj, final_traj])
 
 def compute_direction_path(robot, tool, tool_from_root,
                            length, reverse, element_bodies, element, direction,
@@ -204,7 +241,7 @@ def compute_direction_path(robot, tool, tool_from_root,
 
     tool_path = compute_tool_path(element_pose, translation_path, direction, initial_angle, reverse)
     print_traj = PrintTrajectory(robot, get_movable_joints(robot), robot_path, tool_path, element, reverse)
-    return Command([print_traj])
+    return plan_approach(robot, print_traj, collision_fn)
 
 ##################################################
 
