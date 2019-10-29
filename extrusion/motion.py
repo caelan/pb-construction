@@ -34,35 +34,37 @@ def compute_motion(robot, fixed_obstacles, element_bodies, printed_elements, sta
     motion_traj = MotionTrajectory(robot, movable_joints, path)
     return motion_traj
 
-def compute_motions(robot, fixed_obstacles, element_bodies, initial_conf, trajectories, **kwargs):
-    # TODO: can just plan to initial and then shortcut
+def compute_motions(robot, fixed_obstacles, element_bodies, initial_conf, print_trajectories, **kwargs):
+    # TODO: can also just plan to initial conf and then shortcut
     # TODO: backoff motion
     # TODO: reoptimize for the sequence that have the smallest movements given this
     # TODO: sample trajectories
     # TODO: more appropriate distance based on displacement/volume
-    if trajectories is None:
+    if print_trajectories is None:
         return None
+    if any(isinstance(traj, MotionTrajectory) for traj in print_trajectories):
+        return print_trajectories
     start_time = time.time()
     printed_elements = []
-    current_conf = initial_conf
     all_trajectories = []
-    for i, print_traj in enumerate(trajectories):
-        goal_conf = print_traj.path[0]
+    start_confs = [initial_conf] + [traj.path[-1] for traj in print_trajectories]
+    end_confs = [traj.path[0] for traj in print_trajectories] + [initial_conf]
+    for i, (start_conf, end_conf) in enumerate(zip(start_confs, end_confs)):
         motion_traj = compute_motion(robot, fixed_obstacles, element_bodies,
-                                     printed_elements, current_conf, goal_conf, **kwargs)
+                                     printed_elements, start_conf, end_conf, **kwargs)
         if motion_traj is None:
             return None
         print('{}) {} | Time: {:.3f}'.format(i, motion_traj, elapsed_time(start_time)))
         all_trajectories.append(motion_traj)
-        current_conf = print_traj.path[-1]
-        printed_elements.append(print_traj.element)
-        all_trajectories.append(print_traj)
-    # TODO: return to initial?
+        if i < len(print_trajectories):
+            print_traj = print_trajectories[i]
+            printed_elements.append(print_traj.element)
+            all_trajectories.append(print_traj)
     return all_trajectories
 
 ##################################################
 
-def display_trajectories(node_points, ground_nodes, trajectories, animate=True, time_step=0.05):
+def display_trajectories(node_points, ground_nodes, trajectories, animate=True, time_step=0.02):
     if trajectories is None:
         return
     connect(use_gui=True)
