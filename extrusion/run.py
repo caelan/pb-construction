@@ -20,7 +20,7 @@ from extrusion.visualization import label_element, set_extrusion_camera, label_n
 from extrusion.experiment import load_experiment, train_parallel
 from extrusion.motion import compute_motions, display_trajectories
 from extrusion.stripstream import plan_sequence
-from extrusion.utils import load_world, get_id_from_element
+from extrusion.utils import load_world, get_id_from_element, PrintTrajectory
 from extrusion.parsing import load_extrusion, create_elements_bodies, \
     enumerate_problems, get_extrusion_path
 from extrusion.stream import get_print_gen_fn
@@ -132,7 +132,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
         elif args.algorithm == 'deadend':
             planned_trajectories, data = lookahead(robot, obstacles, element_bodies, problem_path, heuristic=args.bias,
                                                    max_time=args.max_time, ee_only=args.ee_only, collisions=not args.cfree,
-                                                   disable=args.disable, stiffness=args.stiffness)
+                                                   disable=args.disable, stiffness=args.stiffness, motions=args.motions)
         else:
             raise ValueError(args.algorithm)
         pr.disable()
@@ -143,17 +143,19 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
                 sys.stdout.close()
             return args, data
         if args.motions:
-            planned_trajectories = compute_motions(robot, obstacles, element_bodies, initial_conf, planned_trajectories)
+            planned_trajectories = compute_motions(robot, obstacles, element_bodies, initial_conf, planned_trajectories,
+                                                   collisions=not args.cfree)
     reset_simulation()
     disconnect()
 
     #id_from_element = get_id_from_element(element_from_id)
     #planned_ids = [id_from_element[traj.element] for traj in planned_trajectories]
-    planned_elements = [traj.directed_element for traj in planned_trajectories]
+    planned_elements = [traj.directed_element for traj in planned_trajectories
+                        if isinstance(traj, PrintTrajectory)]
     # random.shuffle(planned_elements)
     # planned_elements = sorted(elements, key=lambda e: max(node_points[n][2] for n in e)) # TODO: tiebreak by angle or x
     animate = not (args.disable or args.ee_only)
-    valid = verify_plan(problem_path, planned_elements, use_gui=not animate)
+    valid = verify_plan(problem_path, planned_elements) #, use_gui=not animate)
 
     plan_data = {
         'problem':  args.problem,

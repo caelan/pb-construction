@@ -18,6 +18,7 @@ from pybullet_tools.utils import INF, has_gui, elapsed_time, LockRenderer, rando
 def get_sample_traj(elements, print_gen_fn):
     gen_from_element = {element: print_gen_fn(None, element, extruded=[], trajectories=[]) for element in elements}
     trajs_from_element = defaultdict(list)
+    # TODO: option to make additional samples (only useful for sorting heuristic)
 
     def enumerate_extrusions(element):
         for traj in trajs_from_element[element]:
@@ -46,7 +47,7 @@ def topological_sort(robot, obstacles, element_bodies, extrusion_path):
 
 def lookahead(robot, obstacles, element_bodies, extrusion_path,
               heuristic='z', max_time=INF, max_backtrack=INF,
-              ee_only=False, stiffness=True, steps=1, **kwargs):
+              ee_only=False, stiffness=True, motions=True, steps=1, **kwargs):
     # TODO: persistent search that revisits prunning heuristic
     # TODO: prioritize edges that remove few trajectories
     assert steps in [0, 1]
@@ -177,6 +178,9 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
             # Soft dead-end
             num_deadends += 1
             continue
+
+        #if args.motions:
+
 
         # TODO: separate parameters for dead-end versus transition
         visited[next_printed] = Node(command, printed)

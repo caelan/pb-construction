@@ -242,11 +242,11 @@ def score_stiffness(extrusion_path, element_from_id, elements, checker=None):
 
     reaction_forces = np.array([force_from_reaction(d) for d in fixities_reaction.values()])
     reaction_moments = np.array([torque_from_reaction(d) for d in fixities_reaction.values()])
-    heuristic = 'fixities_rotation'
+    heuristic = 'compliance'
     scores = {
         # Yijiang was surprised that fixities_translation worked
-        'fixities_translation': np.linalg.norm(reaction_forces, axis=1),
-        'fixities_rotation': np.linalg.norm(reaction_moments, axis=1),
+        'fixities_translation': np.linalg.norm(reaction_forces, axis=1), # Bad when forward
+        'fixities_rotation': np.linalg.norm(reaction_moments, axis=1), # Bad when forward
         'nodal_translation': np.linalg.norm(list(nodal_displacement.values()), axis=1),
         'compliance': [checker.get_compliance()],
         'deformation': [relative_trans, relative_rot],
