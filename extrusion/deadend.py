@@ -5,7 +5,7 @@ import time
 import numpy as np
 from collections import defaultdict
 
-from extrusion.greedy import get_heuristic_fn, Node, retrace_trajectories, retrace_elements, add_successors, compute_printed_nodes
+from extrusion.greedy import get_heuristic_fn, Node, retrace_trajectories, retrace_elements, add_successors, compute_printed_nodes, recover_sequence
 from extrusion.parsing import load_extrusion
 from extrusion.stream import get_print_gen_fn
 from extrusion.utils import check_connected, test_stiffness, \
@@ -55,25 +55,31 @@ def topological_sort(robot, obstacles, element_bodies, extrusion_path):
     # Repeat if a cycle is detected
     raise NotImplementedError()
 
+##################################################
+
 def lookahead(robot, obstacles, element_bodies, extrusion_path,
+              num_ee=0, num_arm=3, max_directions=250, max_attempts=1,
               heuristic='z', max_time=INF, max_backtrack=INF, revisit=False,
               ee_only=False, collisions=True, stiffness=True, motions=True, **kwargs):
+    if ee_only:
+        num_ee, num_arm = max(num_arm, num_ee), 0
     start_time = time.time()
     joints = get_movable_joints(robot)
     initial_conf = get_joint_positions(robot, joints)
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
     checker = create_stiffness_checker(extrusion_path, verbose=False)
     #checker = None
+
     #print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
     #                                precompute_collisions=False, supports=False, bidirectional=False, ee_only=ee_only,
     #                                max_directions=50, max_attempts=10, collisions=collisions, **kwargs)
     full_print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                          precompute_collisions=True, supports=False, bidirectional=True, ee_only=ee_only,
-                                         max_directions=250, max_attempts=1, collisions=collisions, **kwargs)
+                                         max_directions=max_directions, max_attempts=max_attempts, collisions=collisions, **kwargs)
     # TODO: could just check kinematics instead of collision
     ee_print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                         precompute_collisions=True, supports=False, bidirectional=True, ee_only=True,
-                                        max_directions=250, max_attempts=1, collisions=collisions, **kwargs)
+                                        max_directions=max_directions, max_attempts=max_attempts, collisions=collisions, **kwargs)
     id_from_element = get_id_from_element(element_from_id)
     all_elements = frozenset(element_bodies)
     heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=True)
@@ -95,10 +101,10 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
         full_sample_traj = ee_sample_traj
     #ee_sample_traj, ee_trajs_from_element = full_sample_traj, full_trajs_from_element
 
-    num_ee, num_arm = 0, 3
-    if ee_only:
-        num_ee, num_arm = num_arm, 0
-    heuristic_trajs_from_element = full_trajs_from_element if (num_ee == 0) else ee_trajs_from_element
+    #heuristic_trajs_from_element = full_trajs_from_element if (num_ee == 0) else ee_trajs_from_element
+    heuristic_trajs_from_element = full_trajs_from_element if (num_arm != 0) else ee_trajs_from_element
+
+    #########################
 
     def sample_remaining(printed, sample_fn, num=1, **kwargs):
         # TODO: only check nodes that can be printed given the current nodes?
@@ -110,7 +116,7 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
     def conflict_fn(printed, element, conf):
         # TODO: could add element if desired
         #return np.random.random()
-        #return 0 # Dead-end detection without stability performs well
+        #return 0 # Dead-end detection without stability performs reasonably well
         order = retrace_elements(visited, printed)
         printed = frozenset(order[:-1]) # Remove last element (to ensure at least one traj)
         #remaining = list(all_elements - printed)
@@ -125,7 +131,11 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
         return -num_colliding
         #distance = distance_fn(conf, best_traj.start_conf)
         # TODO: ee distance vs conf distance
+        # TODO: l0 distance based on whether we remain at the same node
+        # TODO: minimize instability while printing (dynamic programming)
         #return (-num_colliding, distance)
+
+    #########################
 
     initial_printed = frozenset()
     queue = []
@@ -169,10 +179,6 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
             #num_deadends += 1
             continue
 
-        # TODO: locally optimize solution by conditioning on discrete decisions
-        # TODO: anytime algorithm
-        # TODO: minimize instability while printing (dynamic programming)
-
         # TODO: the directionality actually matters for the printing orientation
         if not sample_remaining(next_printed, ee_sample_traj, num=num_ee):
             # Soft dead-end
@@ -190,7 +196,6 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
         assert any(n in printed_nodes for n in print_traj.element)
         if print_traj.n1 not in printed_nodes:
             command = command.reverse()
-        # TODO: sample several EE trajectories and then sort by non-dominated
 
         if not sample_remaining(next_printed, full_sample_traj, num=num_arm):
             # Soft dead-end
@@ -209,6 +214,7 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
 
         visited[next_printed] = Node(command, printed)
         if all_elements <= next_printed:
+            # TODO: anytime mode
             min_remaining = 0
             plan = retrace_trajectories(visited, next_printed)
             break
@@ -216,11 +222,8 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
         if revisit:
             heapq.heappush(queue, (visits + 1, priority, printed, element, current_conf))
 
-    sequence = None
-    if plan is not None:
-        sequence = [traj.directed_element for traj in plan if isinstance(traj, PrintTrajectory)]
     data = {
-        'sequence': sequence,
+        'sequence': recover_sequence(plan),
         'runtime': elapsed_time(start_time),
         'num_evaluated': num_evaluated,
         'num_remaining': min_remaining,

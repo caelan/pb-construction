@@ -14,6 +14,7 @@ from extrusion.stream import SELF_COLLISIONS
 
 
 def compute_motion(robot, fixed_obstacles, element_bodies, printed_elements, start_conf, end_conf, collisions=True):
+    # TODO: can also just plan to initial conf and then shortcut
     weights = JOINT_WEIGHTS
     resolutions = np.divide(RESOLUTION * np.ones(weights.shape), weights)
     disabled_collisions = get_disabled_collisions(robot)
@@ -33,8 +34,6 @@ def compute_motion(robot, fixed_obstacles, element_bodies, printed_elements, sta
     return motion_traj
 
 def compute_motions(robot, fixed_obstacles, element_bodies, initial_conf, print_trajectories, **kwargs):
-    # TODO: can also just plan to initial conf and then shortcut
-    # TODO: backoff motion
     # TODO: reoptimize for the sequence that have the smallest movements given this
     # TODO: sample trajectories
     # TODO: more appropriate distance based on displacement/volume

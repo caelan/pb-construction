@@ -24,16 +24,25 @@ from pddlstream.utils import neighbors_from_orders, adjacent_from_edges, implies
 #State = namedtuple('State', ['element', 'printed', 'plan'])
 Node = namedtuple('Node', ['action', 'state'])
 
-def retrace_trajectories(visited, current_state):
+def retrace_trajectories(visited, current_state, reverse=False):
     command, prev_state = visited[current_state]
     if prev_state is None:
         return []
-    return retrace_trajectories(visited, prev_state) + [traj for traj in command.trajectories]
+    prior_trajectories = retrace_trajectories(visited, prev_state, reverse)
+    current_trajectories = [traj for traj in command.trajectories]
+    if reverse:
+        return current_trajectories + prior_trajectories
+    return prior_trajectories + current_trajectories
     # TODO: search over local stability for each node
 
 def retrace_elements(visited, current_state):
     return [traj.element for traj in retrace_trajectories(visited, current_state)
             if isinstance(traj, PrintTrajectory)]
+
+def recover_sequence(plan):
+    if plan is None:
+        return plan
+    return [traj.directed_element for traj in plan if isinstance(traj, PrintTrajectory)]
 
 ##################################################
 
@@ -41,10 +50,11 @@ def compute_printed_nodes(ground_nodes, printed):
     return nodes_from_elements(printed) | set(ground_nodes)
 
 def sample_extrusion(print_gen_fn, ground_nodes, printed, element):
-    next_nodes =  compute_printed_nodes(ground_nodes, printed)
+    printed_nodes = compute_printed_nodes(ground_nodes, printed)
     # TODO: could always reverse these trajectories
     for node in element:
-        if node in next_nodes:
+        # TODO: sample between different orientations if both are feasible
+        if node in printed_nodes:
             try:
                 command, = next(print_gen_fn(node, element, extruded=printed))
                 return command
@@ -77,22 +87,27 @@ def draw_action(node_points, printed, element):
 
 ##################################################
 
-GREEDY_HEURISTICS = [
-    'none',
+DISTANCE_HEURISTICS = [
     'z',
-    #'dijkstra',
-    #'fixed-dijkstra',
-    'stiffness', # Performs poorly with respect to stiffness
-    'fixed-stiffness',
-    'relative-stiffness',
+    'dijkstra',
+    # 'fixed-dijkstra',
+]
+
+TOPOLOGICAL_HEURISTICS = [
     'length',
     'degree',
+]
+
+STIFFNESS_HEURISTICS = [
+    'stiffness',  # Performs poorly with respect to stiffness
+    'fixed-stiffness',
+    'relative-stiffness',
     'load',
     'forces',
     'fixed-forces',
 ]
 
-# TODO: visualize the branching factor
+GREEDY_HEURISTICS = ['none'] + DISTANCE_HEURISTICS
 
 def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
     # TODO: penalize disconnected
@@ -100,6 +115,7 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
     elements = frozenset(element_from_id.values())
     distance_from_node = compute_distance_from_node(elements, node_points, ground_nodes)
     sign = +1 if forward else -1
+    # TODO: round values for more tie-breaking opportunities
 
     stiffness_cache = {}
     if heuristic in ('fixed-stiffness', 'relative-stiffness'):
@@ -107,15 +123,15 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
                                                          checker=checker) for element in elements})
     reaction_cache = {}
 
-    def fn(printed, element):
+    def fn(printed, element, conf):
         # Queue minimizes the statistic
         structure = printed | {element} if forward else printed - {element}
         structure_ids = get_extructed_ids(element_from_id, structure)
         # TODO: build away from the robot
 
-        distance = 1
-        #distance = len(structure)
-        #distance = compute_element_distance(node_points, elements)
+        normalizer = 1
+        #normalizer = len(structure)
+        #normalizer = compute_element_distance(node_points, elements)
 
         operator = sum # sum | max
         fn = force_from_reaction  # force_from_reaction | torque_from_reaction
@@ -136,9 +152,15 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
             n1, n2 = element
             return get_distance(node_points[n2], node_points[n1])
         elif heuristic == 'z':
-            # TODO: round values for more tie-breaking opportunities
-            z = get_z(node_points, element)
+            # TODO: tiebreak by angle or x
+            z = np.average([node_points[n][2] for n in element])
             return sign*z
+        elif heuristic == 'dijkstra':
+            # min, max, node not in set
+            # TODO: recompute online (but all at once)
+            # TODO: sum of all element path distances
+            normalizer = np.average([distance_from_node[node] for node in element])
+            return sign * normalizer
         elif heuristic == 'load':
             nodal_loads = checker.get_nodal_loads(existing_ids=structure_ids, dof_flattened=False) # get_self_weight_loads
             return operator(np.linalg.norm(force_from_reaction(reaction)) for reaction in nodal_loads.values())
@@ -148,15 +170,15 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
             if printed not in reaction_cache:
                 reaction_cache[printed] = compute_all_reactions(extrusion_path, elements, checker=checker)
             force = operator(np.linalg.norm(fn(reaction)) for reaction in reaction_cache[printed].reactions[element])
-            return force / distance
+            return force / normalizer
         elif heuristic == 'forces':
             reactions_from_nodes = compute_node_reactions(extrusion_path, structure, checker=checker)
             #torque = sum(np.linalg.norm(np.sum([torque_from_reaction(reaction) for reaction in reactions], axis=0))
             #            for reactions in reactions_from_nodes.values())
-            #return torque / distance
+            #return torque / normalizer
             total = operator(np.linalg.norm(fn(reaction)) for reactions in reactions_from_nodes.values()
                             for reaction in reactions)
-            return total / distance
+            return total / normalizer
             #return max(sum(np.linalg.norm(fn(reaction)) for reaction in reactions)
             #               for reactions in reactions_from_nodes.values())
         elif heuristic == 'stiffness':
@@ -166,30 +188,20 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
             # Gets faster with fewer elements
             #old_stiffness = score_stiffness(extrusion_path, element_from_id, printed, checker=checker)
             stiffness = score_stiffness(extrusion_path, element_from_id, structure, checker=checker) # lower is better
-            return stiffness / distance
+            return stiffness / normalizer
             #return stiffness / old_stiffness
         elif heuristic == 'fixed-stiffness':
             # TODO: invert the sign for regression/progression?
             # TODO: sort FastDownward by the (fixed) action cost
-            return stiffness_cache[element] / distance
+            return stiffness_cache[element] / normalizer
         elif heuristic == 'relative-stiffness':
             stiffness = score_stiffness(extrusion_path, element_from_id, structure, checker=checker) # lower is better
-            if distance == 0:
+            if normalizer == 0:
                 return 0
-            return stiffness / distance
+            return stiffness / normalizer
             #return stiffness / stiffness_cache[element]
-        elif heuristic == 'dijkstra':
-            # min, max, node not in set
-            # TODO: recompute online (but all at once)
-            # TODO: sum of all element path distances
-            distance = np.average([distance_from_node[node] for node in element])
-            return sign * distance
         raise ValueError(heuristic)
     return fn
-
-def get_z(node_points, element):
-    # TODO: tiebreak by angle or x
-    return np.average([node_points[n][2] for n in element])
 
 def compute_distance_from_node(elements, node_points, ground_nodes):
     #incoming_supporters, _ = neighbors_from_orders(get_supported_orders(
@@ -297,6 +309,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
     checker = create_stiffness_checker(extrusion_path, verbose=False)
     #checker = None
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
+                                    supports=False, bidirectional=False,
                                     precompute_collisions=False, max_directions=500, **kwargs)
     id_from_element = get_id_from_element(element_from_id)
     elements = frozenset(element_bodies)
@@ -315,7 +328,6 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
     initial_printed = frozenset()
     queue = []
     visited = {initial_printed: Node(None, None)}
-    #add_successors(initial_printed)
     add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, initial_printed, initial_conf)
 
     plan = None
@@ -323,7 +335,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
     num_evaluated = 0
     while queue and (elapsed_time(start_time) < max_time):
         num_evaluated += 1
-        _, printed, element = heapq.heappop(queue)
+        visits, _, printed, element, current_conf = heapq.heappop(queue)
         num_remaining = len(elements) - len(printed)
         backtrack = num_remaining - min_remaining
         if max_backtrack <= backtrack:
@@ -345,14 +357,10 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
             min_remaining = 0
             plan = retrace_trajectories(visited, next_printed)
             break
-        #add_successors(next_printed)
         add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, next_printed, initial_conf)
 
-    sequence = None
-    if plan is not None:
-        sequence = [traj.element for traj in plan]
     data = {
-        'sequence': sequence,
+        'sequence': recover_sequence(plan),
         'runtime': elapsed_time(start_time),
         'num_evaluated': num_evaluated,
         'num_remaining': min_remaining,
@@ -366,7 +374,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
                heuristic='z', max_time=INF, max_backtrack=INF, stiffness=True, **kwargs):
     # Focused has the benefit of reusing prior work
     # Greedy has the benefit of conditioning on previous choices
-    # TODO: persistent search to reuse
+    # TODO: persistent search
     # TODO: max branching factor
 
     start_time = time.time()
@@ -375,20 +383,21 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
     checker = create_stiffness_checker(extrusion_path, verbose=False)
     #checker = None
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
+                                    supports=False, bidirectional=False,
                                     precompute_collisions=False, max_directions=500, **kwargs)
     heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=False)
-    # TODO: compute the heuristic function once and fix
 
     queue = []
     visited = {}
     def add_successors(printed):
-        for element in sorted(printed, key=lambda e: -get_z(node_points, e)):
+        for element in randomize(printed):
             num_remaining = len(printed) - 1
             assert 0 <= num_remaining
-            bias = heuristic_fn(printed, element)
+            bias = heuristic_fn(printed, element, conf=None)
             priority = (num_remaining, bias, random.random())
             heapq.heappush(queue, (priority, printed, element))
 
+    final_conf = None
     initial_printed = frozenset(element_bodies)
     if not check_connected(ground_nodes, initial_printed) or \
             not test_stiffness(extrusion_path, element_from_id, initial_printed, checker=checker):
@@ -403,7 +412,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
     # TODO: lazy hill climbing using the true stiffness heuristic
     # Choose the first move that improves the score
     if has_gui():
-        sequence = sorted(initial_printed, key=lambda e: heuristic_fn(initial_printed, e), reverse=True)
+        sequence = sorted(initial_printed, key=lambda e: heuristic_fn(initial_printed, e, conf=None), reverse=True)
         remove_all_debug()
         draw_ordered(sequence, node_points)
         wait_for_user()
@@ -456,16 +465,13 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
         visited[next_printed] = Node(command, printed) # TODO: be careful when multiple trajs
         if not next_printed:
             min_remaining = 0
-            plan = list(reversed(retrace_trajectories(visited, next_printed)))
+            plan = retrace_trajectories(visited, next_printed, reverse=True)
             break
         add_successors(next_printed)
 
     # TODO: store maximum stiffness violations (for speed purposes)
-    sequence = None
-    if plan is not None:
-        sequence = [traj.element for traj in plan]
     data = {
-        'sequence': sequence,
+        'sequence': recover_sequence(plan),
         'runtime': elapsed_time(start_time),
         'num_evaluated': num_evaluated,
         'num_remaining': min_remaining,
