@@ -9,7 +9,7 @@ import numpy as np
 
 from collections import namedtuple, OrderedDict
 
-from extrusion.greedy import GREEDY_HEURISTICS
+from extrusion.heuristics import HEURISTICS
 from extrusion.parsing import load_extrusion, get_extrusion_path, extrusion_name_from_path, enumerate_problems
 from extrusion.utils import evaluate_stiffness, create_stiffness_checker, TRANS_TOL, ROT_TOL
 from pddlstream.utils import str_from_object, INF, get_python_version
@@ -137,7 +137,7 @@ def train_parallel(num=10, max_time=30*60):
     stiffness = True # store_false
     motions = False
     configurations = [Configuration(*c) for c in product(
-        range(num), problems, ALGORITHMS, GREEDY_HEURISTICS, [max_time],
+        range(num), problems, ALGORITHMS, HEURISTICS, [max_time],
         [cfree], [disable], [stiffness], [motions])]
     print('Configurations: {}'.format(len(configurations)))
 

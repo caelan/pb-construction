@@ -5,7 +5,8 @@ import time
 import numpy as np
 from collections import defaultdict
 
-from extrusion.greedy import get_heuristic_fn, Node, retrace_trajectories, retrace_elements, add_successors, compute_printed_nodes, recover_sequence
+from extrusion.greedy import Node, retrace_trajectories, retrace_elements, add_successors, compute_printed_nodes, recover_sequence
+from extrusion.heuristics import get_heuristic_fn
 from extrusion.parsing import load_extrusion
 from extrusion.stream import get_print_gen_fn
 from extrusion.utils import check_connected, test_stiffness, \

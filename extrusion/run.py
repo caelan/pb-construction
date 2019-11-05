@@ -24,7 +24,8 @@ from extrusion.utils import load_world, get_id_from_element, PrintTrajectory
 from extrusion.parsing import load_extrusion, create_elements_bodies, \
     enumerate_problems, get_extrusion_path
 from extrusion.stream import get_print_gen_fn
-from extrusion.greedy import regression, progression, GREEDY_HEURISTICS, GREEDY_ALGORITHMS
+from extrusion.greedy import regression, progression, GREEDY_ALGORITHMS
+from extrusion.heuristics import HEURISTICS
 from extrusion.validator import verify_plan
 from extrusion.deadend import lookahead
 
@@ -195,7 +196,7 @@ def main():
     # djmm_test_block | Nodes: 76 | Ground: 13 | Elements: 253
     parser.add_argument('-a', '--algorithm', default='regression',
                         help='Which algorithm to use')
-    parser.add_argument('-b', '--bias', default='z', choices=GREEDY_HEURISTICS,
+    parser.add_argument('-b', '--bias', default='z', choices=HEURISTICS,
                         help='Which heuristic to use')
     parser.add_argument('-c', '--cfree', action='store_true',
                         help='Disables collisions with obstacles')
