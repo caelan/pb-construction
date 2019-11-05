@@ -22,7 +22,7 @@ from extrusion.motion import compute_motions, display_trajectories
 from extrusion.stripstream import plan_sequence
 from extrusion.utils import load_world, get_id_from_element, PrintTrajectory
 from extrusion.parsing import load_extrusion, create_elements_bodies, \
-    enumerate_problems, get_extrusion_path
+    enumerate_problems, get_extrusion_path, affine_extrusion
 from extrusion.stream import get_print_gen_fn
 from extrusion.greedy import regression, progression, GREEDY_ALGORITHMS
 from extrusion.heuristics import HEURISTICS
@@ -30,12 +30,12 @@ from extrusion.validator import verify_plan
 from extrusion.deadend import lookahead
 
 from pybullet_tools.utils import connect, disconnect, get_movable_joints, get_joint_positions, LockRenderer, \
-    unit_pose, reset_simulation, draw_pose, apply_alpha, BLACK
+    unit_pose, reset_simulation, draw_pose, apply_alpha, BLACK, Pose, Euler
 
 # TODO: sort by action cost heuristic
 # http://www.fast-downward.org/Doc/Evaluator#Max_evaluator
 
-ALGORITHMS = GREEDY_ALGORITHMS #+ [STRIPSTREAM_ALGORITHM]
+ALGORITHMS = GREEDY_ALGORITHMS + ['lookahead'] #+ [STRIPSTREAM_ALGORITHM]
 
 ##################################################
 
@@ -65,6 +65,17 @@ def sample_trajectories(robot, obstacles, node_points, element_bodies, ground_no
             return None
     return all_trajectories
 
+def rotate_problem(problem_path, roll=np.pi):
+    tform = Pose(euler=Euler(roll=roll))
+    json_data = affine_extrusion(problem_path, tform)
+    path = 'rotated.json' # TODO: folder
+    with open(path, 'w') as f:
+        json.dump(json_data, f, indent=2, sort_keys=True)
+    problem_path = path
+    # TODO: rotate the whole robot as well
+    # TODO: could also use the z heuristic when upside down
+    return problem_path
+
 ##################################################
 
 def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=False):
@@ -77,17 +88,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     set_seed(hash((time.time(), args.seed)))
     # TODO: change dir for pddlstream
     problem_path = get_extrusion_path(args.problem)
-
-    # #roll = 0
-    # roll = np.pi
-    # tform = Pose(euler=Euler(roll=roll))
-    # json_data = affine_extrusion(problem_path, tform)
-    # path = 'rotated.json' # TODO: folder
-    # with open(path, 'w') as f:
-    #     json.dump(json_data, f, indent=2, sort_keys=True)
-    # problem_path = path
-    # TODO: rotate the whole robot as well
-    # TODO: could also use the z heuristic when upside down
+    #problem_path = rotate_problem(problem_path)
 
     # TODO: lazily plan for the end-effector before each manipulation
     element_from_id, node_points, ground_nodes = load_extrusion(problem_path, verbose=True)
@@ -130,7 +131,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
             planned_trajectories, data = regression(robot, obstacles, element_bodies, problem_path, heuristic=args.bias,
                                                     max_time=args.max_time, collisions=not args.cfree,
                                                     disable=args.disable, stiffness=args.stiffness)
-        elif args.algorithm == 'deadend':
+        elif args.algorithm == 'lookahead':
             planned_trajectories, data = lookahead(robot, obstacles, element_bodies, problem_path, heuristic=args.bias,
                                                    max_time=args.max_time, ee_only=args.ee_only, collisions=not args.cfree,
                                                    disable=args.disable, stiffness=args.stiffness, motions=args.motions)
@@ -222,14 +223,11 @@ def main():
     print('Arguments:', args)
     np.set_printoptions(precision=3)
 
-    # TODO: randomly rotate the structure and analyze the effectiveness of different heuristics
-    # The stiffness checker assumes gravity is always -z. Apply rotation to heuristic
-
     if args.load is not None:
         load_experiment(args.load)
         return
     if args.num:
-        train_parallel(num=args.num, max_time=args.max_time)
+        train_parallel(args)
         return
 
     args.seed = hash(time.time())
@@ -265,5 +263,4 @@ if __name__ == '__main__':
 # TODO: local search to reduce the violation
 # TODO: introduce support structures and then require that they be removed
 # Robot spiderweb printing weaving hook which may slide
-# Graph traversal (path within the graph): load
 # TODO: only consider axioms that could be relevant

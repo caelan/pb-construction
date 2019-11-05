@@ -67,7 +67,7 @@ def max_plan_deformation(config, result):
 
 ALL = 'all'
 
-def load_experiment(filename, overall=False):
+def load_experiment(filename, overall=True):
     # TODO: maybe just pass the random seed as a separate arg
     # TODO: aggregate over all problems and score using IPC rules
     # https://ipc2018-classical.bitbucket.io/
@@ -122,23 +122,16 @@ def load_experiment(filename, overall=False):
 
 ##################################################
 
-def train_parallel(num=10, max_time=30*60):
+def train_parallel(args):
     from extrusion.run import ALGORITHMS, plan_extrusion
     initial_time = time.time()
-    print('Trials:', num)
-    print('Max time:', max_time)
-
-    problems = list(enumerate_problems())
+    problems = sorted(set(enumerate_problems()) - set(EXCLUDE))
     #problems = ['simple_frame']
     print('Problems ({}): {}'.format(len(problems), problems))
     #problems = [path for path in problems if 'simple_frame' in path]
-    cfree = False
-    disable = True
-    stiffness = True # store_false
-    motions = False
     configurations = [Configuration(*c) for c in product(
-        range(num), problems, ALGORITHMS, HEURISTICS, [max_time],
-        [cfree], [disable], [stiffness], [motions])]
+        range(args.num), problems, ALGORITHMS, HEURISTICS, [args.max_time],
+        [args.cfree], [args.disable], [args.stiffness], [args.motions])]
     print('Configurations: {}'.format(len(configurations)))
 
     serial = is_darwin()
@@ -159,7 +152,7 @@ def train_parallel(num=10, max_time=30*60):
     while True:
         start_time = time.time()
         try:
-            configuration, data = generator.next(timeout=2 * max_time)
+            configuration, data = generator.next(timeout=2 * args.max_time)
             print(len(results), configuration, data)
             results.append((configuration, data))
             if results:
@@ -171,3 +164,4 @@ def train_parallel(num=10, max_time=30*60):
             print('Error! Timed out after {:.3f} seconds'.format(elapsed_time(start_time)))
             break
     print('Total time:', elapsed_time(initial_time))
+    return results
