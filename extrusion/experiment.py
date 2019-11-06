@@ -16,11 +16,12 @@ from pddlstream.utils import str_from_object, INF, get_python_version
 from pybullet_tools.utils import read_pickle, is_darwin, user_input, write_pickle, elapsed_time
 
 Configuration = namedtuple('Configuration', ['seed', 'problem', 'algorithm', 'bias', 'max_time',
-                                             'cfree', 'disable', 'stiffness', 'motions'])
+                                             'cfree', 'disable', 'stiffness', 'motions', 'ee_only'])
 #Score = namedtuple('Score', ['failure', 'runtime', 'max_trans', 'max_rot'])
 
 
 EXCLUDE = [
+    'dented_cube',
     'rotated_dented_cube',
     'robarch_tree',
     'DJMM_bridge',
@@ -131,7 +132,7 @@ def train_parallel(args):
     #problems = [path for path in problems if 'simple_frame' in path]
     configurations = [Configuration(*c) for c in product(
         range(args.num), problems, ALGORITHMS, HEURISTICS, [args.max_time],
-        [args.cfree], [args.disable], [args.stiffness], [args.motions])]
+        [args.cfree], [args.disable], [args.stiffness], [args.motions], [args.ee_only])]
     print('Configurations: {}'.format(len(configurations)))
 
     serial = is_darwin()

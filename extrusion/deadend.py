@@ -150,7 +150,7 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
         return None, data
     #priority_fn = heuristic_fn
     #priority_fn = conflict_fn
-    priority_fn = lambda p, e, q: (conflict_fn(p, e, q), heuristic_fn(p, e))
+    priority_fn = lambda *args: (conflict_fn(*args), heuristic_fn(*args))
     add_successors(queue, all_elements, node_points, ground_nodes, priority_fn, initial_printed, initial_conf)
 
     plan = None
