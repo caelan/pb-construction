@@ -120,7 +120,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
     #checker = None
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                     supports=False, bidirectional=False,
-                                    precompute_collisions=False, max_directions=500, **kwargs)
+                                    precompute_collisions=False, max_directions=500, max_attempts=1, **kwargs)
     id_from_element = get_id_from_element(element_from_id)
     elements = frozenset(element_bodies)
     heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=True)
@@ -194,7 +194,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
     #checker = None
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                     supports=False, bidirectional=False,
-                                    precompute_collisions=False, max_directions=500, **kwargs)
+                                    precompute_collisions=False, max_directions=500, max_attempts=1, **kwargs)
     heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=False)
 
     queue = []

@@ -9,6 +9,7 @@ import numpy as np
 
 from collections import namedtuple, OrderedDict
 
+from extrusion.greedy import GREEDY_ALGORITHMS
 from extrusion.heuristics import HEURISTICS
 from extrusion.parsing import load_extrusion, get_extrusion_path, extrusion_name_from_path, enumerate_problems
 from extrusion.utils import evaluate_stiffness, create_stiffness_checker, TRANS_TOL, ROT_TOL
@@ -19,6 +20,8 @@ Configuration = namedtuple('Configuration', ['seed', 'problem', 'algorithm', 'bi
                                              'cfree', 'disable', 'stiffness', 'motions', 'ee_only'])
 #Score = namedtuple('Score', ['failure', 'runtime', 'max_trans', 'max_rot'])
 
+#ALGORITHMS = GREEDY_ALGORITHMS + ['lookahead'] #+ [STRIPSTREAM_ALGORITHM]
+ALGORITHMS = ['lookahead']
 
 EXCLUDE = [
     'dented_cube',
@@ -124,7 +127,7 @@ def load_experiment(filename, overall=True):
 ##################################################
 
 def train_parallel(args):
-    from extrusion.run import ALGORITHMS, plan_extrusion
+    from extrusion.run import plan_extrusion
     initial_time = time.time()
     problems = sorted(set(enumerate_problems()) - set(EXCLUDE))
     #problems = ['simple_frame']

@@ -5,7 +5,8 @@ import time
 import numpy as np
 from collections import defaultdict
 
-from extrusion.greedy import Node, retrace_trajectories, retrace_elements, add_successors, compute_printed_nodes, recover_sequence
+from extrusion.greedy import Node, retrace_trajectories, retrace_elements, add_successors, compute_printed_nodes, \
+    recover_sequence, sample_extrusion
 from extrusion.heuristics import get_heuristic_fn
 from extrusion.parsing import load_extrusion
 from extrusion.stream import get_print_gen_fn
@@ -71,9 +72,9 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
     checker = create_stiffness_checker(extrusion_path, verbose=False)
     #checker = None
 
-    #print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
-    #                                precompute_collisions=False, supports=False, bidirectional=False, ee_only=ee_only,
-    #                                max_directions=50, max_attempts=10, collisions=collisions, **kwargs)
+    print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
+                                    precompute_collisions=False, supports=False, bidirectional=False, ee_only=ee_only,
+                                    max_directions=500, max_attempts=1, collisions=collisions, **kwargs)
     full_print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                          precompute_collisions=True, supports=False, bidirectional=True, ee_only=ee_only,
                                          max_directions=max_directions, max_attempts=max_attempts, collisions=collisions, **kwargs)
@@ -187,8 +188,8 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
             #wait_for_user()
             continue
 
-        #command = sample_extrusion(print_gen_fn, ground_nodes, printed, element)
-        command = next(iter(full_sample_traj(printed, element)), None)
+        command = sample_extrusion(print_gen_fn, ground_nodes, printed, element)
+        #command = next(iter(full_sample_traj(printed, element)), None)
         if command is None:
             # Soft dead-end
             #num_deadends += 1

@@ -35,8 +35,6 @@ SELF_COLLISIONS = True
 TOOL_ROOT = 'eef_base_link' # robot_tool0
 
 STEP_SIZE = 0.0025  # 0.005
-# 50 doesn't seem to be enough
-MAX_ATTEMPTS = 1000  # 150 | 300
 
 ##################################################
 
@@ -248,7 +246,7 @@ def compute_direction_path(robot, tool, tool_from_root,
 def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground_nodes,
                      precompute_collisions=True, supports=True, bidirectional=False,
                      collisions=True, disable=False,
-                     max_directions=MAX_ATTEMPTS, max_attempts=1, **kwargs):
+                     max_directions=1000, max_attempts=1, **kwargs):
     # TODO: print on full sphere and just check for collisions with the printed element
     # TODO: can slide a component of the element down
     # TODO: prioritize choices that don't collide with too many edges

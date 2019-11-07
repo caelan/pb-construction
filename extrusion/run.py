@@ -20,11 +20,11 @@ from extrusion.visualization import label_element, set_extrusion_camera, label_n
 from extrusion.experiment import load_experiment, train_parallel
 from extrusion.motion import compute_motions, display_trajectories
 from extrusion.stripstream import plan_sequence
-from extrusion.utils import load_world, get_id_from_element, PrintTrajectory
+from extrusion.utils import load_world, PrintTrajectory
 from extrusion.parsing import load_extrusion, create_elements_bodies, \
     enumerate_problems, get_extrusion_path, affine_extrusion
 from extrusion.stream import get_print_gen_fn
-from extrusion.greedy import regression, progression, GREEDY_ALGORITHMS
+from extrusion.greedy import regression, progression
 from extrusion.heuristics import HEURISTICS
 from extrusion.validator import verify_plan
 from extrusion.deadend import lookahead
@@ -34,8 +34,6 @@ from pybullet_tools.utils import connect, disconnect, get_movable_joints, get_jo
 
 # TODO: sort by action cost heuristic
 # http://www.fast-downward.org/Doc/Evaluator#Max_evaluator
-
-ALGORITHMS = GREEDY_ALGORITHMS + ['lookahead'] #+ [STRIPSTREAM_ALGORITHM]
 
 ##################################################
 
