@@ -133,6 +133,8 @@ def train_parallel(args):
     #problems = ['simple_frame']
     print('Problems ({}): {}'.format(len(problems), problems))
     #problems = [path for path in problems if 'simple_frame' in path]
+    print('Algorithms ({}): {}'.format(len(ALGORITHMS), ALGORITHMS))
+    print('Heuristics ({}): {}'.format(len(HEURISTICS), HEURISTICS))
     configurations = [Configuration(*c) for c in product(
         range(args.num), problems, ALGORITHMS, HEURISTICS, [args.max_time],
         [args.cfree], [args.disable], [args.stiffness], [args.motions], [args.ee_only])]

@@ -169,9 +169,9 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     }
     plan_data.update(data)
     del plan_data['sequence']
-    plan_path = '{}_solution.json'.format(args.problem)
-    with open(plan_path, 'w') as f:
-        json.dump(plan_data, f, indent=2, sort_keys=True)
+    #plan_path = '{}_solution.json'.format(args.problem)
+    #with open(plan_path, 'w') as f:
+    #    json.dump(plan_data, f, indent=2, sort_keys=True)
 
     if watch:
         display_trajectories(node_points, ground_nodes, planned_trajectories, animate=animate)
