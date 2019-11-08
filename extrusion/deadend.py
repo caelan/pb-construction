@@ -24,7 +24,7 @@ def get_sample_traj(elements, print_gen_fn, max_extrusions=INF):
     trajs_from_element = defaultdict(list)
     # TODO: option to make additional samples (only useful for sorting heuristic)
 
-    def enumerate_extrusions(element):
+    def enumerate_extrusions(printed, element):
         for traj in trajs_from_element[element]:
             yield traj
         if max_extrusions <= len(trajs_from_element[element]):
@@ -42,7 +42,7 @@ def get_sample_traj(elements, print_gen_fn, max_extrusions=INF):
         # TODO: other num conditions: max time, min collisions, etc
         assert 1 <= num
         safe_trajectories = []
-        for traj in enumerate_extrusions(element):
+        for traj in enumerate_extrusions(printed, element):
             # TODO: lazy collision checking
             if not (traj.colliding & printed):
                 safe_trajectories.append(traj)
@@ -60,7 +60,7 @@ def topological_sort(robot, obstacles, element_bodies, extrusion_path):
 ##################################################
 
 def lookahead(robot, obstacles, element_bodies, extrusion_path,
-              num_ee=0, num_arm=3, max_directions=250, max_attempts=1,
+              num_ee=0, num_arm=3, max_directions=500, max_attempts=1,
               heuristic='z', max_time=INF, max_backtrack=INF, revisit=False,
               ee_only=False, collisions=True, stiffness=True, motions=True, **kwargs):
     if ee_only:
@@ -72,9 +72,9 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
     checker = create_stiffness_checker(extrusion_path, verbose=False)
     #checker = None
 
-    print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                    precompute_collisions=False, supports=False, bidirectional=False, ee_only=ee_only,
-                                    max_directions=500, max_attempts=1, collisions=collisions, **kwargs)
+    #print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
+    #                                precompute_collisions=False, supports=False, bidirectional=False, ee_only=ee_only,
+    #                                max_directions=500, max_attempts=1, collisions=collisions, **kwargs)
     full_print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                          precompute_collisions=True, supports=False, bidirectional=True, ee_only=ee_only,
                                          max_directions=max_directions, max_attempts=max_attempts, collisions=collisions, **kwargs)
@@ -187,9 +187,8 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
             #wait_for_user()
             continue
 
-        # TODO: try conditioning again
-        command = sample_extrusion(print_gen_fn, ground_nodes, printed, element)
-        #command = next(iter(full_sample_traj(printed, element)), None)
+        #command = sample_extrusion(print_gen_fn, ground_nodes, printed, element)
+        command = next(iter(full_sample_traj(printed, element)), None)
         if command is None:
             # Soft dead-end
             #num_deadends += 1
