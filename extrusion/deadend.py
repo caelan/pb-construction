@@ -149,9 +149,8 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
             'runtime': elapsed_time(start_time),
         }
         return None, data
-    #priority_fn = heuristic_fn
-    #priority_fn = conflict_fn
-    priority_fn = lambda *args: (conflict_fn(*args), heuristic_fn(*args))
+    priority_fn = heuristic_fn
+    #priority_fn = lambda *args: (conflict_fn(*args), heuristic_fn(*args))
     add_successors(queue, all_elements, node_points, ground_nodes, priority_fn, initial_printed, initial_conf)
 
     plan = None
@@ -188,6 +187,7 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
             #wait_for_user()
             continue
 
+        # TODO: try conditioning again
         command = sample_extrusion(print_gen_fn, ground_nodes, printed, element)
         #command = next(iter(full_sample_traj(printed, element)), None)
         if command is None:
