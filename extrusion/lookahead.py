@@ -20,9 +20,9 @@ from pybullet_tools.utils import INF, has_gui, elapsed_time, LockRenderer, rando
 
 
 def get_sample_traj(elements, print_gen_fn, max_extrusions=INF):
-    gen_from_element = {element: print_gen_fn(None, element, extruded=[], trajectories=[]) for element in elements}
+    gen_from_element = {element: print_gen_fn(node1=None, element=element, extruded=[], trajectories=[])
+                        for element in elements}
     trajs_from_element = defaultdict(list)
-    # TODO: option to make additional samples (only useful for sorting heuristic)
 
     def enumerate_extrusions(printed, element):
         for traj in trajs_from_element[element]:
@@ -30,7 +30,10 @@ def get_sample_traj(elements, print_gen_fn, max_extrusions=INF):
         if max_extrusions <= len(trajs_from_element[element]):
             return
         with LockRenderer():
-            for traj, in gen_from_element[element]: # TODO: islice for the num to sample
+            #generator = gen_from_element[element]
+            generator = print_gen_fn(node1=None, element=element, extruded=printed,
+                                     trajectories=trajs_from_element[element])
+            for traj, in generator: # TODO: islice for the num to sample
                 trajs_from_element[element].append(traj)
                 yield traj
             #for _ in range(100):
@@ -38,7 +41,6 @@ def get_sample_traj(elements, print_gen_fn, max_extrusions=INF):
 
 
     def sample_traj(printed, element, num=1):
-        # TODO: condition on the printed elements
         # TODO: other num conditions: max time, min collisions, etc
         assert 1 <= num
         safe_trajectories = []
@@ -60,8 +62,8 @@ def topological_sort(robot, obstacles, element_bodies, extrusion_path):
 ##################################################
 
 def lookahead(robot, obstacles, element_bodies, extrusion_path,
-              num_ee=0, num_arm=3, max_directions=500, max_attempts=1,
-              heuristic='z', max_time=INF, max_backtrack=INF, revisit=False,
+              num_ee=0, num_arm=1, max_directions=500, max_attempts=1,
+              use_conficts=True, heuristic='z', max_time=INF, max_backtrack=INF, revisit=False,
               ee_only=False, collisions=True, stiffness=True, motions=True, **kwargs):
     if ee_only:
         num_ee, num_arm = max(num_arm, num_ee), 0
@@ -149,8 +151,11 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
             'runtime': elapsed_time(start_time),
         }
         return None, data
-    priority_fn = heuristic_fn
-    #priority_fn = lambda *args: (conflict_fn(*args), heuristic_fn(*args))
+
+    if use_conficts:
+        priority_fn = lambda *args: (conflict_fn(*args), heuristic_fn(*args))
+    else:
+        priority_fn = heuristic_fn
     add_successors(queue, all_elements, node_points, ground_nodes, priority_fn, initial_printed, initial_conf)
 
     plan = None

@@ -27,7 +27,7 @@ from extrusion.stream import get_print_gen_fn
 from extrusion.greedy import regression, progression
 from extrusion.heuristics import HEURISTICS
 from extrusion.validator import verify_plan
-from extrusion.deadend import lookahead
+from extrusion.lookahead import lookahead
 
 from pybullet_tools.utils import connect, disconnect, get_movable_joints, get_joint_positions, LockRenderer, \
     unit_pose, reset_simulation, draw_pose, apply_alpha, BLACK, Pose, Euler
