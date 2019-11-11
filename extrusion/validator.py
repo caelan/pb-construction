@@ -1,6 +1,7 @@
-from extrusion.parsing import load_extrusion
+from extrusion.parsing import load_extrusion, extrusion_name_from_path, get_extrusion_path
 from extrusion.visualization import draw_element
-from extrusion.utils import check_connected, test_stiffness, get_connected_structures, load_world
+from extrusion.utils import check_connected, test_stiffness, get_connected_structures, load_world, TRANS_TOL, ROT_TOL, \
+    create_stiffness_checker, evaluate_stiffness
 from pybullet_tools.utils import has_gui, wait_for_user, connect, reset_simulation, \
     disconnect, wait_for_duration, BLACK, RED
 
@@ -9,7 +10,6 @@ def check_plan(extrusion_path, planned_elements, verbose=False):
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
     #checker = create_stiffness_checker(extrusion_name)
 
-    # TODO: construct the structure in different ways (random, connected)
     connected_nodes = set(ground_nodes)
     handles = []
     all_connected = True
@@ -50,3 +50,28 @@ def verify_plan(extrusion_path, planned_elements, use_gui=False):
     reset_simulation()
     disconnect()
     return is_valid
+
+##################################################
+
+def compute_plan_deformation(problem, plan):
+    # TODO: absence of entry means ignore
+    problem = extrusion_name_from_path(problem)
+    problem_path = get_extrusion_path(problem)
+    checker = create_stiffness_checker(problem_path, verbose=False)
+    trans_tol, rot_tol = checker.get_nodal_deformation_tol()
+    if plan is None:
+        return trans_tol, rot_tol
+
+    element_from_id, _, _ = load_extrusion(problem_path)
+    printed = []
+    translations = []
+    rotations = []
+    for element in plan:
+        printed.append(element)
+        deformation = evaluate_stiffness(problem, element_from_id, printed,
+                                         checker=checker, verbose=False)
+        trans, rot, _, _ = checker.get_max_nodal_deformation()
+        translations.append(trans)
+        rotations.append(rot)
+    # TODO: could return full history
+    return max(translations), max(rotations)

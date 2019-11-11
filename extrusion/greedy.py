@@ -6,6 +6,7 @@ import time
 
 from collections import namedtuple
 
+from extrusion.validator import compute_plan_deformation
 from extrusion.heuristics import get_heuristic_fn
 from pybullet_tools.utils import elapsed_time, \
     LockRenderer, reset_simulation, disconnect, randomize
@@ -22,6 +23,8 @@ from pddlstream.utils import implies
 #State = namedtuple('State', ['element', 'printed', 'plan'])
 Node = namedtuple('Node', ['action', 'state'])
 
+##################################################
+
 def retrace_trajectories(visited, current_state, reverse=False):
     command, prev_state = visited[current_state]
     if prev_state is None:
@@ -33,11 +36,12 @@ def retrace_trajectories(visited, current_state, reverse=False):
     return prior_trajectories + current_trajectories
     # TODO: search over local stability for each node
 
-def retrace_elements(visited, current_state):
-    return [traj.element for traj in retrace_trajectories(visited, current_state)
-            if isinstance(traj, PrintTrajectory)]
-
 def recover_sequence(plan):
+    if plan is None:
+        return plan
+    return [traj.element for traj in plan if isinstance(traj, PrintTrajectory)]
+
+def recover_directed_sequence(plan):
     if plan is None:
         return plan
     return [traj.directed_element for traj in plan if isinstance(traj, PrintTrajectory)]
@@ -112,7 +116,8 @@ def add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, pri
         wait_for_user()
 
 def progression(robot, obstacles, element_bodies, extrusion_path,
-                heuristic='z', max_time=INF, max_backtrack=INF, stiffness=True, **kwargs):
+                heuristic='z', max_time=INF, # max_backtrack=INF,
+                stiffness=True, **kwargs):
 
     start_time = time.time()
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
@@ -122,34 +127,28 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
                                     supports=False, bidirectional=False,
                                     precompute_collisions=False, max_directions=500, max_attempts=1, **kwargs)
     id_from_element = get_id_from_element(element_from_id)
-    elements = frozenset(element_bodies)
+    all_elements = frozenset(element_bodies)
     heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=True)
-
-    final_printed = frozenset(element_bodies)
-    if not check_connected(ground_nodes, final_printed) or \
-            not test_stiffness(extrusion_path, element_from_id, final_printed):
-        data = {
-            'sequence': None,
-            'runtime': elapsed_time(start_time),
-        }
-        return None, data
 
     initial_conf = None
     initial_printed = frozenset()
     queue = []
     visited = {initial_printed: Node(None, None)}
-    add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, initial_printed, initial_conf)
+    if check_connected(ground_nodes, all_elements) and \
+            test_stiffness(extrusion_path, element_from_id, all_elements):
+        add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn, initial_printed, initial_conf)
 
     plan = None
-    min_remaining = INF
-    num_evaluated = 0
+    min_remaining = len(all_elements)
+    num_evaluated = max_backtrack = 0
     while queue and (elapsed_time(start_time) < max_time):
         num_evaluated += 1
         visits, _, printed, element, current_conf = heapq.heappop(queue)
-        num_remaining = len(elements) - len(printed)
+        num_remaining = len(all_elements) - len(printed)
         backtrack = num_remaining - min_remaining
-        if max_backtrack <= backtrack:
-            continue
+        max_backtrack = max(max_backtrack, backtrack)
+        #if max_backtrack <= backtrack:
+        #    continue
         num_evaluated += 1
         if num_remaining < min_remaining:
             min_remaining = num_remaining
@@ -163,25 +162,30 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
         if command is None:
             continue
         visited[next_printed] = Node(command, printed)
-        if elements <= next_printed:
+        if all_elements <= next_printed:
             min_remaining = 0
             plan = retrace_trajectories(visited, next_printed)
             break
-        add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, next_printed, initial_conf)
+        add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn, next_printed, initial_conf)
 
+    max_translation, max_rotation = compute_plan_deformation(extrusion_path, recover_sequence(plan))
     data = {
-        'sequence': recover_sequence(plan),
+        'sequence': recover_directed_sequence(plan),
         'runtime': elapsed_time(start_time),
+        'num_elements': len(all_elements),
         'num_evaluated': num_evaluated,
-        'num_remaining': min_remaining,
-        'num_elements': len(elements)
+        'min_remaining': min_remaining,
+        'max_backtrack': max_backtrack,
+        'max_translation': max_translation,
+        'max_rotation': max_rotation,
     }
     return plan, data
 
 ##################################################
 
 def regression(robot, obstacles, element_bodies, extrusion_path,
-               heuristic='z', max_time=INF, max_backtrack=INF, stiffness=True, **kwargs):
+               heuristic='z', max_time=INF, # max_backtrack=INF,
+               stiffness=True, **kwargs):
     # Focused has the benefit of reusing prior work
     # Greedy has the benefit of conditioning on previous choices
     # TODO: persistent search
@@ -190,6 +194,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
     start_time = time.time()
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
     id_from_element = get_id_from_element(element_from_id)
+    all_elements = frozenset(element_bodies)
     checker = create_stiffness_checker(extrusion_path, verbose=False)
     #checker = None
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
@@ -197,8 +202,11 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
                                     precompute_collisions=False, max_directions=500, max_attempts=1, **kwargs)
     heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=False)
 
+    final_conf = None
+    initial_printed = all_elements
     queue = []
-    visited = {}
+    visited = {initial_printed: Node(None, None)}
+
     def add_successors(printed):
         for element in randomize(printed):
             num_remaining = len(printed) - 1
@@ -207,17 +215,9 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
             priority = (num_remaining, bias, random.random())
             heapq.heappush(queue, (priority, printed, element))
 
-    final_conf = None
-    initial_printed = frozenset(element_bodies)
-    if not check_connected(ground_nodes, initial_printed) or \
-            not test_stiffness(extrusion_path, element_from_id, initial_printed, checker=checker):
-        data = {
-            'sequence': None,
-            'runtime': elapsed_time(start_time),
-        }
-        return None, data
-    visited[initial_printed] = Node(None, None)
-    add_successors(initial_printed)
+    if check_connected(ground_nodes, initial_printed) and \
+            test_stiffness(extrusion_path, element_from_id, initial_printed, checker=checker):
+        add_successors(initial_printed)
 
     # TODO: lazy hill climbing using the true stiffness heuristic
     # Choose the first move that improves the score
@@ -235,14 +235,15 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
     # TODO: focus branching factor on most stable regions
 
     plan = None
-    min_remaining = INF
-    num_evaluated = 0
+    min_remaining = len(all_elements)
+    num_evaluated = max_backtrack = 0
     while queue and (elapsed_time(start_time) < max_time):
         priority, printed, element = heapq.heappop(queue)
         num_remaining = len(printed)
         backtrack = num_remaining - min_remaining
-        if max_backtrack <= backtrack:
-            continue
+        max_backtrack = max(max_backtrack, backtrack)
+        #if max_backtrack <= backtrack:
+        #    continue
         num_evaluated += 1
 
         print('Iteration: {} | Best: {} | Printed: {} | Element: {} | Index: {} | Time: {:.3f}'.format(
@@ -279,15 +280,20 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
             break
         add_successors(next_printed)
 
-    # TODO: store maximum stiffness violations (for speed purposes)
+    max_translation, max_rotation = compute_plan_deformation(extrusion_path, recover_sequence(plan))
     data = {
-        'sequence': recover_sequence(plan),
+        'sequence': recover_directed_sequence(plan),
         'runtime': elapsed_time(start_time),
+        'num_elements': len(all_elements),
         'num_evaluated': num_evaluated,
-        'num_remaining': min_remaining,
-        'num_elements': len(element_bodies)
+        'min_remaining': min_remaining,
+        'max_backtrack': max_backtrack,
+        'max_translation': max_translation,
+        'max_rotation': max_rotation,
     }
     return plan, data
+
+##################################################
 
 GREEDY_ALGORITHMS = [
     progression.__name__,

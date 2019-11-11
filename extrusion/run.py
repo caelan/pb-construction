@@ -24,28 +24,13 @@ from extrusion.utils import load_world, PrintTrajectory
 from extrusion.parsing import load_extrusion, create_elements_bodies, \
     enumerate_problems, get_extrusion_path, affine_extrusion
 from extrusion.stream import get_print_gen_fn
-from extrusion.greedy import regression, progression
+from extrusion.greedy import regression, progression, recover_directed_sequence
 from extrusion.heuristics import HEURISTICS
 from extrusion.validator import verify_plan
 from extrusion.lookahead import lookahead
 
 from pybullet_tools.utils import connect, disconnect, get_movable_joints, get_joint_positions, LockRenderer, \
-    unit_pose, reset_simulation, draw_pose, apply_alpha, BLACK, Pose, Euler
-
-# TODO: sort by action cost heuristic
-# http://www.fast-downward.org/Doc/Evaluator#Max_evaluator
-
-##################################################
-
-def get_random_seed():
-    # random.getstate()[1][0]
-    return np.random.get_state()[1][0]
-
-def set_seed(seed):
-    # These generators are different and independent
-    random.seed(seed)
-    np.random.seed(seed % (2**32))
-    print('Seed:', seed)
+    unit_pose, reset_simulation, draw_pose, apply_alpha, BLACK, Pose, Euler, set_numpy_seed, set_random_seed
 
 ##################################################
 
@@ -83,7 +68,9 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     if not verbose:
         sys.stdout = open(os.devnull, 'w')
 
-    set_seed(hash((time.time(), args.seed)))
+    seed = hash((time.time(), args.seed))
+    set_numpy_seed(seed)
+    set_random_seed(seed)
     # TODO: change dir for pddlstream
     problem_path = get_extrusion_path(args.problem)
     #problem_path = rotate_problem(problem_path)
@@ -150,10 +137,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
 
     #id_from_element = get_id_from_element(element_from_id)
     #planned_ids = [id_from_element[traj.element] for traj in planned_trajectories]
-    planned_elements = [traj.directed_element for traj in planned_trajectories
-                        if isinstance(traj, PrintTrajectory)]
-    # random.shuffle(planned_elements)
-    # planned_elements = sorted(elements, key=lambda e: max(node_points[n][2] for n in e)) # TODO: tiebreak by angle or x
+    planned_elements = recover_directed_sequence(planned_trajectories)
     animate = not (args.disable or args.ee_only)
     valid = verify_plan(problem_path, planned_elements) #, use_gui=not animate)
 
@@ -213,7 +197,7 @@ def main():
                         help='The name of the problem to solve')
     parser.add_argument('-s', '--stiffness',  action='store_false',
                         help='Disables stiffness checking')
-    parser.add_argument('-t', '--max_time', default=30*60, type=int,
+    parser.add_argument('-t', '--max_time', default=60*60, type=int,
                         help='The max time')
     parser.add_argument('-v', '--viewer', action='store_true',
                         help='Enables the viewer during planning')
@@ -240,24 +224,12 @@ def main():
     # TODO: slow down automatically near endpoints
     # TODO: heuristic that orders elements by angle
     # TODO: check that both the start and end satisfy
-    # TODO: return to start when done
-
-    # Can greedily print
-    # four-frame, simple_frame, voronoi
-
-    # Cannot greedily print
-    # topopt-100
-    # mars_bubble
-    # djmm_bridge
-    # djmm_test_block
-
     # python -m extrusion.run -n 10 2>&1 | tee log.txt
 
 
 if __name__ == '__main__':
     main()
 
-# TODO: look at the actual violation of the stiffness
 # TODO: local search to reduce the violation
 # TODO: introduce support structures and then require that they be removed
 # Robot spiderweb printing weaving hook which may slide

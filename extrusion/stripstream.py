@@ -12,6 +12,9 @@ from pddlstream.utils import read, get_file_path
 
 STRIPSTREAM_ALGORITHM = 'stripstream'
 
+# TODO: sort by action cost heuristic
+# http://www.fast-downward.org/Doc/Evaluator#Max_evaluator
+
 def get_pddlstream(robot, obstacles, node_points, element_bodies, ground_nodes,
                    trajectories=[], **kwargs):
     # TODO: instantiation slowness is due to condition effects
