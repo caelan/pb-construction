@@ -9,10 +9,9 @@ import numpy as np
 
 from collections import namedtuple, OrderedDict
 
-from extrusion.greedy import GREEDY_ALGORITHMS
 from extrusion.heuristics import HEURISTICS
-from extrusion.parsing import load_extrusion, get_extrusion_path, extrusion_name_from_path, enumerate_problems
-from extrusion.utils import evaluate_stiffness, create_stiffness_checker, TRANS_TOL, ROT_TOL
+from extrusion.greedy import GREEDY_ALGORITHMS
+from extrusion.parsing import load_extrusion, get_extrusion_path, enumerate_problems
 from pddlstream.utils import str_from_object, INF, get_python_version
 from pybullet_tools.utils import read_pickle, is_darwin, user_input, write_pickle, elapsed_time
 
@@ -20,19 +19,33 @@ Configuration = namedtuple('Configuration', ['seed', 'problem', 'algorithm', 'bi
                                              'cfree', 'disable', 'stiffness', 'motions', 'ee_only'])
 #Score = namedtuple('Score', ['failure', 'runtime', 'max_trans', 'max_rot'])
 
-#ALGORITHMS = GREEDY_ALGORITHMS + ['lookahead'] #+ [STRIPSTREAM_ALGORITHM]
-ALGORITHMS = ['lookahead']
+ALGORITHMS = GREEDY_ALGORITHMS + ['lookahead'] #+ [STRIPSTREAM_ALGORITHM]
+#ALGORITHMS = ['lookahead']
 
 EXCLUDE = [
-    'dented_cube',
-    'rotated_dented_cube',
+    'dented_cube', # TODO: 3D_truss isn't supported
+    'rotated_dented_cube', # TODO: 3D_truss isn't supported
     'robarch_tree',
     'DJMM_bridge',
 ]
 
+ALL = 'all'
+
+# Failed instances
+# fertility, duck, dented_cube, compas_fea_beam_tree_M, compas_fea_beam_tree, bunny_full_tri_dense, bunny_full_quad, C_shape
+
 # Geometric: python3 -m extrusion.run -l experiments/19-08-09_01-58-34.pk3
 # CFree: python3 -m extrusion.run -l experiments/19-08-14_10-46-35.pk3
 # Disable: python3 -m extrusion.run -l experiments/19-08-14_01-33-13.pk3
+
+# Can greedily print
+# four-frame, simple_frame, voronoi
+
+# Cannot greedily print
+# topopt-100
+# mars_bubble
+# djmm_bridge
+# djmm_test_block
 
 ##################################################
 
@@ -41,35 +54,6 @@ def score_result(result):
         1. - result['success'], result.get('runtime', 0), result.get('num_evaluated', 0),
         result.get('max_trans', 0), result.get('max_rot', 0))
 
-def max_plan_deformation(config, result):
-    plan = result.get('sequence', None)
-    if plan is None:
-        #return 0, 0
-        return TRANS_TOL, ROT_TOL
-    # TODO: absence of entry means ignore
-    # TODO: inspect the number fo states searched rather than time overhead
-    problem = extrusion_name_from_path(config.problem)
-    problem_path = get_extrusion_path(problem)
-    element_from_id, _, _ = load_extrusion(problem_path)
-    checker = create_stiffness_checker(problem_path, verbose=False)
-    #trans_tol, rot_tol = checker.get_nodal_deformation_tol()
-
-    printed = []
-    translations = []
-    rotations = []
-    for element in plan:
-        printed.append(element)
-        deformation = evaluate_stiffness(problem, element_from_id, printed,
-                                         checker=checker, verbose=False)
-        trans, rot, _, _ = checker.get_max_nodal_deformation()
-        translations.append(trans)
-        rotations.append(rot)
-    return max(translations), max(rotations)
-
-# Failed instances
-# fertility, duck, dented_cube, compas_fea_beam_tree_M, compas_fea_beam_tree, bunny_full_tri_dense, bunny_full_quad, C_shape
-
-ALL = 'all'
 
 def load_experiment(filename, overall=True):
     # TODO: maybe just pass the random seed as a separate arg
@@ -84,7 +68,7 @@ def load_experiment(filename, overall=True):
         plan = result.get('sequence', None)
         result['success'] = (plan is not None)
         result['length'] = len(plan) if result['success'] else INF
-        #max_trans, max_rot = max_plan_deformation(config, result)
+        #max_trans, max_rot = max_plan_deformation(config.problem, plan)
         #result['max_trans'] = max_trans
         #result['max_rot'] = max_rot
         result.pop('sequence', None)

@@ -281,7 +281,6 @@ def create_stiffness_checker(extrusion_path, verbose=False):
     # checker.set_nodal_displacement_tol(transl_tol=1e-3, rot_tol=3 * (np.pi / 360))
     checker.set_nodal_displacement_tol(trans_tol=TRANS_TOL, rot_tol=ROT_TOL)
     #checker.set_loads(point_loads=None, include_self_weight=False, uniform_distributed_load={})
-
     return checker
 
 def get_id_from_element(element_from_id):
