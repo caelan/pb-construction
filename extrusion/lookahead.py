@@ -69,7 +69,7 @@ def topological_sort(robot, obstacles, element_bodies, extrusion_path):
 
 def lookahead(robot, obstacles, element_bodies, extrusion_path,
               num_ee=0, num_arm=1, max_directions=500, max_attempts=1,
-              use_conficts=False, use_replan=False, heuristic='z', max_time=INF, # max_backtrack=INF,
+              plan_all=False, use_conficts=False, use_replan=False, heuristic='z', max_time=INF, # max_backtrack=INF,
               revisit=False, ee_only=False, collisions=True, stiffness=True, motions=True, **kwargs):
     if ee_only:
         num_ee, num_arm = max(num_arm, num_ee), 0
@@ -110,12 +110,13 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
     #########################
 
     def sample_remaining(printed, sample_fn, num=1, **kwargs):
-        # TODO: only check nodes that can be printed given the current nodes?
-        # TODO: condition on a fixed last history to reflect the fact that we don't really want to backtrack
         if num == 0:
             return True
-        elements = all_elements - printed
-        # TODO: printable
+        nodes = compute_printed_nodes(ground_nodes, printed)
+        if plan_all:
+            elements = all_elements - printed
+        else:
+            elements = [element for element in all_elements - printed if any(n in nodes for n in element)]
         return all(sample_fn(printed, element, num, **kwargs) for element in randomize(elements))
 
     def conflict_fn(printed, element, conf):
@@ -152,7 +153,7 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
     queue = []
     visited = {initial_printed: Node(None, None)}
     if check_connected(ground_nodes, all_elements) and test_stiffness(extrusion_path, element_from_id, all_elements) and \
-            sample_remaining(all_elements, ee_sample_traj, num=num_ee) and sample_remaining(all_elements, full_sample_traj, num=num_arm):
+            sample_remaining(initial_printed, ee_sample_traj, num=num_ee) and sample_remaining(initial_printed, full_sample_traj, num=num_arm):
         add_successors(queue, all_elements, node_points, ground_nodes, priority_fn, initial_printed, initial_conf)
 
     plan = None

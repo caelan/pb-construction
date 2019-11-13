@@ -19,8 +19,8 @@ Configuration = namedtuple('Configuration', ['seed', 'problem', 'algorithm', 'bi
                                              'cfree', 'disable', 'stiffness', 'motions', 'ee_only'])
 #Score = namedtuple('Score', ['failure', 'runtime', 'max_trans', 'max_rot'])
 
-ALGORITHMS = GREEDY_ALGORITHMS + ['lookahead'] #+ [STRIPSTREAM_ALGORITHM]
-#ALGORITHMS = ['lookahead']
+#ALGORITHMS = GREEDY_ALGORITHMS + ['lookahead'] #+ [STRIPSTREAM_ALGORITHM]
+ALGORITHMS = ['lookahead']
 
 EXCLUDE = [
     'dented_cube', # TODO: 3D_truss isn't supported
@@ -50,12 +50,12 @@ ALL = 'all'
 ##################################################
 
 def score_result(result):
-    return '{{failure={:.3f}, runtime={:.0f}, evaluated={:.0f}, max_trans={:.3E}, max_rot={:.3E}}}'.format(
-        1. - result['success'], result.get('runtime', 0), result.get('num_evaluated', 0),
-        result.get('max_trans', 0), result.get('max_rot', 0))
+    return '{{failure={:.3f}, runtime={:.0f}, evaluated={:.0f}, backtrack={:0f}, max_trans={:.3E}, max_rot={:.3E}}}'.format(
+        1. - result['success'], result.get('runtime', 0), result.get('num_evaluated', 0), result.get('max_backtrack', 0),
+        result.get('max_translation', 0), result.get('max_rotation', 0))
 
 
-def load_experiment(filename, overall=True):
+def load_experiment(filename, overall=False):
     # TODO: maybe just pass the random seed as a separate arg
     # TODO: aggregate over all problems and score using IPC rules
     # https://ipc2018-classical.bitbucket.io/
