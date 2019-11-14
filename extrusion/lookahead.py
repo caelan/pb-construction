@@ -68,7 +68,7 @@ def topological_sort(robot, obstacles, element_bodies, extrusion_path):
 ##################################################
 
 def lookahead(robot, obstacles, element_bodies, extrusion_path,
-              num_ee=0, num_arm=1, max_directions=500, max_attempts=1,
+              num_ee=1, num_arm=0, max_directions=500, max_attempts=1,
               plan_all=False, use_conficts=False, use_replan=False, heuristic='z', max_time=INF, # max_backtrack=INF,
               revisit=False, ee_only=False, collisions=True, stiffness=True, motions=True, **kwargs):
     if ee_only:
