@@ -17,7 +17,7 @@ sys.path.extend([
 ])
 
 from extrusion.visualization import label_element, set_extrusion_camera, label_nodes
-from extrusion.experiment import load_experiment, train_parallel
+from extrusion.experiment import train_parallel
 from extrusion.motion import compute_motions, display_trajectories
 from extrusion.stripstream import plan_sequence
 from extrusion.utils import load_world, PrintTrajectory
@@ -191,8 +191,6 @@ def main():
                         help='Plans motions between each extrusion')
     parser.add_argument('-n', '--num', default=0, type=int,
                         help='TBD')
-    parser.add_argument('-l', '--load', default=None,
-                        help='Analyze an experiment')
     parser.add_argument('-p', '--problem', default='simple_frame',
                         help='The name of the problem to solve')
     parser.add_argument('-s', '--stiffness',  action='store_false',
@@ -205,9 +203,6 @@ def main():
     print('Arguments:', args)
     np.set_printoptions(precision=3)
 
-    if args.load is not None:
-        load_experiment(args.load)
-        return
     if args.num:
         train_parallel(args)
         return
