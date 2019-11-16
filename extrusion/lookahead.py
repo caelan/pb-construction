@@ -25,7 +25,7 @@ def retrace_elements(visited, current_state):
 
 ##################################################
 
-def get_sample_traj(elements, print_gen_fn, max_extrusions=INF):
+def get_sample_traj(elements, print_gen_fn, max_extrusions=INF, condition=True):
     gen_from_element = {element: print_gen_fn(node1=None, element=element, extruded=[], trajectories=[])
                         for element in elements}
     trajs_from_element = defaultdict(list)
@@ -36,9 +36,11 @@ def get_sample_traj(elements, print_gen_fn, max_extrusions=INF):
         if max_extrusions <= len(trajs_from_element[element]):
             return
         with LockRenderer():
-            #generator = gen_from_element[element]
-            generator = print_gen_fn(node1=None, element=element, extruded=printed,
-                                     trajectories=trajs_from_element[element])
+            if condition:
+                generator = print_gen_fn(node1=None, element=element, extruded=printed,
+                                         trajectories=trajs_from_element[element])
+            else:
+                generator = gen_from_element[element]
             for traj, in generator: # TODO: islice for the num to sample
                 trajs_from_element[element].append(traj)
                 yield traj
@@ -91,7 +93,7 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
     # TODO: could just check kinematics instead of collision
     ee_print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                         precompute_collisions=True, supports=False, bidirectional=True, ee_only=True,
-                                        max_directions=max_directions, max_attempts=max_attempts, collisions=collisions, **kwargs)
+                                        max_directions=1000, max_attempts=max_attempts, collisions=collisions, **kwargs)
     id_from_element = get_id_from_element(element_from_id)
     all_elements = frozenset(element_bodies)
     heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=True)
