@@ -10,9 +10,9 @@ sys.path.extend([
     'ss-pybullet/',
 ])
 
-from collections import OrderedDict
+from collections import OrderedDict, Counter
 
-from extrusion.experiment import EXCLUDE, Configuration
+from extrusion.experiment import EXCLUDE, Configuration, EXPERIMENTS_DIR
 from extrusion.parsing import get_extrusion_path, load_extrusion
 from pddlstream.utils import INF, str_from_object
 from pybullet_tools.utils import read_pickle
@@ -87,6 +87,21 @@ def load_experiment(filename, overall=False):
 
 ##################################################
 
+def enumerate_experiments():
+    for filename in sorted(os.listdir(EXPERIMENTS_DIR)):
+        path = os.path.join(EXPERIMENTS_DIR, filename)
+        try:
+            data = read_pickle(path)
+            configs, _ = zip(*data)
+            #problems = {config.problem for config in configs}
+            algorithms = {config.algorithm for config in configs}
+            print(path, sorted(algorithms))
+        except TypeError:
+            print('Unable to load', path)
+            continue
+
+##################################################
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('path', help='Analyze an experiment')
@@ -94,7 +109,7 @@ def main():
                         help='Enables the viewer during planning')
     args = parser.parse_args()
     np.set_printoptions(precision=3)
-
+    #enumerate_experiments()
     load_experiment(args.path, overall=args.all)
 
 if __name__ == '__main__':

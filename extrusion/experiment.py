@@ -12,6 +12,8 @@ from extrusion.parsing import enumerate_problems
 from pddlstream.utils import get_python_version
 from pybullet_tools.utils import is_darwin, user_input, write_pickle, elapsed_time
 
+# TODO: use dicts instead
+
 Configuration = namedtuple('Configuration', ['seed', 'problem', 'algorithm', 'bias', 'max_time',
                                              'cfree', 'disable', 'stiffness', 'motions', 'ee_only'])
 #Score = namedtuple('Score', ['failure', 'runtime', 'max_trans', 'max_rot'])
@@ -26,6 +28,7 @@ EXCLUDE = [
     'DJMM_bridge',
 ]
 
+EXPERIMENTS_DIR = 'experiments/'
 
 # Failed instances
 # fertility, duck, dented_cube, compas_fea_beam_tree_M, compas_fea_beam_tree, bunny_full_tri_dense, bunny_full_quad, C_shape
@@ -64,7 +67,7 @@ def train_parallel(args):
     print('Using Cores:', num_cores)
     date = datetime.datetime.now().strftime('%y-%m-%d_%H-%M-%S')
     filename = '{}.pk{}'.format(date, get_python_version())
-    path = os.path.join('experiments', filename)
+    path = os.path.join(EXPERIMENTS_DIR, filename)
     print('Data path:', path)
 
     user_input('Begin?')

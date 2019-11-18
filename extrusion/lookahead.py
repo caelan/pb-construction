@@ -35,7 +35,7 @@ def get_sample_traj(elements, print_gen_fn, max_extrusions=INF, condition=True):
             yield traj
         if max_extrusions <= len(trajs_from_element[element]):
             return
-        with LockRenderer():
+        with LockRenderer(True):
             if condition:
                 generator = print_gen_fn(node1=None, element=element, extruded=printed,
                                          trajectories=trajs_from_element[element])
@@ -73,10 +73,13 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
               num_ee=1, num_arm=0, max_directions=500, max_attempts=1,
               plan_all=False, use_conficts=False, use_replan=False, heuristic='z', max_time=INF, # max_backtrack=INF,
               revisit=False, ee_only=False, collisions=True, stiffness=True, motions=True, **kwargs):
+    if not use_conficts:
+        num_ee, num_arm = min(num_ee, 1),  min(num_arm, 1)
     if ee_only:
         num_ee, num_arm = max(num_arm, num_ee), 0
-    if not use_conficts:
-        num_arm = 1
+    print('#EE: {} | #Arm: {}'.format(num_ee, num_arm))
+    # TODO: only check nearby elements
+    # TODO: only check collisions conditioned on current decisions
     start_time = time.time()
     joints = get_movable_joints(robot)
     initial_conf = get_joint_positions(robot, joints)

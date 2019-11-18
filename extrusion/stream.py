@@ -1,17 +1,18 @@
 import numpy as np
 import random
+import time
 
 from pybullet_tools.utils import get_movable_joints, get_joint_positions, multiply, invert, \
     set_joint_positions, inverse_kinematics, get_link_pose, get_distance, point_from_pose, wrap_angle, get_sample_fn, \
     link_from_name, get_pose, get_collision_fn, dump_body, get_link_subtree, wait_for_user, clone_body, \
     get_all_links, set_color, set_pose, pairwise_collision, get_relative_pose, Pose, Euler, Point, interval_generator, \
-    randomize, get_extend_fn
+    randomize, get_extend_fn, user_input, INF, elapsed_time, get_bodies_in_region, get_aabb
 from extrusion.utils import TOOL_NAME, get_disabled_collisions, get_node_neighbors, \
     PrintTrajectory, retrace_supporters, get_supported_orders, prune_dominated, Command, MotionTrajectory, RESOLUTION, \
     JOINT_WEIGHTS
 #from extrusion.run import USE_IKFAST, get_supported_orders, retrace_supporters, SELF_COLLISIONS, USE_CONMECH
 from pddlstream.language.stream import WildOutput
-from pddlstream.utils import neighbors_from_orders, irange, user_input, INF
+from pddlstream.utils import neighbors_from_orders, irange
 
 try:
     from conrob_pybullet.utils.ikfast.kuka_kr6_r900.ik import sample_tool_ik
@@ -90,14 +91,22 @@ def command_collision(tool_body, tool_from_root, command, bodies):
     #offset = 4
     #for robot_conf in trajectory[offset:-offset]:
     collisions = [False for _ in range(len(bodies))]
-
+    # Orientation remains the same for the extrusion trajectory
+    idx_from_body = dict(zip(bodies, range(len(bodies))))
+    # TODO: use bounding cylinder for each element
     # TODO: separate into another method. Sort paths by tool poses first
     for trajectory in command.trajectories:
         for tool_pose in randomize(trajectory.get_link_path()): # TODO: bisect
             set_pose(tool_body, multiply(tool_pose, tool_from_root))
+            #tool_aabb = get_aabb(tool_body) # TODO: could just translate
+            #for body, _ in get_bodies_in_region(tool_aabb):
             for i, body in enumerate(bodies):
-                if not collisions[i]:
-                    collisions[i] |= pairwise_collision(tool_body, body)
+                if body not in idx_from_body: # Robot
+                    continue
+                idx = idx_from_body[body]
+                if not collisions[idx]:
+                    collisions[idx] |= pairwise_collision(tool_body, body)
+    for trajectory in command.trajectories:
         for robot_conf in randomize(trajectory.path):
             set_joint_positions(trajectory.robot, trajectory.joints, robot_conf)
             for i, body in enumerate(bodies):
@@ -214,6 +223,7 @@ def compute_direction_path(robot, tool, tool_from_root,
         tool_path = compute_tool_path(element_pose, translation_path, direction, initial_angle, reverse)
         robot_path = []
         print_traj = PrintTrajectory(robot, get_movable_joints(robot), robot_path, tool_path, element, reverse)
+        # TODO: plan_approach
         return Command([print_traj])
 
     tool_link = link_from_name(robot, TOOL_NAME)
@@ -245,8 +255,8 @@ def compute_direction_path(robot, tool, tool_from_root,
 
 def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground_nodes,
                      precompute_collisions=True, supports=True, bidirectional=False,
-                     collisions=True, disable=False,
-                     max_directions=1000, max_attempts=1, **kwargs):
+                     collisions=True, disable=False, ee_only=False,
+                     max_directions=1000, max_attempts=1, max_time=INF, **kwargs):
     # TODO: print on full sphere and just check for collisions with the printed element
     # TODO: can slide a component of the element down
     # TODO: prioritize choices that don't collide with too many edges
@@ -269,6 +279,8 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
     tool_from_root = get_relative_pose(robot, root_link, tool_link)
 
     def gen_fn(node1, element, extruded=[], trajectories=[]): # fluents=[]):
+        #start_time = time.time()
+        idle_time = 0
         reverse = (node1 != element[0])
         if disable:
             path, tool_path = [], []
@@ -310,7 +322,8 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                     n1, n2 = reversed(element) if reverse else element
                     command = compute_direction_path(robot, tool_body, tool_from_root,
                                                      length, reverse, element_bodies, element,
-                                                     direction, obstacles, collision_fn, **kwargs)
+                                                     direction, obstacles, collision_fn,
+                                                     ee_only=ee_only, **kwargs)
                     if command is None:
                         continue
                     if collisions and precompute_collisions:
@@ -326,17 +339,19 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                     if collisions and (len(command.colliding) == 1):
                         [colliding_element] = command.colliding
                         obstacles.add(element_bodies[colliding_element])
-                    print('{}) {}->{} | Supporters: {} | Attempts: {} | Trajectories: {} | Colliding: {}'.format(
-                        num, n1, n2, len(supporters), attempt, len(trajectories),
+                    print('{}) {}->{} | EE: {} | Supporters: {} | Attempts: {} | Trajectories: {} | Colliding: {}'.format(
+                        num, n1, n2, ee_only, len(supporters), attempt, len(trajectories),
                         sorted(len(t.colliding) for t in trajectories)))
+                    temp_time = time.time()
                     yield (command,)
+                    idle_time += elapsed_time(temp_time)
                     if precompute_collisions and not command.colliding:
                         #print('Reevaluated already non-colliding trajectory!')
                         return
                     break
             else:
-                print('{}) {}->{} | Supporters: {} | Attempts: {} | Max attempts exceeded!'.format(
-                    num, n1, n2, len(supporters), max_directions))
+                print('{}) {}->{} | EE: {} | Supporters: {} | Attempts: {} | Max attempts exceeded!'.format(
+                    num, n1, n2, ee_only, len(supporters), max_directions))
                 return
                 #yield None
     return gen_fn
