@@ -23,7 +23,7 @@ def check_plan(extrusion_path, planned_elements, verbose=False):
         connected_nodes.update(element)
         #is_connected = check_connected(ground_nodes, extruded_elements)
         #all_connected &= is_connected
-        is_stiff = test_stiffness(extrusion_path, element_from_id, extruded_elements)
+        is_stiff = test_stiffness(extrusion_path, element_from_id, extruded_elements, verbose=verbose)
         all_stiff &= is_stiff
         if verbose:
             structures = get_connected_structures(extruded_elements)
@@ -41,12 +41,12 @@ def check_plan(extrusion_path, planned_elements, verbose=False):
     return all_connected and all_stiff
 
 
-def verify_plan(extrusion_path, planned_elements, use_gui=False):
+def verify_plan(extrusion_path, planned_elements, use_gui=False, **kwargs):
     # Path heuristic
     # Disable shadows
     connect(use_gui=use_gui)
     obstacles, robot = load_world()
-    is_valid = check_plan(extrusion_path, planned_elements)
+    is_valid = check_plan(extrusion_path, planned_elements, **kwargs)
     reset_simulation()
     disconnect()
     return is_valid
