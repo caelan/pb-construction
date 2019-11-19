@@ -77,16 +77,16 @@ def compute_tool_path(element_pose, translation_path, direction, angle, reverse)
         tool_path.append(multiply(element_pose, invert(grasp_pose)))
     return tool_path
 
-def tool_path_collision(tool, tool_from_root, element_pose, translation_path, direction, angle, reverse, obstacles):
+def tool_path_collision(end_effector, element_pose, translation_path, direction, angle, reverse, obstacles):
     # TODO: allow sampling in the full sphere by checking collision with an element while sliding
     for tool_pose in compute_tool_path(element_pose, translation_path, direction, angle, reverse):
-        set_pose(tool, multiply(tool_pose, tool_from_root))
-        if any(pairwise_collision(tool, obst) for obst in obstacles):
+        set_pose(end_effector.body, multiply(tool_pose, end_effector.tool_from_ee))
+        if any(pairwise_collision(end_effector.body, obst) for obst in obstacles):
             # TODO: sort by angle with smallest violation
             return True
     return False
 
-def command_collision(tool_body, tool_from_root, command, bodies):
+def command_collision(end_effector, command, bodies):
     # TODO: each new addition makes collision checking more expensive
     #offset = 4
     #for robot_conf in trajectory[offset:-offset]:
@@ -97,7 +97,7 @@ def command_collision(tool_body, tool_from_root, command, bodies):
     # TODO: separate into another method. Sort paths by tool poses first
     for trajectory in command.trajectories:
         for tool_pose in randomize(trajectory.get_link_path()): # TODO: bisect
-            set_pose(tool_body, multiply(tool_pose, tool_from_root))
+            set_pose(end_effector.body, multiply(tool_pose, end_effector.tool_from_ee))
             #tool_aabb = get_aabb(tool_body) # TODO: could just translate
             #for body, _ in get_bodies_in_region(tool_aabb):
             for i, body in enumerate(bodies):
@@ -105,7 +105,7 @@ def command_collision(tool_body, tool_from_root, command, bodies):
                     continue
                 idx = idx_from_body[body]
                 if not collisions[idx]:
-                    collisions[idx] |= pairwise_collision(tool_body, body)
+                    collisions[idx] |= pairwise_collision(end_effector.body, body)
     for trajectory in command.trajectories:
         for robot_conf in randomize(trajectory.path):
             set_joint_positions(trajectory.robot, trajectory.joints, robot_conf)
@@ -116,10 +116,10 @@ def command_collision(tool_body, tool_from_root, command, bodies):
 
 ##################################################
 
-def optimize_angle(robot, tool, tool_from_root, tool_link, element_pose,
+def optimize_angle(end_effector, element_pose,
                    translation, direction, reverse, candidate_angles,
                    collision_fn, nearby=True, max_error=1e-2):
-
+    robot = end_effector.robot
     movable_joints = get_movable_joints(robot)
     best_error, best_angle, best_conf = max_error, None, None
     initial_conf = get_joint_positions(robot, movable_joints)
@@ -128,7 +128,7 @@ def optimize_angle(robot, tool, tool_from_root, tool_link, element_pose,
         # Pose_{world,EE} = Pose_{world,element} * Pose_{element,EE}
         #                 = Pose_{world,element} * (Pose_{EE,element})^{-1}
         target_pose = multiply(element_pose, invert(grasp_pose))
-        set_pose(tool, multiply(target_pose, tool_from_root))
+        set_pose(end_effector.body, multiply(target_pose, end_effector.tool_from_ee))
 
         if nearby:
             set_joint_positions(robot, movable_joints, initial_conf)
@@ -140,12 +140,12 @@ def optimize_angle(robot, tool, tool_from_root, tool_link, element_pose,
                 sample_fn = get_sample_fn(robot, movable_joints)
                 set_joint_positions(robot, movable_joints, sample_fn())
             # note that the conf get assigned inside this ik fn right away!
-            conf = inverse_kinematics(robot, tool_link, target_pose)
+            conf = inverse_kinematics(robot, end_effector.tool_link, target_pose)
         if (conf is None) or collision_fn(conf):
             continue
 
         set_joint_positions(robot, movable_joints, conf)
-        link_pose = get_link_pose(robot, tool_link)
+        link_pose = get_link_pose(robot, end_effector.tool_link)
         error = get_distance(point_from_pose(target_pose), point_from_pose(link_pose))
         if error < best_error: # TODO: error a function of direction as well
             best_error, best_angle, best_conf = error, angle, conf
@@ -191,8 +191,7 @@ def plan_approach(robot, print_traj, collision_fn):
     final_traj = MotionTrajectory(robot, joints, final_path)
     return Command([initial_traj, print_traj, final_traj])
 
-def compute_direction_path(robot, tool, tool_from_root,
-                           length, reverse, element_bodies, element, direction,
+def compute_direction_path(end_effector, length, reverse, element_bodies, element, direction,
                            obstacles, collision_fn, num_angles=1, ee_only=False):
     """
     :param robot:
@@ -205,6 +204,7 @@ def compute_direction_path(robot, tool, tool_from_root,
     are accounted in the collision fn
     :return: feasible PrintTrajectory if found, None otherwise
     """
+    robot = end_effector.robot
     #angle_step_size = np.math.radians(0.25) # np.pi / 128
     #angle_deltas = [-angle_step_size, 0, angle_step_size]
     angle_deltas = [0]
@@ -214,7 +214,7 @@ def compute_direction_path(robot, tool, tool_from_root,
     #initial_angles = [wrap_angle(angle) for angle in np.linspace(0, 2*np.pi, num_angles, endpoint=False)]
     initial_angles = list(map(wrap_angle, np.random.uniform(0, 2*np.pi, num_angles))) # TODO: halton
     initial_angles = [angle for angle in initial_angles if not tool_path_collision(
-        tool, tool_from_root, element_pose, translation_path, direction, angle, reverse, obstacles)]
+        end_effector, element_pose, translation_path, direction, angle, reverse, obstacles)]
     if not initial_angles:
         return None
 
@@ -226,8 +226,7 @@ def compute_direction_path(robot, tool, tool_from_root,
         # TODO: plan_approach
         return Command([print_traj])
 
-    tool_link = link_from_name(robot, TOOL_NAME)
-    initial_angle, current_conf = optimize_angle(robot, tool, tool_from_root, tool_link, element_pose,
+    initial_angle, current_conf = optimize_angle(end_effector, element_pose,
                                                  translation_path[0], direction, reverse, initial_angles,
                                                  collision_fn, nearby=False)
     if current_conf is None:
@@ -240,7 +239,7 @@ def compute_direction_path(robot, tool, tool_from_root,
         #set_joint_positions(robot, movable_joints, current_conf)
         candidate_angles = [wrap_angle(current_angle + delta) for delta in angle_deltas]
         random.shuffle(candidate_angles)
-        current_angle, current_conf = optimize_angle(robot, tool, tool_from_root, tool_link, element_pose,
+        current_angle, current_conf = optimize_angle(end_effector, element_pose,
                                                      translation, direction, reverse, candidate_angles,
                                                      collision_fn, nearby=True)
         if current_conf is None:
@@ -252,6 +251,25 @@ def compute_direction_path(robot, tool, tool_from_root,
     return plan_approach(robot, print_traj, collision_fn)
 
 ##################################################
+
+class EndEffector(object):
+    def __init__(self, robot, ee_link, tool_link, **kwargs):
+        self.robot = robot
+        self.ee_link = ee_link
+        self.tool_link = tool_link
+        self.tool_from_ee = get_relative_pose(self.robot, self.ee_link, self.tool_link)
+        tool_links = get_link_subtree(robot, self.ee_link)
+        self.body = clone_body(robot, links=tool_links, **kwargs)
+        # for link in get_all_links(tool_body):
+        #    set_color(tool_body, np.zeros(4), link)
+    @property
+    def tool_from_root(self):
+        return self.tool_from_ee
+    @property
+    def tool_body(self):
+        return self.body
+    def __repr__(self):
+        return '{}({}, {})'.format(self.__class__.__name__, self.robot, self.end_effector)
 
 def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground_nodes,
                      precompute_collisions=True, supports=True, bidirectional=False,
@@ -268,15 +286,8 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
     node_neighbors = get_node_neighbors(element_bodies)
     incoming_supporters, _ = neighbors_from_orders(get_supported_orders(element_bodies, node_points))
 
-    #dump_body(robot)
-    root_link = link_from_name(robot, TOOL_ROOT)
-    tool_links = get_link_subtree(robot, root_link)
-    tool_body = clone_body(robot, links=tool_links, visual=False, collision=True)
-    #for link in get_all_links(tool_body):
-    #    set_color(tool_body, np.zeros(4), link)
-
-    tool_link = link_from_name(robot, TOOL_NAME)
-    tool_from_root = get_relative_pose(robot, root_link, tool_link)
+    end_effector = EndEffector(robot, ee_link=link_from_name(robot, TOOL_ROOT),
+                               tool_link=link_from_name(robot, TOOL_NAME), visual=False, collision=True)
 
     def gen_fn(node1, element, extruded=[], trajectories=[]): # fluents=[]):
         #start_time = time.time()
@@ -320,15 +331,14 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                     if bidirectional:
                         reverse = random.choice([False, True])
                     n1, n2 = reversed(element) if reverse else element
-                    command = compute_direction_path(robot, tool_body, tool_from_root,
-                                                     length, reverse, element_bodies, element,
+                    command = compute_direction_path(end_effector, length, reverse, element_bodies, element,
                                                      direction, obstacles, collision_fn,
                                                      ee_only=ee_only, **kwargs)
                     if command is None:
                         continue
                     if collisions and precompute_collisions:
                         bodies_order = [element_bodies[e] for e in elements_order]
-                        colliding = command_collision(tool_body, tool_from_root, command, bodies_order)
+                        colliding = command_collision(end_effector, command, bodies_order)
                         command.colliding = {e for k, e in enumerate(elements_order) if colliding[k]}
                     if not grounded and (neighboring_elements <= command.colliding):
                         continue # If all neighbors collide

@@ -126,8 +126,8 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
 
     def conflict_fn(printed, element, conf):
         # TODO: could add element if desired
-        #return np.random.random()
-        #return 0 # Dead-end detection without stability performs reasonably well
+        if not use_conficts:
+            return 0 # Dead-end detection without stability performs reasonably well
         order = retrace_elements(visited, printed)
         printed = frozenset(order[:-1]) # Remove last element (to ensure at least one traj)
         if use_replan:
