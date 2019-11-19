@@ -110,6 +110,8 @@ def command_collision(end_effector, command, bodies):
             for i, body in enumerate(bodies):
                 if not collisions[i]:
                     collisions[i] |= pairwise_collision(trajectory.robot, body)
+    #for element, unsafe in zip(elements, collisions):
+    #    command.safe_per_element[element] = unsafe
     return collisions
 
 ##################################################
@@ -258,7 +260,8 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
     # TODO: can slide a component of the element down
     # TODO: prioritize choices that don't collide with too many edges
     # TODO: sort by number of end-effector collisions
-
+    if not collisions:
+        precompute_collisions = False
     movable_joints = get_movable_joints(robot)
     disabled_collisions = get_disabled_collisions(robot)
     #element_neighbors = get_element_neighbors(element_bodies)
@@ -315,7 +318,8 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                                                      ee_only=ee_only, **kwargs)
                     if command is None:
                         continue
-                    if collisions and precompute_collisions:
+                    command.update_safe(extruded)
+                    if precompute_collisions:
                         bodies_order = [element_bodies[e] for e in elements_order]
                         colliding = command_collision(end_effector, command, bodies_order)
                         command.colliding = {e for k, e in enumerate(elements_order) if colliding[k]}
@@ -325,19 +329,22 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                     prune_dominated(trajectories)
                     if command not in trajectories:
                         continue
-                    if collisions and (len(command.colliding) == 1):
-                        [colliding_element] = command.colliding
-                        obstacles.add(element_bodies[colliding_element])
                     print('{}) {}->{} | EE: {} | Supporters: {} | Attempts: {} | Trajectories: {} | Colliding: {}'.format(
                         num, n1, n2, ee_only, len(supporters), attempt, len(trajectories),
                         sorted(len(t.colliding) for t in trajectories)))
                     temp_time = time.time()
                     yield (command,)
                     idle_time += elapsed_time(temp_time)
-                    if precompute_collisions and not command.colliding:
-                        #print('Reevaluated already non-colliding trajectory!')
-                        return
+                    if precompute_collisions:
+                        if not command.colliding:
+                            #print('Reevaluated already non-colliding trajectory!')
+                            return
+                        elif len(command.colliding) == 1:
+                            [colliding_element] = command.colliding
+                            obstacles.add(element_bodies[colliding_element])
                     break
+                else:
+                    pass
             else:
                 print('{}) {}->{} | EE: {} | Supporters: {} | Attempts: {} | Max attempts exceeded!'.format(
                     num, n1, n2, ee_only, len(supporters), max_directions))

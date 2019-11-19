@@ -167,7 +167,7 @@ class PrintTrajectory(Trajectory):
             return self.tool_path
         return super(PrintTrajectory, self).get_link_path(link_name)
     def reverse(self):
-        return self.__class__(self.robot, self.joints, self.path[::-1],
+        return self.__class__(self.end_effector, self.joints, self.path[::-1],
                               self.tool_path[::-1], self.element, not self.is_reverse)
     def __repr__(self):
         return '{}->{}'.format(self.n1, self.n2)

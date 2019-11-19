@@ -2,12 +2,11 @@ from __future__ import print_function
 
 import heapq
 import time
-import numpy as np
 from collections import defaultdict
 
 from extrusion.validator import compute_plan_deformation
 from extrusion.greedy import Node, retrace_trajectories, add_successors, compute_printed_nodes, \
-    recover_directed_sequence, sample_extrusion, recover_sequence
+    recover_directed_sequence, recover_sequence, compute_printable_elements
 from extrusion.heuristics import get_heuristic_fn
 from extrusion.parsing import load_extrusion
 from extrusion.stream import get_print_gen_fn
@@ -17,7 +16,7 @@ from extrusion.visualization import color_structure
 from extrusion.motion import compute_motion
 # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
 from pybullet_tools.utils import INF, has_gui, elapsed_time, LockRenderer, randomize, \
-    wait_for_user, get_movable_joints, get_joint_positions, get_distance_fn
+    get_movable_joints, get_joint_positions, get_distance_fn
 
 def retrace_elements(visited, current_state):
     return [traj.element for traj in retrace_trajectories(visited, current_state)
@@ -25,9 +24,9 @@ def retrace_elements(visited, current_state):
 
 ##################################################
 
-def get_sample_traj(elements, print_gen_fn, max_extrusions=INF, condition=True):
+def get_sample_traj(element_bodies, print_gen_fn, max_extrusions=INF, condition=True):
     gen_from_element = {element: print_gen_fn(node1=None, element=element, extruded=[], trajectories=[])
-                        for element in elements}
+                        for element in element_bodies}
     trajs_from_element = defaultdict(list)
 
     def enumerate_extrusions(printed, element):
@@ -53,8 +52,9 @@ def get_sample_traj(elements, print_gen_fn, max_extrusions=INF, condition=True):
         assert 1 <= num
         safe_trajectories = []
         for traj in enumerate_extrusions(printed, element):
-            # TODO: lazy collision checking
-            if not (traj.colliding & printed):
+            #safe = not (traj.colliding & printed)
+            safe = traj.is_safe(printed, element_bodies)
+            if safe:
                 safe_trajectories.append(traj)
             if num <= len(safe_trajectories):
                 break
@@ -70,7 +70,7 @@ def topological_sort(robot, obstacles, element_bodies, extrusion_path):
 ##################################################
 
 def lookahead(robot, obstacles, element_bodies, extrusion_path,
-              num_ee=1, num_arm=0, max_directions=500, max_attempts=1,
+              num_ee=0, num_arm=1, max_directions=500, max_attempts=1,
               plan_all=False, use_conficts=False, use_replan=False, heuristic='z', max_time=INF, # max_backtrack=INF,
               revisit=False, ee_only=False, collisions=True, stiffness=True, motions=True, **kwargs):
     if not use_conficts:
@@ -91,11 +91,11 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
     #                                precompute_collisions=False, supports=False, bidirectional=False, ee_only=ee_only,
     #                                max_directions=500, max_attempts=1, collisions=collisions, **kwargs)
     full_print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                         precompute_collisions=True, supports=False, bidirectional=True, ee_only=ee_only,
+                                         precompute_collisions=False, supports=False, bidirectional=True, ee_only=ee_only,
                                          max_directions=max_directions, max_attempts=max_attempts, collisions=collisions, **kwargs)
-    # TODO: could just check kinematics instead of collision
+    # TODO: could just check environment collisions & kinematics instead of element collisions
     ee_print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                        precompute_collisions=True, supports=False, bidirectional=True, ee_only=True,
+                                        precompute_collisions=False, supports=False, bidirectional=True, ee_only=True,
                                         max_directions=1000, max_attempts=max_attempts, collisions=collisions, **kwargs)
     id_from_element = get_id_from_element(element_from_id)
     all_elements = frozenset(element_bodies)
@@ -103,8 +103,8 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
     distance_fn = get_distance_fn(robot, joints, weights=JOINT_WEIGHTS)
     # TODO: 2-step lookahead based on neighbors or spatial proximity
 
-    full_sample_traj, full_trajs_from_element = get_sample_traj(all_elements, full_print_gen_fn)
-    ee_sample_traj, ee_trajs_from_element = get_sample_traj(all_elements, ee_print_gen_fn)
+    full_sample_traj, full_trajs_from_element = get_sample_traj(element_bodies, full_print_gen_fn)
+    ee_sample_traj, ee_trajs_from_element = get_sample_traj(element_bodies, ee_print_gen_fn)
     if ee_only:
         full_sample_traj = ee_sample_traj
     #ee_sample_traj, ee_trajs_from_element = full_sample_traj, full_trajs_from_element
@@ -117,11 +117,7 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
     def sample_remaining(printed, sample_fn, num=1, **kwargs):
         if num == 0:
             return True
-        nodes = compute_printed_nodes(ground_nodes, printed)
-        if plan_all:
-            elements = all_elements - printed
-        else:
-            elements = [element for element in all_elements - printed if any(n in nodes for n in element)]
+        elements = all_elements - printed if plan_all else compute_printable_elements(all_elements, ground_nodes, printed)
         return all(sample_fn(printed, element, num, **kwargs) for element in randomize(elements))
 
     def conflict_fn(printed, element, conf):

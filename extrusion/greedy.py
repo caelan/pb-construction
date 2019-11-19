@@ -51,6 +51,11 @@ def recover_directed_sequence(plan):
 def compute_printed_nodes(ground_nodes, printed):
     return nodes_from_elements(printed) | set(ground_nodes)
 
+def compute_printable_elements(elements, ground_nodes, printed):
+    nodes = compute_printed_nodes(ground_nodes, printed)
+    return {element for element in set(elements) - set(printed)
+            if any(n in nodes for n in element)}
+
 def sample_extrusion(print_gen_fn, ground_nodes, printed, element):
     printed_nodes = compute_printed_nodes(ground_nodes, printed)
     # TODO: could always reverse these trajectories
@@ -94,15 +99,13 @@ def add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, pri
     remaining = elements - printed
     num_remaining = len(remaining) - 1
     assert 0 <= num_remaining
-    nodes = compute_printed_nodes(ground_nodes, printed)
     bias_from_element = {}
-    for element in randomize(remaining):
-        if any(n in nodes for n in element):
-            bias = heuristic_fn(printed, element, conf)
-            priority = (num_remaining, bias, random.random())
-            visits = 0
-            heapq.heappush(queue, (visits, priority, printed, element, conf))
-            bias_from_element[element] = bias
+    for element in randomize(compute_printable_elements(elements, ground_nodes, printed)):
+        bias = heuristic_fn(printed, element, conf)
+        priority = (num_remaining, bias, random.random())
+        visits = 0
+        heapq.heappush(queue, (visits, priority, printed, element, conf))
+        bias_from_element[element] = bias
 
     if visualize and has_gui():
         handles = []
