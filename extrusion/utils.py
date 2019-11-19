@@ -173,10 +173,10 @@ class PrintTrajectory(Trajectory):
         return '{}->{}'.format(self.n1, self.n2)
 
 class Command(object):
-    def __init__(self, trajectories=[], colliding=set()):
+    def __init__(self, trajectories=[], safe_per_element={}):
         self.trajectories = list(trajectories)
-        self.colliding = set(colliding)
-        self.safe_per_element = {}
+        self.safe_per_element = dict(safe_per_element)
+        self.colliding = set()
     @property
     def print_trajectory(self):
         for traj in self.trajectories:
@@ -189,10 +189,16 @@ class Command(object):
     @property
     def end_conf(self):
         return self.trajectories[-1].path[-1]
+    def set_safe(self, element):
+        assert self.safe_per_element.get(element, True) is True
+        self.safe_per_element[element] = True
+    def set_unsafe(self, element):
+        assert self.safe_per_element.get(element, False) is False
+        self.safe_per_element[element] = False
+        self.colliding.add(element)
     def update_safe(self, elements):
         for element in elements:
-            assert self.safe_per_element.get(element, True)
-            self.safe_per_element[element] = True
+            self.set_safe(element)
     def is_safe(self, elements, element_bodies):
         # TODO: check the end-effector first
         known_elements = set(self.safe_per_element) & set(elements)
@@ -207,13 +213,13 @@ class Command(object):
                 for element in unknown_elements:
                     safe = not pairwise_collision(trajectory.robot, element_bodies[element])
                     if not safe:
-                        self.safe_per_element[element] = False
+                        self.set_unsafe(element)
                         return False
         self.update_safe(elements)
         return True
     def reverse(self):
         return self.__class__([traj.reverse() for traj in reversed(self.trajectories)],
-                              colliding=self.colliding)
+                              safe_per_element=self.safe_per_element)
     def iterate(self):
         for trajectory in self.trajectories:
             for output in trajectory.iterate():

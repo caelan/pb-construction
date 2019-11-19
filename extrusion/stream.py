@@ -254,7 +254,7 @@ def compute_direction_path(end_effector, length, reverse, element_bodies, elemen
 
 def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground_nodes,
                      precompute_collisions=True, supports=True, bidirectional=False,
-                     collisions=True, disable=False, ee_only=False,
+                     collisions=True, disable=False, ee_only=False, allow_failures=False,
                      max_directions=1000, max_attempts=1, max_time=INF, **kwargs):
     # TODO: print on full sphere and just check for collisions with the printed element
     # TODO: can slide a component of the element down
@@ -322,11 +322,16 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                     if precompute_collisions:
                         bodies_order = [element_bodies[e] for e in elements_order]
                         colliding = command_collision(end_effector, command, bodies_order)
-                        command.colliding = {e for k, e in enumerate(elements_order) if colliding[k]}
+                        for element2, unsafe in zip(elements_order, colliding):
+                            if unsafe:
+                                command.set_unsafe(element2)
+                            else:
+                                command.set_safe(element2)
                     if not grounded and (neighboring_elements <= command.colliding):
                         continue # If all neighbors collide
                     trajectories.append(command)
-                    prune_dominated(trajectories)
+                    if precompute_collisions:
+                        prune_dominated(trajectories)
                     if command not in trajectories:
                         continue
                     print('{}) {}->{} | EE: {} | Supporters: {} | Attempts: {} | Trajectories: {} | Colliding: {}'.format(
@@ -336,7 +341,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                     yield (command,)
                     idle_time += elapsed_time(temp_time)
                     if precompute_collisions:
-                        if not command.colliding:
+                        if len(command.colliding) == 0:
                             #print('Reevaluated already non-colliding trajectory!')
                             return
                         elif len(command.colliding) == 1:
@@ -344,7 +349,8 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                             obstacles.add(element_bodies[colliding_element])
                     break
                 else:
-                    pass
+                    if allow_failures:
+                        yield None
             else:
                 print('{}) {}->{} | EE: {} | Supporters: {} | Attempts: {} | Max attempts exceeded!'.format(
                     num, n1, n2, ee_only, len(supporters), max_directions))

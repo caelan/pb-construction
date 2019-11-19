@@ -25,11 +25,11 @@ Node = namedtuple('Node', ['action', 'state'])
 
 ##################################################
 
-def retrace_trajectories(visited, current_state, reverse=False):
+def retrace_trajectories(visited, current_state, horizon=INF, reverse=False):
     command, prev_state = visited[current_state]
-    if prev_state is None:
+    if (prev_state is None) or (horizon == 0):
         return []
-    prior_trajectories = retrace_trajectories(visited, prev_state, reverse)
+    prior_trajectories = retrace_trajectories(visited, prev_state, horizon=horizon-1, reverse=reverse)
     current_trajectories = [traj for traj in command.trajectories]
     if reverse:
         return current_trajectories + prior_trajectories
