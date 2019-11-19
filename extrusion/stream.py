@@ -4,12 +4,11 @@ import time
 
 from pybullet_tools.utils import get_movable_joints, get_joint_positions, multiply, invert, \
     set_joint_positions, inverse_kinematics, get_link_pose, get_distance, point_from_pose, wrap_angle, get_sample_fn, \
-    link_from_name, get_pose, get_collision_fn, dump_body, get_link_subtree, wait_for_user, clone_body, \
-    get_all_links, set_color, set_pose, pairwise_collision, get_relative_pose, Pose, Euler, Point, interval_generator, \
-    randomize, get_extend_fn, user_input, INF, elapsed_time, get_bodies_in_region, get_aabb
-from extrusion.utils import TOOL_NAME, get_disabled_collisions, get_node_neighbors, \
+    link_from_name, get_pose, get_collision_fn, set_pose, pairwise_collision, Pose, Euler, Point, interval_generator, \
+    randomize, get_extend_fn, user_input, INF, elapsed_time
+from extrusion.utils import TOOL_LINK, get_disabled_collisions, get_node_neighbors, \
     PrintTrajectory, retrace_supporters, get_supported_orders, prune_dominated, Command, MotionTrajectory, RESOLUTION, \
-    JOINT_WEIGHTS
+    JOINT_WEIGHTS, EE_LINK, EndEffector
 #from extrusion.run import USE_IKFAST, get_supported_orders, retrace_supporters, SELF_COLLISIONS, USE_CONMECH
 from pddlstream.language.stream import WildOutput
 from pddlstream.utils import neighbors_from_orders, irange
@@ -33,7 +32,6 @@ else:
     USE_CONMECH = True
 
 SELF_COLLISIONS = True
-TOOL_ROOT = 'eef_base_link' # robot_tool0
 
 STEP_SIZE = 0.0025  # 0.005
 
@@ -165,7 +163,7 @@ def plan_approach(robot, print_traj, collision_fn):
     weights = JOINT_WEIGHTS
     resolutions = np.divide(0.25*RESOLUTION*np.ones(weights.shape), weights)
     extend_fn = get_extend_fn(robot, joints, resolutions=resolutions)
-    tool_link = link_from_name(robot, TOOL_NAME)
+    tool_link = link_from_name(robot, TOOL_LINK)
     approach_pose = Pose(Point(z=-APPROACH_DISTANCE))
 
     start_conf = print_traj.path[0]
@@ -222,7 +220,7 @@ def compute_direction_path(end_effector, length, reverse, element_bodies, elemen
         initial_angle = random.choice(initial_angles)
         tool_path = compute_tool_path(element_pose, translation_path, direction, initial_angle, reverse)
         robot_path = []
-        print_traj = PrintTrajectory(robot, get_movable_joints(robot), robot_path, tool_path, element, reverse)
+        print_traj = PrintTrajectory(end_effector, get_movable_joints(robot), robot_path, tool_path, element, reverse)
         # TODO: plan_approach
         return Command([print_traj])
 
@@ -247,29 +245,10 @@ def compute_direction_path(end_effector, length, reverse, element_bodies, elemen
         robot_path.append(current_conf)
 
     tool_path = compute_tool_path(element_pose, translation_path, direction, initial_angle, reverse)
-    print_traj = PrintTrajectory(robot, get_movable_joints(robot), robot_path, tool_path, element, reverse)
+    print_traj = PrintTrajectory(end_effector, get_movable_joints(robot), robot_path, tool_path, element, reverse)
     return plan_approach(robot, print_traj, collision_fn)
 
 ##################################################
-
-class EndEffector(object):
-    def __init__(self, robot, ee_link, tool_link, **kwargs):
-        self.robot = robot
-        self.ee_link = ee_link
-        self.tool_link = tool_link
-        self.tool_from_ee = get_relative_pose(self.robot, self.ee_link, self.tool_link)
-        tool_links = get_link_subtree(robot, self.ee_link)
-        self.body = clone_body(robot, links=tool_links, **kwargs)
-        # for link in get_all_links(tool_body):
-        #    set_color(tool_body, np.zeros(4), link)
-    @property
-    def tool_from_root(self):
-        return self.tool_from_ee
-    @property
-    def tool_body(self):
-        return self.body
-    def __repr__(self):
-        return '{}({}, {})'.format(self.__class__.__name__, self.robot, self.end_effector)
 
 def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground_nodes,
                      precompute_collisions=True, supports=True, bidirectional=False,
@@ -286,8 +265,8 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
     node_neighbors = get_node_neighbors(element_bodies)
     incoming_supporters, _ = neighbors_from_orders(get_supported_orders(element_bodies, node_points))
 
-    end_effector = EndEffector(robot, ee_link=link_from_name(robot, TOOL_ROOT),
-                               tool_link=link_from_name(robot, TOOL_NAME), visual=False, collision=True)
+    end_effector = EndEffector(robot, ee_link=link_from_name(robot, EE_LINK),
+                               tool_link=link_from_name(robot, TOOL_LINK), visual=False, collision=True)
 
     def gen_fn(node1, element, extruded=[], trajectories=[]): # fluents=[]):
         #start_time = time.time()
@@ -295,7 +274,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
         reverse = (node1 != element[0])
         if disable:
             path, tool_path = [], []
-            traj = PrintTrajectory(robot, get_movable_joints(robot), path, tool_path, element, reverse)
+            traj = PrintTrajectory(end_effector, get_movable_joints(robot), path, tool_path, element, reverse)
             command = Command([traj])
             yield (command,)
             return
@@ -385,7 +364,6 @@ def test_stiffness(fluents=[]):
        return True
     # https://github.com/yijiangh/conmech
     # TODO: to use the non-skeleton focused algorithm, need to remove the negative axiom upon success
-    import pyconmech
     elements = {fact[1] for fact in fluents}
     #print(elements)
     return True

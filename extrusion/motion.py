@@ -8,7 +8,7 @@ from pybullet_tools.utils import get_movable_joints, set_joint_positions, plan_j
     wait_for_duration, disconnect, elapsed_time, reset_simulation, wait_for_user
 
 from extrusion.utils import get_disabled_collisions, MotionTrajectory, load_world, PrintTrajectory, is_ground, \
-    TOOL_NAME, RESOLUTION, JOINT_WEIGHTS
+    RESOLUTION, JOINT_WEIGHTS
 from extrusion.visualization import draw_ordered, set_extrusion_camera
 from extrusion.stream import SELF_COLLISIONS
 
@@ -89,7 +89,7 @@ def display_trajectories(node_points, ground_nodes, trajectories, animate=True, 
         for conf in trajectory.path:
             set_joint_positions(robot, movable_joints, conf)
             if isinstance(trajectory, PrintTrajectory):
-                current_point = point_from_pose(get_link_pose(robot, link_from_name(robot, TOOL_NAME)))
+                current_point = point_from_pose(trajectory.end_effector.get_tool_pose())
                 if last_point is not None:
                     color = (0, 0, 1) if is_ground(trajectory.element, ground_nodes) else (1, 0, 0)
                     handles.append(add_line(last_point, current_point, color=color))

@@ -8,11 +8,13 @@ from collections import defaultdict, deque, namedtuple
 from pyconmech import StiffnessChecker
 
 from pybullet_tools.utils import get_link_pose, BodySaver, set_point, set_joint_positions, \
-    Point, load_model, HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, get_aabb, get_distance
+    Point, load_model, HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, get_aabb, \
+    get_distance, get_relative_pose, get_link_subtree, clone_body, randomize, pairwise_collision
 from pddlstream.utils import get_connected_components
 
 KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
-TOOL_NAME = 'eef_tcp_frame'
+TOOL_LINK = 'eef_tcp_frame'
+EE_LINK = 'eef_base_link' # robot_tool0
 # [u'base_frame_in_rob_base', u'element_list', u'node_list', u'assembly_type', u'model_type', u'unit']
 
 # TODO: import from SRDF
@@ -97,13 +99,33 @@ def get_custom_limits(robot):
 
 ##################################################
 
+class EndEffector(object):
+    def __init__(self, robot, ee_link, tool_link, **kwargs):
+        self.robot = robot
+        self.ee_link = ee_link
+        self.tool_link = tool_link
+        self.tool_from_ee = get_relative_pose(self.robot, self.ee_link, self.tool_link)
+        tool_links = get_link_subtree(robot, self.ee_link)
+        self.body = clone_body(robot, links=tool_links, **kwargs)
+        # for link in get_all_links(tool_body):
+        #    set_color(tool_body, np.zeros(4), link)
+    def get_tool_pose(self):
+        return get_link_pose(self.robot, self.tool_link)
+    @property
+    def tool_from_root(self):
+        return self.tool_from_ee
+    def __repr__(self):
+        return '{}({}, {})'.format(self.__class__.__name__, self.robot, self.body)
+
+##################################################
+
 class Trajectory(object):
     def __init__(self, robot, joints, path):
         self.robot = robot
         self.joints = joints
         self.path = path
         self.path_from_link = {}
-    def get_link_path(self, link_name=TOOL_NAME):
+    def get_link_path(self, link_name=TOOL_LINK):
         link = link_from_name(self.robot, link_name)
         if link not in self.path_from_link:
             with BodySaver(self.robot):
@@ -129,8 +151,9 @@ class MotionTrajectory(Trajectory):
         return 'm({},{})'.format(len(self.joints), len(self.path))
 
 class PrintTrajectory(Trajectory):
-    def __init__(self, robot, joints, path, tool_path, element, is_reverse=False):
-        super(PrintTrajectory, self).__init__(robot, joints, path)
+    def __init__(self, end_effector, joints, path, tool_path, element, is_reverse=False):
+        super(PrintTrajectory, self).__init__(end_effector.robot, joints, path)
+        self.end_effector = end_effector
         self.tool_path = tool_path
         self.is_reverse = is_reverse
         #assert len(self.path) == len(self.tool_path)
@@ -139,8 +162,8 @@ class PrintTrajectory(Trajectory):
     @property
     def directed_element(self):
         return (self.n1, self.n2)
-    def get_link_path(self, link_name=TOOL_NAME):
-        if link_name == TOOL_NAME:
+    def get_link_path(self, link_name=TOOL_LINK):
+        if link_name == TOOL_LINK:
             return self.tool_path
         return super(PrintTrajectory, self).get_link_path(link_name)
     def reverse(self):
@@ -153,6 +176,7 @@ class Command(object):
     def __init__(self, trajectories=[], colliding=set()):
         self.trajectories = list(trajectories)
         self.colliding = set(colliding)
+        self.safe_per_element = {}
     @property
     def print_trajectory(self):
         for traj in self.trajectories:
@@ -165,6 +189,28 @@ class Command(object):
     @property
     def end_conf(self):
         return self.trajectories[-1].path[-1]
+    def update_safe(self, elements):
+        for element in elements:
+            assert self.safe_per_element.get(element, True)
+            self.safe_per_element[element] = True
+    def is_safe(self, elements, element_bodies):
+        # TODO: check the end-effector first
+        known_elements = set(self.safe_per_element) & set(elements)
+        if not all(self.safe_per_element[e] for e in known_elements):
+            return False
+        unknown_elements = randomize(set(elements) - known_elements)
+        if not unknown_elements:
+            return True
+        for trajectory in randomize(self.trajectories): # TODO: could cache each individual collision
+            for robot_conf in randomize(trajectory.path):
+                set_joint_positions(trajectory.robot, trajectory.joints, robot_conf)
+                for element in unknown_elements:
+                    safe = not pairwise_collision(trajectory.robot, element_bodies[element])
+                    if not safe:
+                        self.safe_per_element[element] = False
+                        return False
+        self.update_safe(elements)
+        return True
     def reverse(self):
         return self.__class__([traj.reverse() for traj in reversed(self.trajectories)],
                               colliding=self.colliding)
