@@ -190,12 +190,12 @@ def main():
     parser.add_argument('-m', '--motions', action='store_true',
                         help='Plans motions between each extrusion')
     parser.add_argument('-n', '--num', default=0, type=int,
-                        help='TBD')
+                        help='Number of experiment trials')
     parser.add_argument('-p', '--problem', default='simple_frame',
                         help='The name of the problem to solve')
     parser.add_argument('-s', '--stiffness',  action='store_false',
                         help='Disables stiffness checking')
-    parser.add_argument('-t', '--max_time', default=60*60, type=int,
+    parser.add_argument('-t', '--max_time', default=2*60*60, type=int,
                         help='The max time')
     parser.add_argument('-v', '--viewer', action='store_true',
                         help='Enables the viewer during planning')

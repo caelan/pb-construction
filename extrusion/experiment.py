@@ -23,9 +23,9 @@ ALGORITHMS = ['lookahead']
 
 EXCLUDE = [
     'dented_cube', # TODO: 3D_truss isn't supported
-    'rotated_dented_cube', # TODO: 3D_truss isn't supported
+    #'rotated_dented_cube', # Structure violates stiffness
     'robarch_tree',
-    'DJMM_bridge',
+    #'DJMM_bridge',
 ]
 
 EXPERIMENTS_DIR = 'experiments/'
