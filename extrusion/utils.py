@@ -12,7 +12,8 @@ from pybullet_tools.utils import get_link_pose, BodySaver, set_point, set_joint_
     get_distance, get_relative_pose, get_link_subtree, clone_body, randomize, pairwise_collision
 from pddlstream.utils import get_connected_components
 
-KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
+# KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
+KUKA_PATH = r'C:\Users\yijiangh\Documents\pb_ws\pychoreo\src\pychoreo_examples\data\models\kuka_kr6_r900\urdf\kuka_kr6_r900_extrusion.urdf'
 TOOL_LINK = 'eef_tcp_frame'
 EE_LINK = 'eef_base_link' # robot_tool0
 # [u'base_frame_in_rob_base', u'element_list', u'node_list', u'assembly_type', u'model_type', u'unit']

@@ -9,7 +9,8 @@ from pybullet_tools.utils import create_cylinder, set_point, set_quat, \
 Element = namedtuple('Element', ['id', 'layer', 'nodes'])
 
 # https://github.com/yijiangh/assembly_instances/tree/master/extrusion
-EXTRUSION_DIRECTORY = os.path.join('..', 'assembly_instances', 'extrusion')
+# EXTRUSION_DIRECTORY = os.path.join('..', 'assembly_instances', 'extrusion')
+EXTRUSION_DIRECTORY = r'C:\Users\yijiangh\Documents\pb_ws\pychoreo\src\pychoreo_examples\data\assembly_instances\extrusion'
 EXTRUSION_FILENAMES = {
     # bunny (3)
     'C': 'C_shape.json',
@@ -23,6 +24,7 @@ EXTRUSION_FILENAMES = {
     'topopt-205': 'topopt-205_S0.7_03-14-2019_w_layer.json',
     'topopt-310': 'topopt-310_S1_03-14-2019_w_layer.json',
     'voronoi': 'voronoi_S1_03-14-2019_w_layer.json',
+    'topopt-101_tiny': 'topopt-101_tiny.json',
 
 }
 DEFAULT_SCALE = 1e-3 # TODO: load different scales

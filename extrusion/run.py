@@ -153,9 +153,19 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     }
     plan_data.update(data)
     del plan_data['sequence']
+
     #plan_path = '{}_solution.json'.format(args.problem)
     #with open(plan_path, 'w') as f:
     #    json.dump(plan_data, f, indent=2, sort_keys=True)
+
+    result_file_dir = "C:/Users/yijiangh/Documents/pb_ws/pychoreo/tests/test_data"
+    print('result dir: ', result_file_dir)
+    if not os.path.exists(result_file_dir):
+        os.makedirs(result_file_dir) 
+
+    plan_path = os.path.join(result_file_dir, '{}_solution_{}-{}.json'.format(args.problem, args.algorithm, args.bias))
+    with open(plan_path, 'w') as f:
+        json.dump(plan_data, f, indent=2, sort_keys=True)
 
     if watch:
         display_trajectories(node_points, ground_nodes, planned_trajectories, animate=animate)
