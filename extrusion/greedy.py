@@ -14,11 +14,12 @@ from extrusion.parsing import load_extrusion
 from extrusion.visualization import draw_element, draw_ordered
 from extrusion.stream import get_print_gen_fn
 from extrusion.utils import check_connected, test_stiffness, \
-    create_stiffness_checker, get_id_from_element, load_world, nodes_from_elements, PrintTrajectory
+    create_stiffness_checker, get_id_from_element, load_world, PrintTrajectory, \
+    compute_printed_nodes, compute_printable_elements, get_ground_elements, is_ground
 
 # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
-from pybullet_tools.utils import connect, ClientSaver, wait_for_user, INF, has_gui, remove_all_debug
-from pddlstream.utils import implies
+from pybullet_tools.utils import connect, ClientSaver, wait_for_user, INF, has_gui, remove_all_debug, \
+    get_movable_joints, get_joint_positions, implies
 
 #State = namedtuple('State', ['element', 'printed', 'plan'])
 Node = namedtuple('Node', ['action', 'state'])
@@ -47,14 +48,6 @@ def recover_directed_sequence(plan):
     return [traj.directed_element for traj in plan if isinstance(traj, PrintTrajectory)]
 
 ##################################################
-
-def compute_printed_nodes(ground_nodes, printed):
-    return nodes_from_elements(printed) | set(ground_nodes)
-
-def compute_printable_elements(elements, ground_nodes, printed):
-    nodes = compute_printed_nodes(ground_nodes, printed)
-    return {element for element in set(elements) - set(printed)
-            if any(n in nodes for n in element)}
 
 def sample_extrusion(print_gen_fn, ground_nodes, printed, element):
     printed_nodes = compute_printed_nodes(ground_nodes, printed)
@@ -94,35 +87,37 @@ def draw_action(node_points, printed, element):
 
 ##################################################
 
-def add_successors(queue, elements, node_points, ground_nodes, heuristic_fn, printed, conf,
+def add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn, printed, conf,
                    visualize=False):
-    remaining = elements - printed
+    remaining = all_elements - printed
     num_remaining = len(remaining) - 1
     assert 0 <= num_remaining
     bias_from_element = {}
-    for element in randomize(compute_printable_elements(elements, ground_nodes, printed)):
+    for element in randomize(compute_printable_elements(all_elements, ground_nodes, printed)):
         bias = heuristic_fn(printed, element, conf)
         priority = (num_remaining, bias, random.random())
         visits = 0
         heapq.heappush(queue, (visits, priority, printed, element, conf))
         bias_from_element[element] = bias
 
-    if visualize and has_gui():
-        handles = []
-        with LockRenderer():
-            remove_all_debug()
-            for element in printed:
-                handles.append(draw_element(node_points, element, color=(0, 0, 0)))
-            successors = sorted(bias_from_element, key=lambda e: bias_from_element[e])
-            handles.extend(draw_ordered(successors, node_points))
-        print('Min: {:.3E} | Max: {:.3E}'.format(bias_from_element[successors[0]], bias_from_element[successors[-1]]))
-        wait_for_user()
+    # if visualize and has_gui():
+    #     handles = []
+    #     with LockRenderer():
+    #         remove_all_debug()
+    #         for element in printed:
+    #             handles.append(draw_element(node_points, element, color=(0, 0, 0)))
+    #         successors = sorted(bias_from_element, key=lambda e: bias_from_element[e])
+    #         handles.extend(draw_ordered(successors, node_points))
+    #     print('Min: {:.3E} | Max: {:.3E}'.format(bias_from_element[successors[0]], bias_from_element[successors[-1]]))
+    #     wait_for_user()
 
 def progression(robot, obstacles, element_bodies, extrusion_path,
                 heuristic='z', max_time=INF, # max_backtrack=INF,
                 stiffness=True, **kwargs):
 
     start_time = time.time()
+    joints = get_movable_joints(robot)
+    initial_conf = get_joint_positions(robot, joints)
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
     checker = create_stiffness_checker(extrusion_path, verbose=False)
     #checker = None
@@ -195,9 +190,12 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
     # TODO: max branching factor
 
     start_time = time.time()
+    joints = get_movable_joints(robot)
+    initial_conf = get_joint_positions(robot, joints)
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
     id_from_element = get_id_from_element(element_from_id)
     all_elements = frozenset(element_bodies)
+    ground_elements = get_ground_elements(all_elements, ground_nodes)
     checker = create_stiffness_checker(extrusion_path, verbose=False)
     #checker = None
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
@@ -211,12 +209,14 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
     visited = {initial_printed: Node(None, None)}
 
     def add_successors(printed):
+        ground_remaining = printed <= ground_elements
+        num_remaining = len(printed) - 1
+        assert 0 <= num_remaining
         for element in randomize(printed):
-            num_remaining = len(printed) - 1
-            assert 0 <= num_remaining
-            bias = heuristic_fn(printed, element, conf=None)
-            priority = (num_remaining, bias, random.random())
-            heapq.heappush(queue, (priority, printed, element))
+            if implies(is_ground(element, ground_nodes), ground_remaining):
+                bias = heuristic_fn(printed, element, conf=None)
+                priority = (num_remaining, bias, random.random())
+                heapq.heappush(queue, (priority, printed, element))
 
     if check_connected(ground_nodes, initial_printed) and \
             test_stiffness(extrusion_path, element_from_id, initial_printed, checker=checker):

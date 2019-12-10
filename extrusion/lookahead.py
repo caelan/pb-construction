@@ -5,13 +5,13 @@ import time
 from collections import defaultdict
 
 from extrusion.validator import compute_plan_deformation
-from extrusion.greedy import Node, retrace_trajectories, add_successors, compute_printed_nodes, \
-    recover_directed_sequence, recover_sequence, compute_printable_elements
+from extrusion.greedy import Node, retrace_trajectories, add_successors, recover_directed_sequence, recover_sequence
 from extrusion.heuristics import get_heuristic_fn
 from extrusion.parsing import load_extrusion
 from extrusion.stream import get_print_gen_fn
 from extrusion.utils import check_connected, test_stiffness, \
-    create_stiffness_checker, get_id_from_element, PrintTrajectory, JOINT_WEIGHTS
+    create_stiffness_checker, get_id_from_element, PrintTrajectory, JOINT_WEIGHTS, compute_printed_nodes, \
+    compute_printable_elements
 from extrusion.visualization import color_structure
 from extrusion.motion import compute_motion
 # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
