@@ -80,6 +80,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     elements = list(element_from_id.values())
     #elements, ground_nodes = downsample_nodes(elements, node_points, ground_nodes)
     # plan = plan_sequence_test(node_points, elements, ground_nodes)
+    partial_orders = [] # TODO: could test ground as partial orders
 
     connect(use_gui=viewer)
     with LockRenderer():
@@ -109,15 +110,16 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
                                                        trajectories=trajectories, collisions=not args.cfree,
                                                        max_time=args.max_time, disable=args.disable, debug=False)
         elif args.algorithm == 'progression':
-            planned_trajectories, data = progression(robot, obstacles, element_bodies, problem_path, heuristic=args.bias,
-                                                     max_time=args.max_time, collisions=not args.cfree,
+            planned_trajectories, data = progression(robot, obstacles, element_bodies, problem_path, partial_orders=partial_orders,
+                                                     heuristic=args.bias, max_time=args.max_time, collisions=not args.cfree,
                                                      disable=args.disable, stiffness=args.stiffness, motions=args.motions)
         elif args.algorithm == 'regression':
-            planned_trajectories, data = regression(robot, obstacles, element_bodies, problem_path, heuristic=args.bias,
-                                                    max_time=args.max_time, collisions=not args.cfree,
+            planned_trajectories, data = regression(robot, obstacles, element_bodies, problem_path,
+                                                    heuristic=args.bias, max_time=args.max_time, collisions=not args.cfree,
                                                     disable=args.disable, stiffness=args.stiffness, motions=args.motions)
         elif args.algorithm == 'lookahead':
-            planned_trajectories, data = lookahead(robot, obstacles, element_bodies, problem_path, heuristic=args.bias,
+            planned_trajectories, data = lookahead(robot, obstacles, element_bodies, problem_path,
+                                                   partial_orders=partial_orders, heuristic=args.bias,
                                                    max_time=args.max_time, ee_only=args.ee_only, collisions=not args.cfree,
                                                    disable=args.disable, stiffness=args.stiffness, motions=args.motions)
         else:

@@ -81,7 +81,7 @@ def topological_sort(robot, obstacles, element_bodies, extrusion_path):
 
 ##################################################
 
-def lookahead(robot, obstacles, element_bodies, extrusion_path,
+def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[],
               num_ee=0, num_arm=1, max_directions=500, max_attempts=1,
               plan_all=False, use_conflicts=False, use_replan=False, heuristic='z', max_time=INF,  # max_backtrack=INF,
               revisit=False, ee_only=False, collisions=True, stiffness=True, motions=True, **kwargs):
@@ -169,7 +169,8 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
             test_stiffness(extrusion_path, element_from_id, all_elements) and \
             sample_remaining(initial_printed, initial_printed, ee_sample_traj, num=num_ee) and \
             sample_remaining(initial_printed, initial_printed, full_sample_traj, num=num_arm):
-        add_successors(queue, all_elements, node_points, ground_nodes, priority_fn, initial_printed, initial_conf)
+        add_successors(queue, all_elements, node_points, ground_nodes, priority_fn, initial_printed, initial_conf,
+                       partial_orders=partial_orders)
 
     plan = None
     min_remaining = INF
@@ -249,7 +250,8 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
             min_remaining = 0
             plan = retrace_trajectories(visited, next_printed)
             break
-        add_successors(queue, all_elements, node_points, ground_nodes, priority_fn, next_printed, end_conf)
+        add_successors(queue, all_elements, node_points, ground_nodes, priority_fn, next_printed, end_conf,
+                       partial_orders=partial_orders)
         if revisit:
             heapq.heappush(queue, (visits + 1, priority, printed, element, current_conf))
 

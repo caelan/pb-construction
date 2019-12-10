@@ -21,6 +21,7 @@ from extrusion.motion import compute_motion
 # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
 from pybullet_tools.utils import connect, ClientSaver, wait_for_user, INF, has_gui, remove_all_debug, \
     get_movable_joints, get_joint_positions, implies
+from pddlstream.utils import incoming_from_edges, outgoing_from_edges
 
 #State = namedtuple('State', ['element', 'printed', 'plan'])
 Node = namedtuple('Node', ['action', 'state'])
@@ -89,12 +90,15 @@ def draw_action(node_points, printed, element):
 ##################################################
 
 def add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn, printed, conf,
-                   visualize=False):
+                   partial_orders=[], visualize=False):
+    incoming_from_element = incoming_from_edges(partial_orders)
     remaining = all_elements - printed
     num_remaining = len(remaining) - 1
     assert 0 <= num_remaining
     bias_from_element = {}
     for element in randomize(compute_printable_elements(all_elements, ground_nodes, printed)):
+        if not (incoming_from_element[element] <= printed):
+            continue
         bias = heuristic_fn(printed, element, conf)
         priority = (num_remaining, bias, random.random())
         visits = 0
@@ -112,7 +116,7 @@ def add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn,
     #     print('Min: {:.3E} | Max: {:.3E}'.format(bias_from_element[successors[0]], bias_from_element[successors[-1]]))
     #     wait_for_user()
 
-def progression(robot, obstacles, element_bodies, extrusion_path,
+def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders=[],
                 heuristic='z', max_time=INF, # max_backtrack=INF,
                 stiffness=True, motions=True, collisions=True, **kwargs):
 
@@ -135,7 +139,8 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
     visited = {initial_printed: Node(None, None)}
     if check_connected(ground_nodes, all_elements) and \
             test_stiffness(extrusion_path, element_from_id, all_elements):
-        add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn, initial_printed, initial_conf)
+        add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn, initial_printed, initial_conf,
+                       partial_orders=partial_orders)
 
     plan = None
     min_remaining = len(all_elements)
@@ -172,7 +177,8 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
             min_remaining = 0
             plan = retrace_trajectories(visited, next_printed)
             break
-        add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn, next_printed, command.end_conf)
+        add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn, next_printed, command.end_conf,
+                       partial_orders=partial_orders)
 
     max_translation, max_rotation = compute_plan_deformation(extrusion_path, recover_sequence(plan))
     data = {
@@ -189,7 +195,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
 
 ##################################################
 
-def regression(robot, obstacles, element_bodies, extrusion_path,
+def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=[],
                heuristic='z', max_time=INF, # max_backtrack=INF,
                collisions=True, stiffness=True, motions=True, **kwargs):
     # Focused has the benefit of reusing prior work
@@ -217,11 +223,14 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
     queue = []
     visited = {final_printed: Node(None, None)}
 
+    outgoing_from_element = outgoing_from_edges(partial_orders)
     def add_successors(printed, conf):
         ground_remaining = printed <= ground_elements
         num_remaining = len(printed) - 1
         assert 0 <= num_remaining
         for element in randomize(printed):
+            if outgoing_from_element[element] & printed:
+                continue
             if implies(is_ground(element, ground_nodes), ground_remaining):
                 bias = heuristic_fn(printed, element, conf=None)
                 priority = (num_remaining, bias, random.random())
