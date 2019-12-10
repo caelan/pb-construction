@@ -111,11 +111,11 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
         elif args.algorithm == 'progression':
             planned_trajectories, data = progression(robot, obstacles, element_bodies, problem_path, heuristic=args.bias,
                                                      max_time=args.max_time, collisions=not args.cfree,
-                                                     disable=args.disable, stiffness=args.stiffness)
+                                                     disable=args.disable, stiffness=args.stiffness, motions=args.motions)
         elif args.algorithm == 'regression':
             planned_trajectories, data = regression(robot, obstacles, element_bodies, problem_path, heuristic=args.bias,
                                                     max_time=args.max_time, collisions=not args.cfree,
-                                                    disable=args.disable, stiffness=args.stiffness)
+                                                    disable=args.disable, stiffness=args.stiffness, motions=args.motions)
         elif args.algorithm == 'lookahead':
             planned_trajectories, data = lookahead(robot, obstacles, element_bodies, problem_path, heuristic=args.bias,
                                                    max_time=args.max_time, ee_only=args.ee_only, collisions=not args.cfree,

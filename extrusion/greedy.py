@@ -16,6 +16,7 @@ from extrusion.stream import get_print_gen_fn
 from extrusion.utils import check_connected, test_stiffness, \
     create_stiffness_checker, get_id_from_element, load_world, PrintTrajectory, \
     compute_printed_nodes, compute_printable_elements, get_ground_elements, is_ground
+from extrusion.motion import compute_motion
 
 # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
 from pybullet_tools.utils import connect, ClientSaver, wait_for_user, INF, has_gui, remove_all_debug, \
@@ -113,7 +114,7 @@ def add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn,
 
 def progression(robot, obstacles, element_bodies, extrusion_path,
                 heuristic='z', max_time=INF, # max_backtrack=INF,
-                stiffness=True, **kwargs):
+                stiffness=True, motions=True, collisions=True, **kwargs):
 
     start_time = time.time()
     joints = get_movable_joints(robot)
@@ -123,12 +124,12 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
     #checker = None
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                     supports=False, bidirectional=False,
-                                    precompute_collisions=False, max_directions=500, max_attempts=1, **kwargs)
+                                    precompute_collisions=False, max_directions=500, max_attempts=1,
+                                    collisions=collisions, **kwargs)
     id_from_element = get_id_from_element(element_from_id)
     all_elements = frozenset(element_bodies)
     heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=True)
 
-    initial_conf = None
     initial_printed = frozenset()
     queue = []
     visited = {initial_printed: Node(None, None)}
@@ -159,12 +160,19 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
         command = sample_extrusion(print_gen_fn, ground_nodes, printed, element)
         if command is None:
             continue
+        if motions:
+            motion_traj = compute_motion(robot, obstacles, element_bodies, printed,
+                                         current_conf, command.start_conf, collisions=collisions)
+            if motion_traj is None:
+                continue
+            command.trajectories.insert(0, motion_traj)
+
         visited[next_printed] = Node(command, printed)
         if all_elements <= next_printed:
             min_remaining = 0
             plan = retrace_trajectories(visited, next_printed)
             break
-        add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn, next_printed, initial_conf)
+        add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn, next_printed, command.end_conf)
 
     max_translation, max_rotation = compute_plan_deformation(extrusion_path, recover_sequence(plan))
     data = {
@@ -183,7 +191,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path,
 
 def regression(robot, obstacles, element_bodies, extrusion_path,
                heuristic='z', max_time=INF, # max_backtrack=INF,
-               stiffness=True, **kwargs):
+               collisions=True, stiffness=True, motions=True, **kwargs):
     # Focused has the benefit of reusing prior work
     # Greedy has the benefit of conditioning on previous choices
     # TODO: persistent search
@@ -200,15 +208,16 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
     #checker = None
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                     supports=False, bidirectional=False,
-                                    precompute_collisions=False, max_directions=500, max_attempts=1, **kwargs)
+                                    precompute_collisions=False, max_directions=500, max_attempts=1,
+                                    collisions=collisions, **kwargs)
     heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=False)
 
-    final_conf = None
-    initial_printed = all_elements
+    final_conf = initial_conf # TODO: allow choice of config
+    final_printed = all_elements
     queue = []
-    visited = {initial_printed: Node(None, None)}
+    visited = {final_printed: Node(None, None)}
 
-    def add_successors(printed):
+    def add_successors(printed, conf):
         ground_remaining = printed <= ground_elements
         num_remaining = len(printed) - 1
         assert 0 <= num_remaining
@@ -216,16 +225,16 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
             if implies(is_ground(element, ground_nodes), ground_remaining):
                 bias = heuristic_fn(printed, element, conf=None)
                 priority = (num_remaining, bias, random.random())
-                heapq.heappush(queue, (priority, printed, element))
+                heapq.heappush(queue, (priority, printed, element, conf))
 
-    if check_connected(ground_nodes, initial_printed) and \
-            test_stiffness(extrusion_path, element_from_id, initial_printed, checker=checker):
-        add_successors(initial_printed)
+    if check_connected(ground_nodes, final_printed) and \
+            test_stiffness(extrusion_path, element_from_id, final_printed, checker=checker):
+        add_successors(final_printed, final_conf)
 
     # TODO: lazy hill climbing using the true stiffness heuristic
     # Choose the first move that improves the score
     if has_gui():
-        sequence = sorted(initial_printed, key=lambda e: heuristic_fn(initial_printed, e, conf=None), reverse=True)
+        sequence = sorted(final_printed, key=lambda e: heuristic_fn(final_printed, e, conf=None), reverse=True)
         remove_all_debug()
         draw_ordered(sequence, node_points)
         wait_for_user()
@@ -241,7 +250,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
     min_remaining = len(all_elements)
     num_evaluated = max_backtrack = 0
     while queue and (elapsed_time(start_time) < max_time):
-        priority, printed, element = heapq.heappop(queue)
+        priority, printed, element, current_conf = heapq.heappop(queue)
         num_remaining = len(printed)
         backtrack = num_remaining - min_remaining
         max_backtrack = max(max_backtrack, backtrack)
@@ -266,6 +275,12 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
         command = sample_extrusion(print_gen_fn, ground_nodes, next_printed, element)
         if command is None:
             continue
+        if motions:
+            motion_traj = compute_motion(robot, obstacles, element_bodies, printed,
+                                         command.end_conf, current_conf, collisions=collisions)
+            if motion_traj is None:
+                continue
+            command.trajectories.append(motion_traj)
 
         if num_remaining < min_remaining:
             min_remaining = num_remaining
@@ -281,7 +296,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path,
             min_remaining = 0
             plan = retrace_trajectories(visited, next_printed, reverse=True)
             break
-        add_successors(next_printed)
+        add_successors(next_printed, command.start_conf)
 
     max_translation, max_rotation = compute_plan_deformation(extrusion_path, recover_sequence(plan))
     data = {

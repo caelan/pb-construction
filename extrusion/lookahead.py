@@ -83,9 +83,9 @@ def topological_sort(robot, obstacles, element_bodies, extrusion_path):
 
 def lookahead(robot, obstacles, element_bodies, extrusion_path,
               num_ee=0, num_arm=1, max_directions=500, max_attempts=1,
-              plan_all=False, use_conficts=False, use_replan=False, heuristic='z', max_time=INF, # max_backtrack=INF,
+              plan_all=False, use_conflicts=False, use_replan=False, heuristic='z', max_time=INF,  # max_backtrack=INF,
               revisit=False, ee_only=False, collisions=True, stiffness=True, motions=True, **kwargs):
-    if not use_conficts:
+    if not use_conflicts:
         num_ee, num_arm = min(num_ee, 1),  min(num_arm, 1)
     if ee_only:
         num_ee, num_arm = max(num_arm, num_ee), 0
@@ -137,7 +137,7 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path,
 
     def conflict_fn(printed, element, conf):
         # TODO: could add element if desired
-        if not use_conficts:
+        if not use_conflicts:
             return 0 # Dead-end detection without stability performs reasonably well
         order = retrace_elements(visited, printed)
         printed = frozenset(order[:-1]) # Remove last element (to ensure at least one traj)
