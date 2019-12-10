@@ -17,6 +17,8 @@ from extrusion.parsing import get_extrusion_path, load_extrusion
 from pddlstream.utils import INF, str_from_object
 from pybullet_tools.utils import read_pickle
 
+import pandas as pd
+
 # Geometric: python3 -m extrusion.run -l experiments/19-08-09_01-58-34.pk3
 # CFree: python3 -m extrusion.run -l experiments/19-08-14_10-46-35.pk3
 # Disable: python3 -m extrusion.run -l experiments/19-08-14_01-33-13.pk3
@@ -31,8 +33,7 @@ def score_result(result):
         result.get('num_evaluated', 0), result.get('min_remaining', 0), result.get('max_backtrack', 0),
         result.get('max_translation', 0), result.get('max_rotation', 0))
 
-
-def load_experiment(filename, overall=False):
+def load_experiment(filename, overall=False, write_report=False):
     # TODO: maybe just pass the random seed as a separate arg
     # TODO: aggregate over all problems and score using IPC rules
     # https://ipc2018-classical.bitbucket.io/
@@ -51,15 +52,31 @@ def load_experiment(filename, overall=False):
         result.pop('sequence', None)
         data_from_problem.setdefault(problem, []).append((config, result))
 
+    column_names = ('config_id', 'shape','info','algorithm','bias',
+                    'success','runtime','num_evaluated','min_remaining','max_backtrack','max_translation','max_rotation', 'length', 'num_elements')
+    df = pd.DataFrame(columns=column_names)
+    if not overall:
+        shown_column_names = ('algorithm','bias',
+                              'success','runtime','num_evaluated','min_remaining','max_backtrack','max_translation','max_rotation', 'length', 'num_elements')
+        col_name_df = {cn : cn for cn in shown_column_names}    
+
     for p_idx, problem in enumerate(sorted(data_from_problem)):
         print()
         problem_name = os.path.basename(os.path.abspath(problem)) # TODO: this isn't a path...
         print('{}) Problem: {}'.format(p_idx, problem_name))
+
         if problem != ALL:
             extrusion_path = get_extrusion_path(problem)
             element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path, verbose=False)
             print('Nodes: {} | Ground: {} | Elements: {}'.format(
                 len(node_points), len(ground_nodes), len(element_from_id)))
+
+            df = df.append(pd.Series(), ignore_index=True)
+            df = df.append([{ 'config_id' : p_idx,
+                              'shape' : problem_name, 
+                              'info' : 'Nodes: {} | Ground: {} | Elements: {}'.format(
+                                       len(node_points), len(ground_nodes), len(element_from_id))
+                 }])
 
         data_from_config = OrderedDict()
         value_per_field = {}
@@ -71,6 +88,14 @@ def load_experiment(filename, overall=False):
             data_from_config.setdefault(new_config, []).append(result)
 
         print('Attributes:', str_from_object(value_per_field))
+        print(type(str_from_object(value_per_field)))
+        df = df.append([{ 'info' : str_from_object(
+            {field : value_per_field[field] for field in value_per_field.keys() if field not in \
+                ['algorithm', 'bias', 'seed', 'problem']})
+            }])
+        if not overall:
+            df = df.append([col_name_df])
+
         print('Configs:', len(data_from_config))
         for c_idx, config in enumerate(sorted(data_from_config, key=str)):
             results = data_from_config[config]
@@ -85,6 +110,13 @@ def load_experiment(filename, overall=False):
             score = score_result(mean_result)
             print('{}) {} ({}): {}'.format(c_idx, str_from_object(key), len(results), str_from_object(score)))
 
+            df_data = {}
+            df_data.update({'config_id' : c_idx})
+            df_data.update(key)
+            df_data.update(mean_result)
+            # print(df_data)
+            df = df.append(df_data, ignore_index=True)
+    return df
 ##################################################
 
 def enumerate_experiments():
@@ -104,13 +136,25 @@ def enumerate_experiments():
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('path', help='Analyze an experiment')
+    parser.add_argument('path', help='The absolute path to an experiment pickle file')
     parser.add_argument('-a', '--all', action='store_true',
-                        help='Enables the viewer during planning')
+                        help='Print out summary report for all problems')
+    parser.add_argument('-w', '--write_report', action='store_true',
+                        help='Write a spreadsheet report for the experiment.')
     args = parser.parse_args()
     np.set_printoptions(precision=3)
     #enumerate_experiments()
-    load_experiment(args.path, overall=args.all)
+    df = load_experiment(args.path, overall=args.all)
+
+    if args.write_report:
+        exp_dir = os.path.dirname(args.path)
+        csv_file_path = os.path.join(exp_dir, args.path.split(os.path.sep)[-1].split('.')[0] + '.xlsx')
+        df2 = load_experiment(args.path, overall=not args.all)
+
+        # df.to_csv(csv_file_path)
+        with pd.ExcelWriter(csv_file_path) as writer:
+            df.to_excel(writer, sheet_name='detailed' if not args.all else 'summary')
+            df2.to_excel(writer, sheet_name='summary' if not args.all else 'detailed')
 
 if __name__ == '__main__':
     main()
