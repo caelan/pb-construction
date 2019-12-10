@@ -240,11 +240,29 @@ def get_other_node(node1, element):
     assert node1 in element
     return element[node1 == element[0]]
 
+def is_printable(element, printed_nodes):
+    return any(n in printed_nodes for n in element)
+
 def is_ground(element, ground_nodes):
-    return any(n in ground_nodes for n in element)
+    return is_printable(element, ground_nodes)
+
+def get_ground_elements(elements, ground_nodes):
+    return frozenset(filter(lambda e: is_ground(e, ground_nodes), elements))
 
 def compute_element_distance(node_points, elements):
     return sum(get_distance(node_points[n1], node_points[n2]) for n1, n2 in elements)
+
+def compute_printed_nodes(ground_nodes, printed):
+    return nodes_from_elements(printed) | set(ground_nodes)
+
+def compute_printable_elements(all_elements, ground_nodes, printed):
+    ground_elements = get_ground_elements(all_elements, ground_nodes)
+    if ground_elements <= printed:
+        nodes = compute_printed_nodes(ground_nodes, printed)
+    else:
+        nodes = ground_nodes
+    return {element for element in set(all_elements) - set(printed)
+            if is_printable(element, nodes)}
 
 ##################################################
 

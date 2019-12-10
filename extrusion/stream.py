@@ -2,13 +2,15 @@ import numpy as np
 import random
 import time
 
+from itertools import cycle
+
 from pybullet_tools.utils import get_movable_joints, get_joint_positions, multiply, invert, \
     set_joint_positions, inverse_kinematics, get_link_pose, get_distance, point_from_pose, wrap_angle, get_sample_fn, \
     link_from_name, get_pose, get_collision_fn, set_pose, pairwise_collision, Pose, Euler, Point, interval_generator, \
-    randomize, get_extend_fn, user_input, INF, elapsed_time
+    randomize, get_extend_fn, user_input, INF, elapsed_time, wait_for_user
 from extrusion.utils import TOOL_LINK, get_disabled_collisions, get_node_neighbors, \
     PrintTrajectory, retrace_supporters, get_supported_orders, prune_dominated, Command, MotionTrajectory, RESOLUTION, \
-    JOINT_WEIGHTS, EE_LINK, EndEffector
+    JOINT_WEIGHTS, EE_LINK, EndEffector, is_ground
 #from extrusion.run import USE_IKFAST, get_supported_orders, retrace_supporters, SELF_COLLISIONS, USE_CONMECH
 from pddlstream.language.stream import WildOutput
 from pddlstream.utils import neighbors_from_orders, irange
@@ -288,7 +290,6 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
         #    continue
         length = np.linalg.norm(delta)  # 5cm
         neighboring_elements = node_neighbors[n1] & node_neighbors[n2]
-        grounded = any(n in ground_nodes for n in element)
 
         #supporters = {e for e in node_neighbors[n1] if element_supports(e, n1, node_points)}
         supporters = []
@@ -303,8 +304,10 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                                         attachments=[], self_collisions=SELF_COLLISIONS,
                                         disabled_collisions=disabled_collisions,
                                         custom_limits={}) # TODO: get_custom_limits
-
-        direction_generator = get_direction_generator(use_halton=False)
+        if is_ground(element, ground_nodes):
+            direction_generator = cycle([Pose(euler=Euler(roll=0, pitch=0))])
+        else:
+            direction_generator = get_direction_generator(use_halton=False)
         trajectories = list(trajectories)
         for num in irange(INF):
             for attempt in irange(max_directions):
@@ -327,7 +330,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                                 command.set_unsafe(element2)
                             else:
                                 command.set_safe(element2)
-                    if not grounded and (neighboring_elements <= command.colliding):
+                    if not is_ground(element, ground_nodes) and (neighboring_elements <= command.colliding):
                         continue # If all neighbors collide
                     trajectories.append(command)
                     if precompute_collisions:
