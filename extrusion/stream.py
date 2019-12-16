@@ -1,6 +1,7 @@
 import numpy as np
 import random
 import time
+from termcolor import cprint
 
 from itertools import cycle
 
@@ -35,7 +36,8 @@ else:
 
 SELF_COLLISIONS = True
 
-STEP_SIZE = 0.0025  # 0.005
+# STEP_SIZE = 0.0025  # 0.005
+STEP_SIZE = 0.001  # 0.005
 
 ##################################################
 
@@ -355,8 +357,8 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                     if allow_failures:
                         yield None
             else:
-                print('{}) {}->{} | EE: {} | Supporters: {} | Attempts: {} | Max attempts exceeded!'.format(
-                    num, n1, n2, ee_only, len(supporters), max_directions))
+                cprint('{}) {}->{} | EE: {} | Supporters: {} | Attempts: {} | Max attempts exceeded!'.format(
+                       num, n1, n2, ee_only, len(supporters), max_directions), 'red')
                 return
                 #yield None
     return gen_fn

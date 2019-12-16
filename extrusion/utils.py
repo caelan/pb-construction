@@ -2,6 +2,7 @@ from __future__ import print_function
 
 import os
 import numpy as np
+from termcolor import cprint
 
 from collections import defaultdict, deque, namedtuple
 
@@ -34,7 +35,7 @@ SUPPORT_THETA = np.math.radians(10)  # Support polygon
 USE_FLOOR = True
 
 
-RESOLUTION = 0.005
+RESOLUTION = 0.1
 JOINT_WEIGHTS = np.array([0.3078557810844393, 0.443600199302506, 0.23544367607317915,
                           0.03637161028426032, 0.04644626184081511, 0.015054267683041092])
 
@@ -414,12 +415,12 @@ def evaluate_stiffness(extrusion_path, element_from_id, elements, checker=None, 
     trans_tol, rot_tol = checker.get_nodal_deformation_tol()
     max_trans, max_rot, max_trans_vid, max_rot_vid = checker.get_max_nodal_deformation()
     # The inverse of stiffness is flexibility or compliance
-    if verbose:
-        print('Stiff: {} | Compliance: {:.5f}'.format(is_stiff, checker.get_compliance()))
-        print('Max translation deformation: {0:.5f} / {1:.5} = {2:.5}, at node #{3}'.format(
-            max_trans, trans_tol, max_trans / trans_tol, max_trans_vid))
-        print('Max rotation deformation: {0:.5f} / {1:.5} = {2:.5}, at node #{3}'.format(
-            max_rot, rot_tol, max_rot / rot_tol, max_rot_vid))
+    if verbose and not is_stiff:
+        cprint('Stiff: {} | Compliance: {:.5f}'.format(is_stiff, checker.get_compliance()), 'yellow')
+        cprint('Max translation deformation: {0:.5f} / {1:.5} = {2:.5}, at node #{3}'.format(
+                max_trans, trans_tol, max_trans / trans_tol, max_trans_vid))
+        cprint('Max rotation deformation: {0:.5f} / {1:.5} = {2:.5}, at node #{3}'.format(
+                max_rot, rot_tol, max_rot / rot_tol, max_rot_vid))
     #disc = 10
     #exagg_ratio = 1.0
     #time_step = 1.0

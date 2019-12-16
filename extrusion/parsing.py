@@ -6,6 +6,9 @@ from collections import namedtuple, OrderedDict
 from pybullet_tools.utils import create_cylinder, set_point, set_quat, \
     quat_from_euler, Euler, tform_point, multiply, tform_from_pose, pose_from_tform, RED, apply_alpha
 
+RADIUS = 1e-3
+SHRINK = 0.003 # 0. | 0.002 | 0.005
+
 Element = namedtuple('Element', ['id', 'layer', 'nodes'])
 
 # https://github.com/yijiangh/assembly_instances/tree/master/extrusion
@@ -22,10 +25,13 @@ EXTRUSION_FILENAMES = {
     'sig_artopt-bunny': 'sig_artopt-bunny_S1_03-14-2019_w_layer.json',
     'topopt-100': 'topopt-100_S1_03-14-2019_w_layer.json',
     'topopt-205': 'topopt-205_S0.7_03-14-2019_w_layer.json',
+    'topopt-205_rotated': 'topopt-205_rotated.json',
     'topopt-310': 'topopt-310_S1_03-14-2019_w_layer.json',
     'voronoi': 'voronoi_S1_03-14-2019_w_layer.json',
     'topopt-101_tiny': 'topopt-101_tiny.json',
-
+    'topopt-205_long_beam_test' : 'topopt-205_long_beam_test.json',
+    'klein_bottle_trail' : 'klein_bottle_trail.json',
+    'klein_bottle_trail_S2' : 'klein_bottle_trail_S2.json',
 }
 DEFAULT_SCALE = 1e-3 # TODO: load different scales
 
@@ -154,10 +160,11 @@ def create_elements_bodies(node_points, elements, color=apply_alpha(RED, alpha=1
     # TODO: just shrink the structure to prevent worrying about collisions at end-points
     # TODO: could scale the whole environment
     # radius = 1e-6 # 5e-5 | 1e-4
-    radius = 1e-3
+    # radius = 1e-6
+    radius = RADIUS
     # TODO: seems to be a min radius
 
-    shrink = 0.01 # 0. | 0.002 | 0.005
+    shrink = SHRINK # 0. | 0.002 | 0.005
     element_bodies = []
     for (n1, n2) in elements:
         p1, p2 = node_points[n1], node_points[n2]

@@ -8,8 +8,10 @@ import pstats
 import numpy as np
 import random
 import time
+import datetime
 import os
 import json
+from collections import OrderedDict
 
 sys.path.extend([
     'pddlstream/',
@@ -20,10 +22,10 @@ from extrusion.visualization import label_element, set_extrusion_camera, label_n
 from extrusion.experiment import train_parallel
 from extrusion.motion import compute_motions, display_trajectories
 from extrusion.stripstream import plan_sequence
-from extrusion.utils import load_world, PrintTrajectory
+from extrusion.utils import load_world, PrintTrajectory 
 from extrusion.parsing import load_extrusion, create_elements_bodies, \
-    enumerate_problems, get_extrusion_path, affine_extrusion
-from extrusion.stream import get_print_gen_fn
+    enumerate_problems, get_extrusion_path, affine_extrusion, RADIUS, SHRINK
+from extrusion.stream import get_print_gen_fn, STEP_SIZE
 from extrusion.greedy import regression, progression, recover_directed_sequence
 from extrusion.heuristics import HEURISTICS
 from extrusion.validator import verify_plan
@@ -80,7 +82,8 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     elements = list(element_from_id.values())
     #elements, ground_nodes = downsample_nodes(elements, node_points, ground_nodes)
     # plan = plan_sequence_test(node_points, elements, ground_nodes)
-    partial_orders = [] # TODO: could test ground as partial orders
+    # partial_orders = [] # TODO: could test ground as partial orders
+    partial_orders = [((1,8), (1,11)), ((0,1), (1,11))] 
 
     connect(use_gui=viewer)
     with LockRenderer():
@@ -143,16 +146,20 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     animate = not (args.disable or args.ee_only)
     valid = verify_plan(problem_path, planned_elements) #, use_gui=not animate)
 
-    plan_data = {
+    plan_data = OrderedDict({
         'problem':  args.problem,
         'algorithm': args.algorithm,
         'heuristic': args.bias,
         'plan_extrusions': not args.disable,
         'use_collisions': not args.cfree,
         'use_stiffness': args.stiffness,
-        'plan': planned_elements,
         'valid': valid,
-    }
+        'step_size' : STEP_SIZE,
+        'radius' : RADIUS,
+        'shrink' : SHRINK,
+        'write_time' : str(datetime.datetime.now()),
+        'plan': planned_elements,
+    })
     plan_data.update(data)
     del plan_data['sequence']
 
@@ -170,7 +177,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
         json.dump(plan_data, f, indent=2, sort_keys=True)
 
     if watch:
-        display_trajectories(node_points, ground_nodes, planned_trajectories, animate=animate)
+        display_trajectories(node_points, ground_nodes, planned_trajectories, animate=animate, time_step=None)
     if not verbose:
         sys.stdout.close()
     return args, data

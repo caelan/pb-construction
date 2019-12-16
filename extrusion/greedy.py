@@ -3,6 +3,7 @@ from __future__ import print_function
 import heapq
 import random
 import time
+from termcolor import cprint
 
 from collections import namedtuple
 
@@ -89,6 +90,41 @@ def draw_action(node_points, printed, element):
 
 ##################################################
 
+def export_log_data(extrusion_file_path, log_data, overwrite=True, indent=None):
+    import os
+    import datetime
+    import json
+    from collections import OrderedDict
+
+    with open(extrusion_file_path, 'r') as f:
+        shape_data = json.loads(f.read())
+    
+    if 'model_name' in shape_data:
+        file_name = shape_data['model_name']
+    else:
+        file_name = extrusion_file_path.split('.json')[-2].split(os.sep)[-1]
+
+    result_file_dir = r'C:\Users\yijiangh\Documents\pb_ws\pychoreo\tests\test_data'
+    result_file_dir = os.path.join(result_file_dir, 'extrusion_log')
+    # result_file_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'extrusion_log')
+    if not os.path.exists(result_file_dir):
+        os.makedirs(result_file_dir) 
+    
+    data = OrderedDict()
+    data['file_name'] = file_name
+    data['write_time'] = str(datetime.datetime.now())
+    data.update(log_data)
+
+    file_name_tag = log_data['search_method'] + '-' + log_data['heuristic']
+    # if log_data['heuristic'] in ['stiffness', 'fixed-stiffness']:
+    #     file_name_tag += '-' + log_data['stiffness_criteria']
+    plan_path = os.path.join(result_file_dir, '{}_log_{}{}.json'.format(file_name, 
+        file_name_tag,  '_'+data['write_time'] if not overwrite else ''))
+    with open(plan_path, 'w') as f:
+        json.dump(data, f, indent=indent)
+
+##################################################
+
 def add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn, printed, conf,
                    partial_orders=[], visualize=False):
     incoming_from_element = incoming_from_edges(partial_orders)
@@ -145,40 +181,61 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
     plan = None
     min_remaining = len(all_elements)
     num_evaluated = max_backtrack = 0
-    while queue and (elapsed_time(start_time) < max_time):
-        num_evaluated += 1
-        visits, _, printed, element, current_conf = heapq.heappop(queue)
-        num_remaining = len(all_elements) - len(printed)
-        backtrack = num_remaining - min_remaining
-        max_backtrack = max(max_backtrack, backtrack)
-        #if max_backtrack <= backtrack:
-        #    continue
-        num_evaluated += 1
-        if num_remaining < min_remaining:
-            min_remaining = num_remaining
-        print('Iteration: {} | Best: {} | Printed: {} | Element: {} | Index: {} | Time: {:.3f}'.format(
-            num_evaluated, min_remaining, len(printed), element, id_from_element[element], elapsed_time(start_time)))
-        next_printed = printed | {element}
-        if (next_printed in visited) or not check_connected(ground_nodes, next_printed) or \
-                (stiffness and not test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker)):
-            continue
-        command = sample_extrusion(print_gen_fn, ground_nodes, printed, element)
-        if command is None:
-            continue
-        if motions:
-            motion_traj = compute_motion(robot, obstacles, element_bodies, printed,
-                                         current_conf, command.start_conf, collisions=collisions)
-            if motion_traj is None:
+    try:
+        while queue and (elapsed_time(start_time) < max_time):
+            num_evaluated += 1
+            visits, _, printed, element, current_conf = heapq.heappop(queue)
+            num_remaining = len(all_elements) - len(printed)
+            backtrack = num_remaining - min_remaining
+            max_backtrack = max(max_backtrack, backtrack)
+            #if max_backtrack <= backtrack:
+            #    continue
+            num_evaluated += 1
+            if num_remaining < min_remaining:
+                min_remaining = num_remaining
+            cprint('Iteration: {} | Best: {} | Printed: {} | Element: {} | Index: {} | Time: {:.3f}'.format(
+                num_evaluated, min_remaining, len(printed), element, id_from_element[element], elapsed_time(start_time)), 'blue')
+            next_printed = printed | {element}
+            if (next_printed in visited) or not check_connected(ground_nodes, next_printed) or \
+                    (stiffness and not test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker)):
                 continue
-            command.trajectories.insert(0, motion_traj)
+            command = sample_extrusion(print_gen_fn, ground_nodes, printed, element)
+            if command is None:
+                continue
+            if motions:
+                motion_traj = compute_motion(robot, obstacles, element_bodies, printed,
+                                             current_conf, command.start_conf, collisions=collisions)
+                if motion_traj is None:
+                    continue
+                command.trajectories.insert(0, motion_traj)
 
-        visited[next_printed] = Node(command, printed)
-        if all_elements <= next_printed:
-            min_remaining = 0
-            plan = retrace_trajectories(visited, next_printed)
-            break
-        add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn, next_printed, command.end_conf,
-                       partial_orders=partial_orders)
+            visited[next_printed] = Node(command, printed)
+            if all_elements <= next_printed:
+                min_remaining = 0
+                plan = retrace_trajectories(visited, next_printed)
+                break
+            add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn, next_printed, command.end_conf,
+                           partial_orders=partial_orders)
+    except KeyboardInterrupt:
+        # log data
+        cur_data = {}
+        cur_data['iter'] = num_evaluated - 1
+        cur_data['min_remain'] = min_remaining
+        cur_data['max_backtrack'] = max_backtrack
+        cur_data['backtrack'] = backtrack+1 if abs(backtrack) != INF else 0
+        cur_data['chosen_id'] = id_from_element[element]
+        cur_data['total_q_len'] = len(queue)
+        cur_data['search_method'] = 'progression'
+        cur_data['heuristic'] = heuristic
+
+        # queue_log_cnt = 200
+        # cur_data['queue'] = []
+        # cur_data['queue'].append((id_from_element[element], priority))
+        # for candidate in heapq.nsmallest(queue_log_cnt, queue):
+        #     cur_data['queue'].append((id_from_element[candidate[2]], candidate[0]))
+
+        export_log_data(extrusion_path, cur_data, overwrite=False, indent=1)
+        assert False, 'search terminated.'
 
     max_translation, max_rotation = compute_plan_deformation(extrusion_path, recover_sequence(plan))
     data = {
@@ -258,54 +315,79 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
     plan = None
     min_remaining = len(all_elements)
     num_evaluated = max_backtrack = 0
-    while queue and (elapsed_time(start_time) < max_time):
-        priority, printed, element, current_conf = heapq.heappop(queue)
-        num_remaining = len(printed)
-        backtrack = num_remaining - min_remaining
-        max_backtrack = max(max_backtrack, backtrack)
-        #if max_backtrack <= backtrack:
-        #    continue
-        num_evaluated += 1
+    try:
+        while queue and (elapsed_time(start_time) < max_time):
+            priority, printed, element, current_conf = heapq.heappop(queue)
+            num_remaining = len(printed)
+            backtrack = num_remaining - min_remaining
+            max_backtrack = max(max_backtrack, backtrack)
+            #if max_backtrack <= backtrack:
+            #    continue
+            num_evaluated += 1
 
-        print('Iteration: {} | Best: {} | Printed: {} | Element: {} | Index: {} | Time: {:.3f}'.format(
-            num_evaluated, min_remaining, len(printed), element, id_from_element[element], elapsed_time(start_time)))
-        next_printed = printed - {element}
-        #draw_action(node_points, next_printed, element)
-        #if 3 < backtrack + 1:
-        #    remove_all_debug()
-        #    set_renderer(enable=True)
-        #    draw_model(next_printed, node_points, ground_nodes)
-        #    wait_for_user()
+            cprint('Iteration: {} | Best: {} | Printed: {} | Element: {} | Index: {} | Time: {:.3f}'.format(
+                 num_evaluated, min_remaining, len(printed), element, id_from_element[element], elapsed_time(start_time)), 'blue')
 
-        if (next_printed in visited) or not check_connected(ground_nodes, next_printed) or \
-                not implies(stiffness, test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker)):
-            continue
-        # TODO: could do this eagerly to inspect the full branching factor
-        command = sample_extrusion(print_gen_fn, ground_nodes, next_printed, element)
-        if command is None:
-            continue
-        if motions:
-            motion_traj = compute_motion(robot, obstacles, element_bodies, printed,
-                                         command.end_conf, current_conf, collisions=collisions)
-            if motion_traj is None:
-                continue
-            command.trajectories.append(motion_traj)
-
-        if num_remaining < min_remaining:
-            min_remaining = num_remaining
-            print('New best: {}'.format(num_remaining))
-            #if has_gui():
-            #    # TODO: change link transparency
+            # hypothetical printed elements if element is selected
+            next_printed = printed - {element}
+            #draw_action(node_points, next_printed, element)
+            #if 3 < backtrack + 1:
             #    remove_all_debug()
+            #    set_renderer(enable=True)
             #    draw_model(next_printed, node_points, ground_nodes)
-            #    wait_for_duration(0.5)
+            #    wait_for_user()
 
-        visited[next_printed] = Node(command, printed) # TODO: be careful when multiple trajs
-        if not next_printed:
-            min_remaining = 0
-            plan = retrace_trajectories(visited, next_printed, reverse=True)
-            break
-        add_successors(next_printed, command.start_conf)
+            if (next_printed in visited) or not check_connected(ground_nodes, next_printed) or \
+                    not implies(stiffness, test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker)):
+                continue
+            # TODO: could do this eagerly to inspect the full branching factor
+            command = sample_extrusion(print_gen_fn, ground_nodes, next_printed, element)
+            if command is None:
+                continue
+            if motions:
+                motion_traj = compute_motion(robot, obstacles, element_bodies, printed,
+                                             command.end_conf, current_conf, collisions=collisions)
+                if motion_traj is None:
+                    continue
+                command.trajectories.append(motion_traj)
+
+            if num_remaining < min_remaining:
+                min_remaining = num_remaining
+                cprint('New best: {}'.format(num_remaining), 'green')
+                #if has_gui():
+                #    # TODO: change link transparency
+                #    remove_all_debug()
+                #    draw_model(next_printed, node_points, ground_nodes)
+                #    wait_for_duration(0.5)
+
+            visited[next_printed] = Node(command, printed) # TODO: be careful when multiple trajs
+            if not next_printed:
+                min_remaining = 0
+                plan = retrace_trajectories(visited, next_printed, reverse=True)
+                break
+            add_successors(next_printed, command.start_conf)
+    except KeyboardInterrupt:
+        # log data
+        cur_data = {}
+        cur_data['search_method'] = 'regression'
+        cur_data['heuristic'] = heuristic
+        cur_data['iter'] = num_evaluated - 1
+        cur_data['chosen_id'] = id_from_element[element]
+        cur_data['min_remain'] = min_remaining
+        cur_data['max_backtrack'] = max_backtrack
+        cur_data['backtrack'] = backtrack+1 if abs(backtrack) != INF else 0
+        cur_data['total_q_len'] = len(queue)
+        cur_data['chosen_id'] = id_from_element[element]
+        cur_data['printed'] = list(printed)
+
+        # queue_log_cnt = 200
+        # cur_data['queue'] = []
+        # cur_data['queue'].append((id_from_element[element], priority))
+        # for candidate in heapq.nsmallest(queue_log_cnt, queue):
+        #     cur_data['queue'].append((id_from_element[candidate[2]], candidate[0]))
+
+        export_log_data(extrusion_path, cur_data)
+        assert False, 'search terminated.'
 
     max_translation, max_rotation = compute_plan_deformation(extrusion_path, recover_sequence(plan))
     data = {
