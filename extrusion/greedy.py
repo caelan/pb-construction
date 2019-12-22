@@ -183,7 +183,6 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
     num_evaluated = max_backtrack = 0
     try:
         while queue and (elapsed_time(start_time) < max_time):
-            num_evaluated += 1
             visits, _, printed, element, current_conf = heapq.heappop(queue)
             num_remaining = len(all_elements) - len(printed)
             backtrack = num_remaining - min_remaining

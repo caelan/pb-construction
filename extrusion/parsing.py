@@ -30,8 +30,10 @@ EXTRUSION_FILENAMES = {
     'voronoi': 'voronoi_S1_03-14-2019_w_layer.json',
     'topopt-101_tiny': 'topopt-101_tiny.json',
     'topopt-205_long_beam_test' : 'topopt-205_long_beam_test.json',
+    'topopt-205_rotated_S1.5' : 'topopt-205_rotated_S1.5.json',
     'klein_bottle_trail' : 'klein_bottle_trail.json',
     'klein_bottle_trail_S2' : 'klein_bottle_trail_S2.json',
+    'tre_foil_knot_S1.35' : 'tre_foil_knot_S1.35.json',
 }
 DEFAULT_SCALE = 1e-3 # TODO: load different scales
 
