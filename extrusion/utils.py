@@ -50,7 +50,7 @@ def load_world(use_floor=USE_FLOOR):
         if use_floor:
             floor = load_model('models/short_floor.urdf')
             obstacles.append(floor)
-            set_point(floor, Point(z=lower[2]))
+            set_point(floor, Point(z=lower[2] + 0.025))
         else:
             floor = None # TODO: make this an empty list of obstacles
     return obstacles, robot

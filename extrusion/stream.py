@@ -160,7 +160,8 @@ def optimize_angle(end_effector, element_pose,
 
 ##################################################
 
-APPROACH_DISTANCE = 0.01
+# APPROACH_DISTANCE = 0.01
+APPROACH_DISTANCE = 0.025
 
 def plan_approach(robot, print_traj, collision_fn):
     if APPROACH_DISTANCE == 0:
