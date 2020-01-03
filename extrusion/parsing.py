@@ -151,8 +151,7 @@ def affine_extrusion(extrusion_path, tform):
 def create_elements_bodies(node_points, elements, color=apply_alpha(RED, alpha=1)):
     # TODO: just shrink the structure to prevent worrying about collisions at end-points
     # TODO: could scale the whole environment
-    radius = 1e-6 # 5e-5 | 1e-4
-    # TODO: seems to be a min radius
+    radius = 1e-3 # 1e-6
 
     shrink = 0.01 # 0. | 0.002 | 0.005
     element_bodies = []
