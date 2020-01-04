@@ -25,7 +25,7 @@ from extrusion.stripstream import plan_sequence
 from extrusion.utils import load_world, PrintTrajectory 
 from extrusion.parsing import load_extrusion, create_elements_bodies, \
     enumerate_problems, get_extrusion_path, affine_extrusion, RADIUS, SHRINK
-from extrusion.stream import get_print_gen_fn, STEP_SIZE
+from extrusion.stream import get_print_gen_fn, STEP_SIZE, APPROACH_DISTANCE
 from extrusion.greedy import regression, progression, recover_directed_sequence
 from extrusion.heuristics import HEURISTICS
 from extrusion.validator import verify_plan
@@ -157,6 +157,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
         'step_size' : STEP_SIZE,
         'radius' : RADIUS,
         'shrink' : SHRINK,
+        'approach_distance' : APPROACH_DISTANCE,
         'write_time' : str(datetime.datetime.now()),
         'plan': planned_elements,
     })
