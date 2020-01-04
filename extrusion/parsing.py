@@ -7,7 +7,7 @@ from pybullet_tools.utils import create_cylinder, set_point, set_quat, \
     quat_from_euler, Euler, tform_point, multiply, tform_from_pose, pose_from_tform, RED, apply_alpha
 
 RADIUS = 1e-3
-SHRINK = 0.003 # 0. | 0.002 | 0.005
+SHRINK = 0.003 # 0. | 0.002 | 0.005 | 0.003
 
 Element = namedtuple('Element', ['id', 'layer', 'nodes'])
 
@@ -34,6 +34,8 @@ EXTRUSION_FILENAMES = {
     'klein_bottle_trail' : 'klein_bottle_trail.json',
     'klein_bottle_trail_S2' : 'klein_bottle_trail_S2.json',
     'tre_foil_knot_S1.35' : 'tre_foil_knot_S1.35.json',
+    'compas_fea_beam_tree_M_simp' : 'compas_fea_beam_tree_M_simp.json',
+    'compas_fea_beam_tree_S_simp' : 'compas_fea_beam_tree_S_simp.json',
 }
 DEFAULT_SCALE = 1e-3 # TODO: load different scales
 

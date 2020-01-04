@@ -181,8 +181,11 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
     plan = None
     min_remaining = len(all_elements)
     num_evaluated = max_backtrack = 0
+    num_stiffness_violation = 0
     try:
-        while queue and (elapsed_time(start_time) < max_time):
+        while queue:
+            if elapsed_time(start_time) > max_time:
+                raise TimeoutError
             visits, _, printed, element, current_conf = heapq.heappop(queue)
             num_remaining = len(all_elements) - len(printed)
             backtrack = num_remaining - min_remaining
@@ -195,8 +198,10 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
             cprint('Iteration: {} | Best: {} | Printed: {} | Element: {} | Index: {} | Time: {:.3f}'.format(
                 num_evaluated, min_remaining, len(printed), element, id_from_element[element], elapsed_time(start_time)), 'blue')
             next_printed = printed | {element}
-            if (next_printed in visited) or not check_connected(ground_nodes, next_printed) or \
-                    (stiffness and not test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker)):
+            if (next_printed in visited) or not check_connected(ground_nodes, next_printed):
+                continue
+            if stiffness and not test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker):
+                num_stiffness_violation += 1
                 continue
             command = sample_extrusion(print_gen_fn, ground_nodes, printed, element)
             if command is None:
@@ -215,7 +220,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
                 break
             add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn, next_printed, command.end_conf,
                            partial_orders=partial_orders)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, TimeoutError):
         # log data
         cur_data = {}
         cur_data['iter'] = num_evaluated - 1
@@ -226,6 +231,12 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
         cur_data['total_q_len'] = len(queue)
         cur_data['search_method'] = 'progression'
         cur_data['heuristic'] = heuristic
+        cur_data['num_stiffness_violation'] = num_stiffness_violation
+        cur_data['printed'] = list(printed)
+
+        plan = retrace_trajectories(visited, printed)
+        planned_elements = recover_directed_sequence(plan)
+        cur_data['planned_elements'] = planned_elements
 
         # queue_log_cnt = 200
         # cur_data['queue'] = []
@@ -314,8 +325,11 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
     plan = None
     min_remaining = len(all_elements)
     num_evaluated = max_backtrack = 0
+    num_stiffness_violation = 0
     try:
-        while queue and (elapsed_time(start_time) < max_time):
+        while queue:
+            if elapsed_time(start_time) > max_time:
+                raise TimeoutError
             priority, printed, element, current_conf = heapq.heappop(queue)
             num_remaining = len(printed)
             backtrack = num_remaining - min_remaining
@@ -336,8 +350,10 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
             #    draw_model(next_printed, node_points, ground_nodes)
             #    wait_for_user()
 
-            if (next_printed in visited) or not check_connected(ground_nodes, next_printed) or \
-                    not implies(stiffness, test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker)):
+            if (next_printed in visited) or not check_connected(ground_nodes, next_printed):
+                continue
+            if not implies(stiffness, test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker)):
+                num_stiffness_violation += 1
                 continue
             # TODO: could do this eagerly to inspect the full branching factor
             command = sample_extrusion(print_gen_fn, ground_nodes, next_printed, element)
@@ -365,7 +381,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
                 plan = retrace_trajectories(visited, next_printed, reverse=True)
                 break
             add_successors(next_printed, command.start_conf)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, TimeoutError):
         # log data
         cur_data = {}
         cur_data['search_method'] = 'regression'
@@ -377,7 +393,12 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         cur_data['backtrack'] = backtrack+1 if abs(backtrack) != INF else 0
         cur_data['total_q_len'] = len(queue)
         cur_data['chosen_id'] = id_from_element[element]
+        cur_data['num_stiffness_violation'] = num_stiffness_violation
         cur_data['printed'] = list(printed)
+
+        plan = retrace_trajectories(visited, printed, reverse=True)
+        planned_elements = recover_directed_sequence(plan)
+        cur_data['planned_elements'] = planned_elements
 
         # queue_log_cnt = 200
         # cur_data['queue'] = []
@@ -385,7 +406,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         # for candidate in heapq.nsmallest(queue_log_cnt, queue):
         #     cur_data['queue'].append((id_from_element[candidate[2]], candidate[0]))
 
-        export_log_data(extrusion_path, cur_data)
+        export_log_data(extrusion_path, cur_data, indent=1)
         assert False, 'search terminated.'
 
     max_translation, max_rotation = compute_plan_deformation(extrusion_path, recover_sequence(plan))
@@ -398,6 +419,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         'max_backtrack': max_backtrack,
         'max_translation': max_translation,
         'max_rotation': max_rotation,
+        'num_stiffness_violation': num_stiffness_violation,
     }
     return plan, data
 
