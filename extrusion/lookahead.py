@@ -83,7 +83,7 @@ def topological_sort(robot, obstacles, element_bodies, extrusion_path):
 
 def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[],
               num_ee=0, num_arm=1, max_directions=500, max_attempts=1,
-              plan_all=False, use_conflicts=False, use_replan=False, heuristic='z', max_time=INF,  # max_backtrack=INF,
+              plan_all=False, use_conflicts=False, use_replan=False, heuristic='z', max_time=INF,  backtrack_limit=INF,
               revisit=False, ee_only=False, collisions=True, stiffness=True, motions=True, **kwargs):
     if not use_conflicts:
         num_ee, num_arm = min(num_ee, 1),  min(num_arm, 1)
@@ -180,9 +180,9 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
         visits, priority, printed, element, current_conf = heapq.heappop(queue)
         num_remaining = len(all_elements) - len(printed)
         backtrack = num_remaining - min_remaining
-        #if max_backtrack < backtrack: # backtrack_bound
-        #    continue
         worst_backtrack = max(worst_backtrack, backtrack)
+        if backtrack_limit < backtrack:
+            break # continue
         num_evaluated += 1
         if num_remaining < min_remaining:
             min_remaining = num_remaining

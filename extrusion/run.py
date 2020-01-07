@@ -105,22 +105,26 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
             trajectories = sample_trajectories(robot, obstacles, node_points, element_bodies, ground_nodes)
         pr = cProfile.Profile()
         pr.enable()
+        backtrack_limit = 0
         if args.algorithm == 'stripstream':
             planned_trajectories, data = plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
                                                        trajectories=trajectories, collisions=not args.cfree,
                                                        max_time=args.max_time, disable=args.disable, debug=False)
         elif args.algorithm == 'progression':
             planned_trajectories, data = progression(robot, obstacles, element_bodies, problem_path, partial_orders=partial_orders,
-                                                     heuristic=args.bias, max_time=args.max_time, collisions=not args.cfree,
+                                                     heuristic=args.bias, max_time=args.max_time,
+                                                     backtrack_limit=backtrack_limit, collisions=not args.cfree,
                                                      disable=args.disable, stiffness=args.stiffness, motions=args.motions)
         elif args.algorithm == 'regression':
             planned_trajectories, data = regression(robot, obstacles, element_bodies, problem_path,
-                                                    heuristic=args.bias, max_time=args.max_time, collisions=not args.cfree,
+                                                    heuristic=args.bias, max_time=args.max_time,
+                                                    backtrack_limit=backtrack_limit, collisions=not args.cfree,
                                                     disable=args.disable, stiffness=args.stiffness, motions=args.motions)
         elif args.algorithm == 'lookahead':
             planned_trajectories, data = lookahead(robot, obstacles, element_bodies, problem_path,
                                                    partial_orders=partial_orders, heuristic=args.bias,
-                                                   max_time=args.max_time, ee_only=args.ee_only, collisions=not args.cfree,
+                                                   max_time=args.max_time, backtrack_limit=backtrack_limit,
+                                                   ee_only=args.ee_only, collisions=not args.cfree,
                                                    disable=args.disable, stiffness=args.stiffness, motions=args.motions)
         else:
             raise ValueError(args.algorithm)

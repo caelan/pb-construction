@@ -117,7 +117,7 @@ def add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn,
     #     wait_for_user()
 
 def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders=[],
-                heuristic='z', max_time=INF, # max_backtrack=INF,
+                heuristic='z', max_time=INF, backtrack_limit=INF,
                 stiffness=True, motions=True, collisions=True, **kwargs):
 
     start_time = time.time()
@@ -151,8 +151,8 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
         num_remaining = len(all_elements) - len(printed)
         backtrack = num_remaining - min_remaining
         max_backtrack = max(max_backtrack, backtrack)
-        #if max_backtrack <= backtrack:
-        #    continue
+        if backtrack_limit < backtrack:
+            break # continue
         num_evaluated += 1
         if num_remaining < min_remaining:
             min_remaining = num_remaining
@@ -196,7 +196,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
 ##################################################
 
 def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=[],
-               heuristic='z', max_time=INF, # max_backtrack=INF,
+               heuristic='z', max_time=INF, backtrack_limit=INF,
                collisions=True, stiffness=True, motions=True, **kwargs):
     # Focused has the benefit of reusing prior work
     # Greedy has the benefit of conditioning on previous choices
@@ -263,8 +263,8 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         num_remaining = len(printed)
         backtrack = num_remaining - min_remaining
         max_backtrack = max(max_backtrack, backtrack)
-        #if max_backtrack <= backtrack:
-        #    continue
+        if backtrack_limit < backtrack:
+            break # continue
         num_evaluated += 1
 
         print('Iteration: {} | Best: {} | Printed: {} | Element: {} | Index: {} | Time: {:.3f}'.format(
