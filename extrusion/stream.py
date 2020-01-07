@@ -10,7 +10,7 @@ from pybullet_tools.utils import get_movable_joints, get_joint_positions, multip
     randomize, get_extend_fn, user_input, INF, elapsed_time, wait_for_user
 from extrusion.utils import TOOL_LINK, get_disabled_collisions, get_node_neighbors, \
     PrintTrajectory, retrace_supporters, get_supported_orders, prune_dominated, Command, MotionTrajectory, RESOLUTION, \
-    JOINT_WEIGHTS, EE_LINK, EndEffector, is_ground
+    JOINT_WEIGHTS, EE_LINK, EndEffector, is_ground, get_custom_limits
 #from extrusion.run import USE_IKFAST, get_supported_orders, retrace_supporters, SELF_COLLISIONS, USE_CONMECH
 from pddlstream.language.stream import WildOutput
 from pddlstream.utils import neighbors_from_orders, irange
@@ -34,6 +34,7 @@ else:
     USE_CONMECH = True
 
 SELF_COLLISIONS = True
+ORTHOGONAL_GROUND = False
 
 STEP_SIZE = 1e-3  # 0.0025
 
@@ -265,6 +266,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
     if not collisions:
         precompute_collisions = False
     movable_joints = get_movable_joints(robot)
+    custom_limits = {} # get_custom_limits(robot) # specified within the kuka URDF
     disabled_collisions = get_disabled_collisions(robot)
     #element_neighbors = get_element_neighbors(element_bodies)
     node_neighbors = get_node_neighbors(element_bodies)
@@ -297,14 +299,16 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
             retrace_supporters(element, incoming_supporters, supporters)
         obstacles = set(fixed_obstacles + [element_bodies[e] for e in supporters + list(extruded)])
         if not collisions:
-            obstacles = set()
+            #obstacles = set()
+            obstacles = set(fixed_obstacles)
 
         elements_order = [e for e in element_bodies if (e != element) and (element_bodies[e] not in obstacles)]
         collision_fn = get_collision_fn(robot, movable_joints, obstacles,
                                         attachments=[], self_collisions=SELF_COLLISIONS,
                                         disabled_collisions=disabled_collisions,
-                                        custom_limits={}) # TODO: get_custom_limits
-        if is_ground(element, ground_nodes):
+                                        custom_limits=custom_limits)
+        if ORTHOGONAL_GROUND and is_ground(element, ground_nodes):
+            # TODO: orthogonal to the ground or aligned with element?
             direction_generator = cycle([Pose(euler=Euler(roll=0, pitch=0))])
         else:
             direction_generator = get_direction_generator(use_halton=False)

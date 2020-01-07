@@ -37,6 +37,9 @@ RESOLUTION = 0.005
 JOINT_WEIGHTS = np.array([0.3078557810844393, 0.443600199302506, 0.23544367607317915,
                           0.03637161028426032, 0.04644626184081511, 0.015054267683041092])
 
+TRANS_TOL = 0.0015
+ROT_TOL = 5 * np.pi / 180
+
 ##################################################
 
 def load_world(use_floor=USE_FLOOR):
@@ -126,6 +129,16 @@ class Trajectory(object):
         self.joints = joints
         self.path = path
         self.path_from_link = {}
+    @property
+    def start_conf(self):
+        if not self.path:
+            return None
+        return self.path[0]
+    @property
+    def end_conf(self):
+        if not self.path:
+            return None
+        return self.path[-1]
     def get_link_path(self, link_name=TOOL_LINK):
         link = link_from_name(self.robot, link_name)
         if link not in self.path_from_link:
@@ -186,10 +199,10 @@ class Command(object):
         return None
     @property
     def start_conf(self):
-        return self.trajectories[0].path[0]
+        return self.trajectories[0].start_conf
     @property
     def end_conf(self):
-        return self.trajectories[-1].path[-1]
+        return self.trajectories[-1].end_conf
     def set_safe(self, element):
         assert self.safe_per_element.get(element, True) is True
         self.safe_per_element[element] = True
@@ -333,9 +346,6 @@ def get_connected_structures(elements):
     return get_connected_components(elements, edges)
 
 ##################################################
-
-TRANS_TOL = 0.0015
-ROT_TOL = 5 * np.pi / 180
 
 def create_stiffness_checker(extrusion_path, verbose=False):
     # TODO: the stiffness checker likely has a memory leak
