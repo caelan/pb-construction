@@ -57,6 +57,18 @@ def load_world(use_floor=USE_FLOOR):
 
 
 def prune_dominated(trajectories):
+    """prune trajectories
+    
+    Parameters
+    ----------
+    trajectories : [type]
+        [description]
+    
+    Returns
+    -------
+    [type]
+        [description]
+    """
     start_len = len(trajectories)
     for traj1 in list(trajectories):
         if any((traj1 != traj2) and (traj2.colliding <= traj1.colliding)
@@ -175,6 +187,8 @@ class PrintTrajectory(Trajectory):
         return '{}->{}'.format(self.n1, self.n2)
 
 class Command(object):
+    """Wrapper class to help keep track of print trajectories and colliding element information
+    """
     def __init__(self, trajectories=[], safe_per_element={}):
         self.trajectories = list(trajectories)
         self.safe_per_element = dict(safe_per_element)
@@ -257,6 +271,8 @@ def compute_printed_nodes(ground_nodes, printed):
     return nodes_from_elements(printed) | set(ground_nodes)
 
 def compute_printable_elements(all_elements, ground_nodes, printed):
+    """return connected but unprinted elements
+    """
     ground_elements = get_ground_elements(all_elements, ground_nodes)
     if ground_elements <= printed:
         nodes = compute_printed_nodes(ground_nodes, printed)
@@ -278,6 +294,8 @@ def get_supported_orders(elements, node_points):
     return orders
 
 def element_supports(e, n1, node_points): # A property of nodes
+    """check if the element e is "below" the node n1
+    """
     # TODO: support polygon (ZMP heuristic)
     # TODO: recursively apply as well
     # TODO: end-effector force

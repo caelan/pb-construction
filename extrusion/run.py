@@ -30,9 +30,10 @@ from extrusion.greedy import regression, progression, recover_directed_sequence
 from extrusion.heuristics import HEURISTICS
 from extrusion.validator import verify_plan
 from extrusion.lookahead import lookahead
+from extrusion.visualization import visualize_stiffness
 
 from pybullet_tools.utils import connect, disconnect, get_movable_joints, get_joint_positions, LockRenderer, \
-    unit_pose, reset_simulation, draw_pose, apply_alpha, BLACK, Pose, Euler, set_numpy_seed, set_random_seed
+    unit_pose, reset_simulation, draw_pose, apply_alpha, BLACK, Pose, Euler, set_numpy_seed, set_random_seed, set_joint_positions
 
 ##################################################
 
@@ -82,14 +83,13 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     elements = list(element_from_id.values())
     #elements, ground_nodes = downsample_nodes(elements, node_points, ground_nodes)
     # plan = plan_sequence_test(node_points, elements, ground_nodes)
-    # partial_orders = [] # TODO: could test ground as partial orders
-    partial_orders = [((1,8), (1,11)), ((0,1), (1,11))] 
+    partial_orders = [] # TODO: could test ground as partial orders
 
     connect(use_gui=viewer)
     with LockRenderer():
         draw_pose(unit_pose(), length=1.)
         obstacles, robot = load_world()
-        alpha = 1 # 0
+        alpha = 0.1 # 0
         element_bodies = dict(zip(elements, create_elements_bodies(
             node_points, elements, color=apply_alpha(BLACK, alpha))))
         set_extrusion_camera(node_points)
@@ -97,9 +97,11 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
             label_nodes(node_points)
 
     # joint_weights = compute_joint_weights(robot, num=1000)
-    initial_conf = get_joint_positions(robot, get_movable_joints(robot))
+    # initial_conf = get_joint_positions(robot, get_movable_joints(robot))
+    initial_conf = [0.08, -1.57, 1.74, 0.08, 0.17, -0.08]
+    set_joint_positions(robot, get_movable_joints(robot), initial_conf)
     # dump_body(robot)
-    #visualize_stiffness(problem_path)
+    # visualize_stiffness(problem_path)
     # debug_elements(robot, node_points, node_order, elements)
 
     with LockRenderer(False):
@@ -154,12 +156,12 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
         'use_collisions': not args.cfree,
         'use_stiffness': args.stiffness,
         'valid': valid,
+        'write_time' : str(datetime.datetime.now()),
+        'plan': planned_elements,
         'step_size' : STEP_SIZE,
         'radius' : RADIUS,
         'shrink' : SHRINK,
         'approach_distance' : APPROACH_DISTANCE,
-        'write_time' : str(datetime.datetime.now()),
-        'plan': planned_elements,
     })
     plan_data.update(data)
     del plan_data['sequence']

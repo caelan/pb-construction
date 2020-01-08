@@ -2,6 +2,7 @@ from __future__ import print_function
 
 import time
 import numpy as np
+from termcolor import cprint
 
 from pybullet_tools.utils import get_movable_joints, set_joint_positions, plan_joint_motion, \
     connect, point_from_pose, get_link_pose, link_from_name, add_line, \
@@ -28,7 +29,7 @@ def compute_motion(robot, fixed_obstacles, element_bodies, printed_elements, sta
                              weights=weights, resolutions=resolutions,
                              restarts=50, iterations=100, smooth=100)
     if path is None:
-        print('Failed to find a motion plan!')
+        cprint('Failed to find a transition motion plan!', 'red')
         return None
     motion_traj = MotionTrajectory(robot, movable_joints, path)
     return motion_traj

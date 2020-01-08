@@ -198,17 +198,6 @@ def plan_approach(robot, print_traj, collision_fn):
 
 def compute_direction_path(end_effector, length, reverse, element_bodies, element, direction,
                            obstacles, collision_fn, num_angles=1, ee_only=False):
-    """
-    :param robot:
-    :param length: element's length
-    :param reverse: True if element end id tuple needs to be reversed
-    :param element: the considered element's pybullet body
-    :param direction: a sampled Pose (v \in unit sphere)
-    :param collision_fn: collision checker (pybullet_tools.utils.get_collision_fn)
-    note that all the static objs + elements in the support set of the considered element
-    are accounted in the collision fn
-    :return: feasible PrintTrajectory if found, None otherwise
-    """
     robot = end_effector.robot
     #angle_step_size = np.math.radians(0.25) # np.pi / 128
     #angle_deltas = [-angle_step_size, 0, angle_step_size]
@@ -216,6 +205,7 @@ def compute_direction_path(end_effector, length, reverse, element_bodies, elemen
     translation_path = np.append(np.arange(-length / 2, length / 2, STEP_SIZE), [length / 2])
     element_pose = get_pose(element_bodies[element])
 
+    # prune angles that're colliding with static obstacles, not including printed elements
     #initial_angles = [wrap_angle(angle) for angle in np.linspace(0, 2*np.pi, num_angles, endpoint=False)]
     initial_angles = list(map(wrap_angle, np.random.uniform(0, 2*np.pi, num_angles))) # TODO: halton
     initial_angles = [angle for angle in initial_angles if not tool_path_collision(
@@ -229,7 +219,7 @@ def compute_direction_path(end_effector, length, reverse, element_bodies, elemen
         robot_path = []
         print_traj = PrintTrajectory(end_effector, get_movable_joints(robot), robot_path, tool_path, element, reverse)
         # TODO: plan_approach
-        return Command([print_traj])
+        return Command(trajectories=[print_traj])
 
     initial_angle, current_conf = optimize_angle(end_effector, element_pose,
                                                  translation_path[0], direction, reverse, initial_angles,
@@ -270,6 +260,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
     movable_joints = get_movable_joints(robot)
     disabled_collisions = get_disabled_collisions(robot)
     #element_neighbors = get_element_neighbors(element_bodies)
+    # neighboring elements from node
     node_neighbors = get_node_neighbors(element_bodies)
     incoming_supporters, _ = neighbors_from_orders(get_supported_orders(element_bodies, node_points))
 
@@ -302,6 +293,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
         if not collisions:
             obstacles = set()
 
+        # unprinted elements (not including the current one)
         elements_order = [e for e in element_bodies if (e != element) and (element_bodies[e] not in obstacles)]
         collision_fn = get_collision_fn(robot, movable_joints, obstacles,
                                         attachments=[], self_collisions=SELF_COLLISIONS,
@@ -319,14 +311,18 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                     if bidirectional:
                         reverse = random.choice([False, True])
                     n1, n2 = reversed(element) if reverse else element
+                    # * generate print trajectory
                     command = compute_direction_path(end_effector, length, reverse, element_bodies, element,
                                                      direction, obstacles, collision_fn,
                                                      ee_only=ee_only, **kwargs)
                     if command is None:
                         continue
+                    # a command is successuflly generated, which means that all the extruded elements are
+                    # certified to be collision-free
                     command.update_safe(extruded)
                     if precompute_collisions:
                         bodies_order = [element_bodies[e] for e in elements_order]
+                        # colliding is indexed by bodies_order's list index
                         colliding = command_collision(end_effector, command, bodies_order)
                         for element2, unsafe in zip(elements_order, colliding):
                             if unsafe:

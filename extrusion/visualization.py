@@ -130,6 +130,13 @@ def draw_element(node_points, element, color=(1, 0, 0)):
     return add_line(p1, p2, color=color[:3])
 
 
+def draw_element_tag(node_points, element, tag):
+    n1, n2 = element
+    p1 = node_points[n1]
+    p2 = node_points[n2]
+    return add_text(tag, (p1+p2)/2)
+
+
 def draw_model(elements, node_points, ground_nodes):
     handles = []
     with LockRenderer():
@@ -140,17 +147,24 @@ def draw_model(elements, node_points, ground_nodes):
 
 
 def sample_colors(num, lower=0.0, upper=0.75): # for now wrap around
-    return [colorsys.hsv_to_rgb(h, s=1, v=1) for h in np.linspace(lower, upper, num, endpoint=True)]
+    # YJ: Hue gradient is not that informative
+    # return [colorsys.hsv_to_rgb(h, s=1, v=1) for h in np.linspace(lower, upper, num, endpoint=True)]
+    # hue_color_base = 192.0/360
+    return [(t, 1-t, 1) for t in np.linspace(lower, upper, num, endpoint=True)]
 
 
-def draw_ordered(elements, node_points):
+def draw_ordered(elements, node_points, values=None):
     #colors = spaced_colors(len(elements))
     colors = sample_colors(len(elements))
     handles = []
-    for element, color in zip(elements, colors):
+    draw_value = values and len(values) == len(colors)
+    for i in range(len(elements)):
+        element = elements[i]
+        color = colors[i]
         handles.append(draw_element(node_points, element, color=color))
+        if draw_value:
+            handles.append(draw_element_tag(node_points, element, values[i]))
     return handles
-
 
 def set_extrusion_camera(node_points):
     centroid = np.average(node_points, axis=0)

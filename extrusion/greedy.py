@@ -12,7 +12,7 @@ from extrusion.heuristics import get_heuristic_fn
 from pybullet_tools.utils import elapsed_time, \
     LockRenderer, reset_simulation, disconnect, randomize
 from extrusion.parsing import load_extrusion
-from extrusion.visualization import draw_element, draw_ordered
+from extrusion.visualization import draw_element, draw_ordered, draw_model
 from extrusion.stream import get_print_gen_fn
 from extrusion.utils import check_connected, test_stiffness, \
     create_stiffness_checker, get_id_from_element, load_world, PrintTrajectory, \
@@ -21,7 +21,7 @@ from extrusion.motion import compute_motion
 
 # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
 from pybullet_tools.utils import connect, ClientSaver, wait_for_user, INF, has_gui, remove_all_debug, \
-    get_movable_joints, get_joint_positions, implies
+    get_movable_joints, get_joint_positions, implies, set_renderer
 from pddlstream.utils import incoming_from_edges, outgoing_from_edges
 
 #State = namedtuple('State', ['element', 'printed', 'plan'])
@@ -73,12 +73,14 @@ def display_failure(node_points, extruded_elements, element):
         for e in extruded_elements:
             handles.append(draw_element(node_points, e, color=(0, 1, 0)))
         handles.append(draw_element(node_points, element, color=(1, 0, 0)))
-        print('Failure!')
+        cprint('Failure!', 'red')
         wait_for_user()
         reset_simulation()
         disconnect()
 
 def draw_action(node_points, printed, element):
+    """ draw printed elements in green and currently selected element in red
+    """
     if not has_gui():
         return []
     with LockRenderer():
@@ -104,9 +106,10 @@ def export_log_data(extrusion_file_path, log_data, overwrite=True, indent=None):
     else:
         file_name = extrusion_file_path.split('.json')[-2].split(os.sep)[-1]
 
-    result_file_dir = r'C:\Users\yijiangh\Documents\pb_ws\pychoreo\tests\test_data'
+    # result_file_dir = r'C:\Users\yijiangh\Documents\pb_ws\pychoreo\tests\test_data'
+    here = os.path.abspath(os.path.dirname(__file__))
+    result_file_dir = here
     result_file_dir = os.path.join(result_file_dir, 'extrusion_log')
-    # result_file_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'extrusion_log')
     if not os.path.exists(result_file_dir):
         os.makedirs(result_file_dir) 
     
@@ -127,6 +130,8 @@ def export_log_data(extrusion_file_path, log_data, overwrite=True, indent=None):
 
 def add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn, printed, conf,
                    partial_orders=[], visualize=False):
+    """add successor for the progression search algorithm
+    """
     incoming_from_element = incoming_from_edges(partial_orders)
     remaining = all_elements - printed
     num_remaining = len(remaining) - 1
@@ -141,16 +146,17 @@ def add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn,
         heapq.heappush(queue, (visits, priority, printed, element, conf))
         bias_from_element[element] = bias
 
-    # if visualize and has_gui():
-    #     handles = []
-    #     with LockRenderer():
-    #         remove_all_debug()
-    #         for element in printed:
-    #             handles.append(draw_element(node_points, element, color=(0, 0, 0)))
-    #         successors = sorted(bias_from_element, key=lambda e: bias_from_element[e])
-    #         handles.extend(draw_ordered(successors, node_points))
-    #     print('Min: {:.3E} | Max: {:.3E}'.format(bias_from_element[successors[0]], bias_from_element[successors[-1]]))
-    #     wait_for_user()
+    if visualize and has_gui():
+        handles = []
+        with LockRenderer():
+            remove_all_debug()
+            for element in printed:
+                handles.append(draw_element(node_points, element, color=(0, 0, 0)))
+            successors = sorted(bias_from_element, key=lambda e: bias_from_element[e])
+            values = ['{:.3E}'.format(bias_from_element[e]) for e in successors]
+            handles.extend(draw_ordered(successors, node_points, values))
+        print('Bias Min: {:.3E} | Max: {:.3E}'.format(bias_from_element[successors[0]], bias_from_element[successors[-1]]))
+        wait_for_user()
 
 def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders=[],
                 heuristic='z', max_time=INF, # max_backtrack=INF,
@@ -170,42 +176,78 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
     all_elements = frozenset(element_bodies)
     heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=True)
 
+    # ! step-by-step diagnosis
+    visualize_action=False
+
     initial_printed = frozenset()
     queue = []
+    # next printed state: (current command, current printed state)
     visited = {initial_printed: Node(None, None)}
     if check_connected(ground_nodes, all_elements) and \
             test_stiffness(extrusion_path, element_from_id, all_elements):
         add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn, initial_printed, initial_conf,
-                       partial_orders=partial_orders)
+                       partial_orders=partial_orders, visualize=visualize_action)
+    else:
+        cprint('Grounded nodes are not connected to any of the elements or the whole structure is not stiff!', 'red')
 
+    locker = LockRenderer()
     plan = None
     min_remaining = len(all_elements)
     num_evaluated = max_backtrack = 0
+    # log data
     num_stiffness_violation = 0
+    bt_data = []
     try:
         while queue:
             if elapsed_time(start_time) > max_time:
                 raise TimeoutError
             visits, _, printed, element, current_conf = heapq.heappop(queue)
             num_remaining = len(all_elements) - len(printed)
-            backtrack = num_remaining - min_remaining
-            max_backtrack = max(max_backtrack, backtrack)
-            #if max_backtrack <= backtrack:
-            #    continue
             num_evaluated += 1
             if num_remaining < min_remaining:
                 min_remaining = num_remaining
+                cprint('New best: {}'.format(num_remaining), 'green')
             cprint('Iteration: {} | Best: {} | Printed: {} | Element: {} | Index: {} | Time: {:.3f}'.format(
                 num_evaluated, min_remaining, len(printed), element, id_from_element[element], elapsed_time(start_time)), 'blue')
             next_printed = printed | {element}
+
+            backtrack = num_remaining - min_remaining
+            if backtrack > max_backtrack:
+                max_backtrack = backtrack
+                # * (optional) visualization for diagnosis
+                if has_gui() and visualize_action:
+                    # TODO: initiate gui when encountered
+                    cprint('max backtrack increased to {}'.format(max_backtrack), 'cyan')
+                    # save data
+                    cur_data = {}
+                    cur_data['iter'] = num_evaluated - 1
+                    cur_data['min_remain'] = min_remaining
+                    cur_data['max_backtrack'] = max_backtrack
+                    cur_data['backtrack'] = backtrack
+                    cur_data['chosen_id'] = id_from_element[element]
+                    cur_data['total_q_len'] = len(queue)
+                    cur_data['num_stiffness_violation'] = num_stiffness_violation
+                    cur_data['printed'] = list(printed)
+                    bt_data.append(cur_data)
+
+                    draw_action(node_points, next_printed, element)
+                    locker.restore()
+                    wait_for_user()
+                    set_renderer(enable=False)
+
+            # * constraint checking
+            # connectivity and avoid checking duplicate states
             if (next_printed in visited) or not check_connected(ground_nodes, next_printed):
                 continue
+            # stiffness constraint
             if stiffness and not test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker):
                 num_stiffness_violation += 1
                 continue
+            # manipulation constraint
             command = sample_extrusion(print_gen_fn, ground_nodes, printed, element)
             if command is None:
                 continue
+            # transition motion constraint
             if motions:
                 motion_traj = compute_motion(robot, obstacles, element_bodies, printed,
                                              current_conf, command.start_conf, collisions=collisions)
@@ -219,7 +261,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
                 plan = retrace_trajectories(visited, next_printed)
                 break
             add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn, next_printed, command.end_conf,
-                           partial_orders=partial_orders)
+                           partial_orders=partial_orders, visualize=visualize_action)
     except (KeyboardInterrupt, TimeoutError):
         # log data
         cur_data = {}
@@ -233,6 +275,9 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
         cur_data['heuristic'] = heuristic
         cur_data['num_stiffness_violation'] = num_stiffness_violation
         cur_data['printed'] = list(printed)
+        cur_data['backtrack_history'] = bt_data
+
+        # TODO: save the states when max_backtracking changed
 
         plan = retrace_trajectories(visited, printed)
         planned_elements = recover_directed_sequence(plan)
@@ -245,6 +290,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
         #     cur_data['queue'].append((id_from_element[candidate[2]], candidate[0]))
 
         export_log_data(extrusion_path, cur_data, overwrite=False, indent=1)
+        cprint('search terminated by user interruption.', 'red')
         assert False, 'search terminated.'
 
     max_translation, max_rotation = compute_plan_deformation(extrusion_path, recover_sequence(plan))
@@ -310,9 +356,12 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
     # TODO: lazy hill climbing using the true stiffness heuristic
     # Choose the first move that improves the score
     if has_gui():
+        # descending order
         sequence = sorted(final_printed, key=lambda e: heuristic_fn(final_printed, e, conf=None), reverse=True)
+        values = ['{:.3E}'.format(heuristic_fn(final_printed, e, conf=None)) for e in sequence]
         remove_all_debug()
-        draw_ordered(sequence, node_points)
+        draw_ordered(sequence, node_points, values)
+        print('Elements colored by heuristic value. Enter to start planning.')
         wait_for_user()
     # TODO: fixed branching factor
     # TODO: be more careful when near the end
@@ -343,12 +392,12 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
 
             # hypothetical printed elements if element is selected
             next_printed = printed - {element}
-            #draw_action(node_points, next_printed, element)
-            #if 3 < backtrack + 1:
-            #    remove_all_debug()
-            #    set_renderer(enable=True)
-            #    draw_model(next_printed, node_points, ground_nodes)
-            #    wait_for_user()
+            draw_action(node_points, next_printed, element)
+            if 3 < backtrack + 1:
+               remove_all_debug()
+               set_renderer(enable=True)
+               draw_model(next_printed, node_points, ground_nodes)
+               wait_for_user()
 
             if (next_printed in visited) or not check_connected(ground_nodes, next_printed):
                 continue
@@ -407,6 +456,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         #     cur_data['queue'].append((id_from_element[candidate[2]], candidate[0]))
 
         export_log_data(extrusion_path, cur_data, indent=1)
+        cprint('search terminated by user interruption.', 'red')
         assert False, 'search terminated.'
 
     max_translation, max_rotation = compute_plan_deformation(extrusion_path, recover_sequence(plan))

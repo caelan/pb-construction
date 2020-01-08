@@ -14,6 +14,9 @@ gurobi.log
 src/pb_construction/extrusion/extrusion_results
 src/pb_construction/extrusion/extrusion_log
 
+extrusion/extrusion_results
+extrusion/extrusion_log
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
