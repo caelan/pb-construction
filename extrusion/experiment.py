@@ -23,10 +23,10 @@ ALGORITHMS = GREEDY_ALGORITHMS + ['lookahead'] #+ [STRIPSTREAM_ALGORITHM]
 #ALGORITHMS = ['lookahead']
 
 EXCLUDE = [
-    #'dented_cube', # TODO: 3D_truss isn't supported
+    #'dented_cube', # TODO: 3D_truss isn't supported error
     'rotated_dented_cube', # Structure violates stiffness
-    #'robarch_tree',
-    'DJMM_bridge',
+    'robarch_tree', # Cannot print ground elements
+    'DJMM_bridge', # Too large for pybullet
 ]
 
 EXPERIMENTS_DIR = 'experiments/'
@@ -51,10 +51,10 @@ def train_parallel(args):
     initial_time = time.time()
     problems = sorted(set(enumerate_problems()) - set(EXCLUDE))
     #problems = ['simple_frame']
-    #algorithms = ALGORITHMS
-    algorithms = ['regression']
-    #heuristics = HEURISTICS
-    heuristics = ['dijkstra']
+    algorithms = ALGORITHMS
+    #algorithms = ['regression']
+    heuristics = HEURISTICS
+    #heuristics = ['dijkstra']
 
     print('Problems ({}): {}'.format(len(problems), problems))
     #problems = [path for path in problems if 'simple_frame' in path]
