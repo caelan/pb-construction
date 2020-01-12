@@ -37,8 +37,9 @@ else:
 SELF_COLLISIONS = True
 ORTHOGONAL_GROUND = False
 
-# STEP_SIZE = 1e-3  # 0.0025
-STEP_SIZE = 2e-3  # 0.0025
+STEP_SIZE = 1e-3  # 0.0025
+APPROACH_DISTANCE = 0.01
+JOINT_RESOLUTIONS = np.divide(0.25 * RESOLUTION * np.ones(JOINT_WEIGHTS.shape), JOINT_WEIGHTS)
 
 ##################################################
 
@@ -125,6 +126,22 @@ def command_collision(end_effector, command, bodies):
 
 ##################################################
 
+def solve_ik(end_effector, target_pose, nearby=True):
+    robot = end_effector.robot
+    movable_joints = get_movable_joints(robot)
+    if USE_IKFAST:
+        # TODO: sample from the set of solutions
+        conf = sample_tool_ik(robot, target_pose, closest_only=nearby, get_all=False)
+    else:
+        # TODO: repeat several times
+        if not nearby:
+            # randomly sample and set joint conf for the pybullet ik fn
+            sample_fn = get_sample_fn(robot, movable_joints)
+            set_joint_positions(robot, movable_joints, sample_fn())
+        # note that the conf get assigned inside this ik fn right away!
+        conf = inverse_kinematics(robot, end_effector.tool_link, target_pose)
+    return conf
+
 def optimize_angle(end_effector, element_pose,
                    translation, direction, reverse, candidate_angles,
                    collision_fn, nearby=True, max_error=1e-2):
@@ -141,15 +158,7 @@ def optimize_angle(end_effector, element_pose,
 
         if nearby:
             set_joint_positions(robot, movable_joints, initial_conf)
-        if USE_IKFAST:
-            conf = sample_tool_ik(robot, target_pose, closest_only=nearby)
-        else:
-            if not nearby:
-                # randomly sample and set joint conf for the pybullet ik fn
-                sample_fn = get_sample_fn(robot, movable_joints)
-                set_joint_positions(robot, movable_joints, sample_fn())
-            # note that the conf get assigned inside this ik fn right away!
-            conf = inverse_kinematics(robot, end_effector.tool_link, target_pose)
+        conf = solve_ik(end_effector, target_pose, nearby=nearby)
         if (conf is None) or collision_fn(conf):
             continue
 
@@ -165,19 +174,18 @@ def optimize_angle(end_effector, element_pose,
 
 ##################################################
 
-# APPROACH_DISTANCE = 0.01
-APPROACH_DISTANCE = 0.025
+APPROACH_DISTANCE = 0.01
 
 def plan_approach(robot, print_traj, collision_fn):
     if APPROACH_DISTANCE == 0:
         return Command([print_traj])
+    robot = end_effector.robot
     joints = get_movable_joints(robot)
-    weights = JOINT_WEIGHTS
-    resolutions = np.divide(0.25*RESOLUTION*np.ones(weights.shape), weights)
-    extend_fn = get_extend_fn(robot, joints, resolutions=resolutions)
+    extend_fn = get_extend_fn(robot, joints, resolutions=JOINT_RESOLUTIONS)
     tool_link = link_from_name(robot, TOOL_LINK)
     approach_pose = Pose(Point(z=-APPROACH_DISTANCE))
 
+    # TODO: solve_ik
     start_conf = print_traj.path[0]
     set_joint_positions(robot, joints, start_conf)
     initial_pose = multiply(print_traj.tool_path[0], approach_pose)
@@ -250,7 +258,7 @@ def compute_direction_path(end_effector, length, reverse, element_bodies, elemen
 
     tool_path = compute_tool_path(element_pose, translation_path, direction, initial_angle, reverse)
     print_traj = PrintTrajectory(end_effector, get_movable_joints(robot), robot_path, tool_path, element, reverse)
-    return plan_approach(robot, print_traj, collision_fn)
+    return plan_approach(end_effector, print_traj, collision_fn)
 
 ##################################################
 
