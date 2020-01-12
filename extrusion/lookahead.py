@@ -29,6 +29,7 @@ def get_sample_traj(element_bodies, print_gen_fn, max_directions=INF, max_extrus
     gen_from_element = {element: print_gen_fn(node1=None, element=element, extruded=[], trajectories=[])
                         for element in element_bodies}
     count_per_element = {element: 0 for element in element_bodies}
+    # keep track of sampled trajs
     trajs_from_element = defaultdict(list)
     #gen_from_element_printed = {}
     # TODO: make a generator for each parent vertex when scanning next extrusions
@@ -42,6 +43,7 @@ def get_sample_traj(element_bodies, print_gen_fn, max_directions=INF, max_extrus
             return
         with LockRenderer(True):
             if condition:
+                # condition on current state (printed element), which needs rebuild print_gen_fn
                 generator = print_gen_fn(node1=None, element=element, extruded=printed,
                                          trajectories=trajs_from_element[element])
             else:
@@ -83,7 +85,7 @@ def topological_sort(robot, obstacles, element_bodies, extrusion_path):
 
 def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[],
               num_ee=0, num_arm=1, max_directions=500, max_attempts=1,
-              plan_all=False, use_conflicts=False, use_replan=False, heuristic='z', max_time=INF,  # max_backtrack=INF,
+              plan_all=False, use_conflicts=False, use_replan=False, heuristic='z', max_time=INF,  backtrack_limit=INF,
               revisit=False, ee_only=False, collisions=True, stiffness=True, motions=True, **kwargs):
     if not use_conflicts:
         num_ee, num_arm = min(num_ee, 1),  min(num_arm, 1)
@@ -161,7 +163,7 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
     priority_fn = lambda *args: (conflict_fn(*args), heuristic_fn(*args))
 
     #########################
-
+    # initial search state
     initial_printed = frozenset()
     queue = []
     visited = {initial_printed: Node(None, None)}
@@ -180,9 +182,9 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
         visits, priority, printed, element, current_conf = heapq.heappop(queue)
         num_remaining = len(all_elements) - len(printed)
         backtrack = num_remaining - min_remaining
-        #if max_backtrack < backtrack: # backtrack_bound
-        #    continue
         worst_backtrack = max(worst_backtrack, backtrack)
+        if backtrack_limit < backtrack:
+            break # continue
         num_evaluated += 1
         if num_remaining < min_remaining:
             min_remaining = num_remaining
@@ -194,6 +196,7 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
         next_printed = printed | {element}
         if next_printed in visited:
             continue
+        # unconnected ones should be pruned by constraint propagation already
         assert check_connected(ground_nodes, next_printed)
         if stiffness and not test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker, verbose=False):
             # Hard dead-end
@@ -206,6 +209,7 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
         #condition = printed # horizon=1
         condition = next_printed
 
+        # * soft deadend checking
         # TODO: the directionality actually matters for the printing orientation
         if not sample_remaining(condition, next_printed, ee_sample_traj, num=num_ee):
             # Soft dead-end
@@ -213,13 +217,11 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
             #wait_for_user()
             continue
 
-        print('Sampling transition')
         #command = sample_extrusion(print_gen_fn, ground_nodes, printed, element)
         command = next(iter(full_sample_traj(printed, printed, element)), None)
         if command is None:
             # Soft dead-end
             #num_deadends += 1
-            print('The transition could not be sampled!')
             continue
         print_traj = command.print_trajectory
         printed_nodes = compute_printed_nodes(ground_nodes, printed)
@@ -227,11 +229,9 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
         if print_traj.n1 not in printed_nodes:
             command = command.reverse()
 
-        print('Sampling successors')
         if not sample_remaining(condition, next_printed, full_sample_traj, num=num_arm):
             # Soft dead-end
             num_deadends += 1
-            print('A successor could not be sampled!')
             continue
 
         start_conf = end_conf = None

@@ -12,7 +12,7 @@ from extrusion.heuristics import get_heuristic_fn
 from pybullet_tools.utils import elapsed_time, \
     LockRenderer, reset_simulation, disconnect, randomize
 from extrusion.parsing import load_extrusion
-from extrusion.visualization import draw_element, draw_ordered, draw_model
+from extrusion.visualization import draw_element, draw_ordered, draw_model, color_structure
 from extrusion.stream import get_print_gen_fn
 from extrusion.utils import check_connected, test_stiffness, \
     create_stiffness_checker, get_id_from_element, load_world, PrintTrajectory, \
@@ -159,7 +159,7 @@ def add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn,
         wait_for_user()
 
 def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders=[],
-                heuristic='z', max_time=INF, # max_backtrack=INF,
+                heuristic='z', max_time=INF, backtrack_limit=INF,
                 stiffness=True, motions=True, collisions=True, **kwargs):
 
     start_time = time.time()
@@ -215,8 +215,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
             if backtrack > max_backtrack:
                 max_backtrack = backtrack
                 # * (optional) visualization for diagnosis
-                if has_gui() and visualize_action:
-                    # TODO: initiate gui when encountered
+                if has_gui(): # and visualize_action:
                     cprint('max backtrack increased to {}'.format(max_backtrack), 'cyan')
                     # save data
                     cur_data = {}
@@ -234,6 +233,9 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
                     locker.restore()
                     wait_for_user()
                     set_renderer(enable=False)
+
+            if backtrack_limit < backtrack:
+                break # continue
 
             # * constraint checking
             # connectivity and avoid checking duplicate states
@@ -277,8 +279,6 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
         cur_data['printed'] = list(printed)
         cur_data['backtrack_history'] = bt_data
 
-        # TODO: save the states when max_backtracking changed
-
         plan = retrace_trajectories(visited, printed)
         planned_elements = recover_directed_sequence(plan)
         cur_data['planned_elements'] = planned_elements
@@ -290,7 +290,12 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
         #     cur_data['queue'].append((id_from_element[candidate[2]], candidate[0]))
 
         export_log_data(extrusion_path, cur_data, overwrite=False, indent=1)
-        cprint('search terminated by user interruption.', 'red')
+
+        if has_gui():
+            color_structure(element_bodies, printed, element)
+            wait_for_user()
+        else:
+            cprint('search terminated by user interruption or timeout.', 'red')
         assert False, 'search terminated.'
 
     max_translation, max_rotation = compute_plan_deformation(extrusion_path, recover_sequence(plan))
@@ -304,12 +309,17 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
         'max_translation': max_translation,
         'max_rotation': max_rotation,
     }
+
+    if not data['sequence'] and has_gui():
+        color_structure(element_bodies, printed, element)
+        wait_for_user()
+
     return plan, data
 
 ##################################################
 
 def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=[],
-               heuristic='z', max_time=INF, # max_backtrack=INF,
+               heuristic='z', max_time=INF, backtrack_limit=INF,
                collisions=True, stiffness=True, motions=True, **kwargs):
     # Focused has the benefit of reusing prior work
     # Greedy has the benefit of conditioning on previous choices
@@ -456,7 +466,12 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         #     cur_data['queue'].append((id_from_element[candidate[2]], candidate[0]))
 
         export_log_data(extrusion_path, cur_data, indent=1)
-        cprint('search terminated by user interruption.', 'red')
+
+        if has_gui():
+            color_structure(element_bodies, printed, element)
+            wait_for_user()
+        else:
+            cprint('search terminated by user interruption or timeout.', 'red')
         assert False, 'search terminated.'
 
     max_translation, max_rotation = compute_plan_deformation(extrusion_path, recover_sequence(plan))

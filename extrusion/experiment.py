@@ -23,10 +23,10 @@ ALGORITHMS = GREEDY_ALGORITHMS + ['lookahead'] #+ [STRIPSTREAM_ALGORITHM]
 #ALGORITHMS = ['lookahead']
 
 EXCLUDE = [
-    'dented_cube', # TODO: 3D_truss isn't supported
-    #'rotated_dented_cube', # Structure violates stiffness
-    'robarch_tree',
-    #'DJMM_bridge',
+    #'dented_cube', # TODO: 3D_truss isn't supported
+    'rotated_dented_cube', # Structure violates stiffness
+    #'robarch_tree',
+    'DJMM_bridge',
 ]
 
 EXPERIMENTS_DIR = 'experiments/'
@@ -51,12 +51,17 @@ def train_parallel(args):
     initial_time = time.time()
     problems = sorted(set(enumerate_problems()) - set(EXCLUDE))
     #problems = ['simple_frame']
+    #algorithms = ALGORITHMS
+    algorithms = ['regression']
+    #heuristics = HEURISTICS
+    heuristics = ['dijkstra']
+
     print('Problems ({}): {}'.format(len(problems), problems))
     #problems = [path for path in problems if 'simple_frame' in path]
-    print('Algorithms ({}): {}'.format(len(ALGORITHMS), ALGORITHMS))
-    print('Heuristics ({}): {}'.format(len(HEURISTICS), HEURISTICS))
+    print('Algorithms ({}): {}'.format(len(algorithms), algorithms))
+    print('Heuristics ({}): {}'.format(len(heuristics), heuristics))
     configurations = [Configuration(*c) for c in product(
-        range(args.num), problems, ALGORITHMS, HEURISTICS, [args.max_time],
+        range(args.num), problems, algorithms, heuristics, [args.max_time],
         [args.cfree], [args.disable], [args.stiffness], [args.motions], [args.ee_only])]
     print('Configurations: {}'.format(len(configurations)))
 

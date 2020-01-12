@@ -39,6 +39,12 @@ EXTRUSION_FILENAMES = {
 }
 DEFAULT_SCALE = 1e-3 # TODO: load different scales
 
+ELEMENT_DIAMETER = (1./16)*25.4*1e-3 # inches -> meters
+#ELEMENT_DIAMETER = 2e-3 # 2e-6
+ELEMENT_SHRINK = 0.01 # 0. | 0.002 | 0.005
+
+##################################################
+
 def get_extrusion_dir():
     root_directory = os.path.dirname(os.path.abspath(__file__))
     return os.path.abspath(os.path.join(root_directory, EXTRUSION_DIRECTORY))
@@ -161,23 +167,16 @@ def affine_extrusion(extrusion_path, tform):
 ##################################################
 
 def create_elements_bodies(node_points, elements, color=apply_alpha(RED, alpha=1)):
-    # TODO: just shrink the structure to prevent worrying about collisions at end-points
     # TODO: could scale the whole environment
-    # radius = 1e-6 # 5e-5 | 1e-4
-    # radius = 1e-6
-    radius = RADIUS
-    # TODO: seems to be a min radius
-
-    shrink = SHRINK # 0. | 0.002 | 0.005
     element_bodies = []
     for (n1, n2) in elements:
         p1, p2 = node_points[n1], node_points[n2]
-        height = max(np.linalg.norm(p2 - p1) - 2*shrink, 0)
+        height = max(np.linalg.norm(p2 - p1) - 2*ELEMENT_SHRINK, 0)
         #if height == 0: # Cannot keep this here
         #    continue
         center = (p1 + p2) / 2
         # extents = (p2 - p1) / 2
-        body = create_cylinder(radius, height, color=color)
+        body = create_cylinder(ELEMENT_DIAMETER/2., height, color=color)
         set_point(body, center)
         element_bodies.append(body)
 
