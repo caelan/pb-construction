@@ -136,7 +136,7 @@ def enumerate_experiments():
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('path', help='The absolute path to an experiment pickle file')
+    parser.add_argument('-p', '--path', help='The absolute path to an experiment pickle file')
     parser.add_argument('-a', '--all', action='store_true',
                         help='Print out summary report for all problems')
     parser.add_argument('-w', '--write_report', action='store_true',

@@ -231,6 +231,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
 
                     draw_action(node_points, next_printed, element)
                     locker.restore()
+                    cprint('Backtrack detected, press Enter to continue!', 'red')
                     wait_for_user()
                     set_renderer(enable=False)
 
@@ -291,11 +292,10 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
 
         export_log_data(extrusion_path, cur_data, overwrite=False, indent=1)
 
+        cprint('search terminated by user interruption or timeout.', 'red')
         if has_gui():
             color_structure(element_bodies, printed, element)
             wait_for_user()
-        else:
-            cprint('search terminated by user interruption or timeout.', 'red')
         assert False, 'search terminated.'
 
     max_translation, max_rotation = compute_plan_deformation(extrusion_path, recover_sequence(plan))
