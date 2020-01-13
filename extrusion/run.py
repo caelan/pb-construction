@@ -25,7 +25,7 @@ from extrusion.parsing import load_extrusion, create_elements_bodies, \
     enumerate_problems, get_extrusion_path, affine_extrusion
 from extrusion.stream import get_print_gen_fn
 from extrusion.greedy import regression, progression, recover_directed_sequence
-from extrusion.heuristics import HEURISTICS
+from extrusion.heuristics import HEURISTICS, downsample_structure
 from extrusion.validator import verify_plan
 from extrusion.lookahead import lookahead
 
@@ -75,9 +75,9 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     problem_path = get_extrusion_path(args.problem)
     #problem_path = rotate_problem(problem_path)
 
-    # TODO: lazily plan for the end-effector before each manipulation
     element_from_id, node_points, ground_nodes = load_extrusion(problem_path, verbose=True)
     elements = list(element_from_id.values())
+    #elements = downsample_structure(elements, node_points, ground_nodes, num=None)
     #elements, ground_nodes = downsample_nodes(elements, node_points, ground_nodes)
     # plan = plan_sequence_test(node_points, elements, ground_nodes)
     partial_orders = [] # TODO: could test ground as partial orders

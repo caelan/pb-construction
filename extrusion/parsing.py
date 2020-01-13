@@ -3,8 +3,9 @@ import os
 import numpy as np
 
 from collections import namedtuple, OrderedDict
-from pybullet_tools.utils import create_cylinder, set_point, set_quat, \
-    quat_from_euler, Euler, tform_point, multiply, tform_from_pose, pose_from_tform, RED, apply_alpha
+from pybullet_tools.utils import create_box, create_cylinder, set_point, set_quat, \
+    quat_from_euler, Euler, tform_point, multiply, tform_from_pose, pose_from_tform, \
+    RED, apply_alpha, get_collision_data, get_visual_data, get_aabb_extent, get_aabb, wait_for_user, Pose, draw_aabb
 
 Element = namedtuple('Element', ['id', 'layer', 'nodes'])
 
@@ -156,6 +157,7 @@ def affine_extrusion(extrusion_path, tform):
 
 def create_elements_bodies(node_points, elements, color=apply_alpha(RED, alpha=1)):
     # TODO: could scale the whole environment
+    # URDF_USE_IMPLICIT_CYLINDER
     element_bodies = []
     for (n1, n2) in elements:
         p1, p2 = node_points[n1], node_points[n2]
@@ -164,14 +166,31 @@ def create_elements_bodies(node_points, elements, color=apply_alpha(RED, alpha=1
         #    continue
         center = (p1 + p2) / 2
         # extents = (p2 - p1) / 2
-        body = create_cylinder(ELEMENT_DIAMETER/2., height, color=color)
-        set_point(body, center)
-        element_bodies.append(body)
 
         delta = p2 - p1
         x, y, z = delta
         phi = np.math.atan2(y, x)
         theta = np.math.acos(z / np.linalg.norm(delta))
-        set_quat(body, quat_from_euler(Euler(pitch=theta, yaw=phi)))
+        quat = quat_from_euler(Euler(pitch=theta, yaw=phi))
         # p1 is z=-height/2, p2 is z=+height/2
+
+        # Much smaller than cylinder
+        # Also faster, C_shape 177.398 vs 400
+        body = create_box(ELEMENT_DIAMETER, ELEMENT_DIAMETER, height, color=color)
+        set_point(body, center)
+        set_quat(body, quat)
+
+        # Visually, smallest diameter is 2e-3
+        # The geometries and bounding boxes seem correct though
+        #body = create_cylinder(ELEMENT_DIAMETER, height, color=color)
+        #print('Diameter={:.5f} | Height={:.5f}'.format(ELEMENT_DIAMETER/2., height))
+        #print(get_aabb_extent(get_aabb(body)).round(6).tolist())
+        #print(get_visual_data(body))
+        #print(get_collision_data(body))
+        #set_point(body, center)
+        #set_quat(body, quat)
+        #draw_aabb(get_aabb(body))
+
+        element_bodies.append(body)
+        #wait_for_user()
     return element_bodies

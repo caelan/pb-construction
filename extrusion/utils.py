@@ -9,7 +9,7 @@ from pyconmech import StiffnessChecker
 
 from pybullet_tools.utils import get_link_pose, BodySaver, set_point, set_joint_positions, \
     Point, load_model, HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, get_aabb, \
-    get_distance, get_relative_pose, get_link_subtree, clone_body, randomize, pairwise_collision
+    get_distance, get_relative_pose, get_link_subtree, clone_body, randomize, pairwise_collision, wait_for_user, get_movable_joints
 from pddlstream.utils import get_connected_components
 
 KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
@@ -32,13 +32,14 @@ SUPPORT_THETA = np.math.radians(10)  # Support polygon
 
 USE_FLOOR = True
 
-
 RESOLUTION = 0.005
 JOINT_WEIGHTS = np.array([0.3078557810844393, 0.443600199302506, 0.23544367607317915,
                           0.03637161028426032, 0.04644626184081511, 0.015054267683041092])
 
 TRANS_TOL = 0.0015
 ROT_TOL = 5 * np.pi / 180
+
+INITIAL_CONF = [0, -np.pi/4, np.pi/4, 0, 0, 0]
 
 ##################################################
 
@@ -47,6 +48,7 @@ def load_world(use_floor=USE_FLOOR):
     obstacles = []
     with HideOutput():
         robot = load_pybullet(os.path.join(root_directory, KUKA_PATH), fixed_base=True)
+        set_joint_positions(robot, get_movable_joints(robot), INITIAL_CONF)
         lower, _ = get_aabb(robot)
         if use_floor:
             floor = load_model('models/short_floor.urdf')
@@ -308,6 +310,9 @@ def retrace_supporters(element, incoming_edges, supporters):
 
 ##################################################
 
+def downselect_elements(elements, nodes):
+    return [element for element in elements if all(n in nodes for n in element)]
+
 def downsample_nodes(elements, node_points, ground_nodes, num=None):
     if num is None:
         return elements, ground_nodes
@@ -319,9 +324,9 @@ def downsample_nodes(elements, node_points, ground_nodes, num=None):
     if num is not None:
         node_order = node_order[:num]
     ground_nodes = [n for n in ground_nodes if n in node_order]
-    elements = [element for element in elements
-                if all(n in node_order for n in element)]
-    return elements, ground_nodes
+    return downselect_elements(elements, node_order), ground_nodes
+
+##################################################
 
 def check_connected(ground_nodes, printed_elements):
     if not printed_elements:

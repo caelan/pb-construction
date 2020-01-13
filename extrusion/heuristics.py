@@ -4,7 +4,7 @@ import numpy as np
 
 from extrusion.equilibrium import compute_all_reactions, compute_node_reactions
 from extrusion.parsing import load_extrusion
-from extrusion.utils import get_extructed_ids, force_from_reaction, create_stiffness_checker, torque_from_reaction
+from extrusion.utils import get_extructed_ids, force_from_reaction, create_stiffness_checker, torque_from_reaction, downselect_elements
 from pddlstream.utils import adjacent_from_edges
 from pybullet_tools.utils import get_distance, INF
 
@@ -39,8 +39,8 @@ def compute_distance_from_node(elements, node_points, ground_nodes):
 
     cost_from_node = {}
     queue = []
+    cost = 0
     for node in ground_nodes:
-        cost = 0
         cost_from_node[node] = cost
         heapq.heappush(queue, (cost, node))
     while queue:
@@ -54,6 +54,14 @@ def compute_distance_from_node(elements, node_points, ground_nodes):
                 heapq.heappush(queue, (cost2, node2))
     return cost_from_node
 
+def downsample_structure(elements, node_points, ground_nodes, num=None):
+    if num is None:
+        return elements
+    cost_from_nodes = compute_distance_from_node(elements, node_points, ground_nodes)
+    selected_nodes = sorted(cost_from_nodes, key=lambda n: cost_from_nodes[0])[:num]
+    return downselect_elements(elements, selected_nodes)
+
+##################################################
 
 def score_stiffness(extrusion_path, element_from_id, elements, checker=None):
     if not elements:
