@@ -51,7 +51,7 @@ def sample_trajectories(robot, obstacles, node_points, element_bodies, ground_no
 def rotate_problem(problem_path, roll=np.pi):
     tform = Pose(euler=Euler(roll=roll))
     json_data = affine_extrusion(problem_path, tform)
-    path = 'rotated.json' # TODO: folder
+    path = 'rotated.json' # TODO: create folder
     with open(path, 'w') as f:
         json.dump(json_data, f, indent=2, sort_keys=True)
     problem_path = path
@@ -80,7 +80,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     #elements = downsample_structure(elements, node_points, ground_nodes, num=None)
     #elements, ground_nodes = downsample_nodes(elements, node_points, ground_nodes)
     # plan = plan_sequence_test(node_points, elements, ground_nodes)
-    partial_orders = [] # TODO: could test ground as partial orders
+    partial_orders = [] # TODO: could treat ground as partial orders
 
     connect(use_gui=viewer)
     with LockRenderer():
@@ -136,8 +136,8 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
                 sys.stdout.close()
             return args, data
         if args.motions:
-            planned_trajectories = compute_motions(robot, obstacles, element_bodies, initial_conf, planned_trajectories,
-                                                   collisions=not args.cfree)
+            planned_trajectories = compute_motions(robot, obstacles, element_bodies, node_points,
+                                                   initial_conf, planned_trajectories, collisions=not args.cfree)
     reset_simulation()
     disconnect()
 

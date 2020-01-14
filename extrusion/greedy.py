@@ -166,7 +166,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
         if command is None:
             continue
         if motions:
-            motion_traj = compute_motion(robot, obstacles, element_bodies, printed,
+            motion_traj = compute_motion(robot, obstacles, element_bodies, node_points, printed,
                                          current_conf, command.start_conf, collisions=collisions)
             if motion_traj is None:
                 continue
@@ -285,7 +285,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         if command is None:
             continue
         if motions:
-            motion_traj = compute_motion(robot, obstacles, element_bodies, printed,
+            motion_traj = compute_motion(robot, obstacles, element_bodies, node_points, printed,
                                          command.end_conf, current_conf, collisions=collisions)
             if motion_traj is None:
                 continue
