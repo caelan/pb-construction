@@ -272,6 +272,30 @@ def compute_direction_path(end_effector, length, reverse, element_bodies, elemen
 
 ##################################################
 
+def get_element_collision_fn(robot, obstacles):
+    movable_joints = get_movable_joints(robot)
+    disabled_collisions = get_disabled_collisions(robot)
+    custom_limits = {} # get_custom_limits(robot) # specified within the kuka URDF
+    robot_links = get_all_links(robot)
+
+    collision_fn = get_collision_fn(robot, movable_joints, obstacles=[],
+                                    attachments=[], self_collisions=SELF_COLLISIONS,
+                                    disabled_collisions=disabled_collisions,
+                                    custom_limits=custom_limits)
+
+    def element_collision_fn(q):
+        if collision_fn(q):
+            return True
+        for link in robot_links:
+            #bodies = obstacles
+            bodies = {b for b, _ in get_bodies_in_region(get_aabb(robot, link)) if b in obstacles}
+            if any(pairwise_link_collision(robot, link, body) for body in bodies):
+                return True
+        return False
+    return element_collision_fn
+
+##################################################
+
 def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground_nodes,
                      precompute_collisions=False, supports=False, bidirectional=False,
                      collisions=True, disable=False, ee_only=False, allow_failures=False,
@@ -280,9 +304,6 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
     # TODO: can slide a component of the element down
     if not collisions:
         precompute_collisions = False
-    movable_joints = get_movable_joints(robot)
-    custom_limits = {} # get_custom_limits(robot) # specified within the kuka URDF
-    disabled_collisions = get_disabled_collisions(robot)
     #element_neighbors = get_element_neighbors(element_bodies)
     node_neighbors = get_node_neighbors(element_bodies)
     incoming_supporters, _ = neighbors_from_orders(get_supported_orders(element_bodies, node_points))
@@ -319,21 +340,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
             obstacles = set(fixed_obstacles)
 
         elements_order = [e for e in element_bodies if (e != element) and (element_bodies[e] not in obstacles)]
-        collision_fn = get_collision_fn(robot, movable_joints, fixed_obstacles, # obstacles,
-                                        attachments=[], self_collisions=SELF_COLLISIONS,
-                                        disabled_collisions=disabled_collisions,
-                                        custom_limits=custom_limits)
-
-        robot_links = get_all_links(robot)
-        def box_collision_fn(q):
-            if collision_fn(q):
-                return True
-            for link in robot_links:
-                #bodies = element_obstacles
-                bodies = {b for b, _ in get_bodies_in_region(get_aabb(robot, link)) if b in fixed_obstacles}
-                if any(pairwise_link_collision(robot, link, body) for body in bodies):
-                    return True
-            return False
+        collision_fn = get_element_collision_fn(robot, obstacles)
 
         if ORTHOGONAL_GROUND and is_ground(element, ground_nodes):
             # TODO: orthogonal to the ground or aligned with element?
@@ -349,7 +356,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                         reverse = random.choice([False, True])
                     n1, n2 = reversed(element) if reverse else element
                     command = compute_direction_path(end_effector, length, reverse, element_bodies, element,
-                                                     direction, obstacles, box_collision_fn,
+                                                     direction, obstacles, collision_fn,
                                                      ee_only=ee_only, **kwargs)
                     if command is None:
                         continue
