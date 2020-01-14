@@ -18,6 +18,7 @@ from extrusion.utils import check_connected, test_stiffness, \
     create_stiffness_checker, get_id_from_element, load_world, PrintTrajectory, \
     compute_printed_nodes, compute_printable_elements, get_ground_elements, is_ground
 from extrusion.motion import compute_motion
+from extrusion.stream import MAX_DIRECTIONS, MAX_ATTEMPTS, MAX_ATTEMPTS
 
 # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
 from pybullet_tools.utils import connect, ClientSaver, wait_for_user, INF, has_gui, remove_all_debug, \
@@ -87,7 +88,7 @@ def draw_action(node_points, printed, element):
         remove_all_debug()
         handles = [draw_element(node_points, element, color=(1, 0, 0))]
         handles.extend(draw_element(node_points, e, color=(0, 1, 0)) for e in printed)
-    wait_for_user()
+    # wait_for_user()
     return handles
 
 ##################################################
@@ -115,7 +116,8 @@ def export_log_data(extrusion_file_path, log_data, overwrite=True, indent=None):
     
     data = OrderedDict()
     data['file_name'] = file_name
-    data['write_time'] = str(datetime.datetime.now())
+    date = datetime.datetime.now().strftime('%y-%m-%d_%H-%M-%S')
+    data['write_time'] = date
     data.update(log_data)
 
     file_name_tag = log_data['search_method'] + '-' + log_data['heuristic']
@@ -170,7 +172,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
     #checker = None
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                     supports=False, bidirectional=False,
-                                    precompute_collisions=False, max_directions=500, max_attempts=1,
+                                    precompute_collisions=False, max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS,
                                     collisions=collisions, **kwargs)
     id_from_element = get_id_from_element(element_from_id)
     all_elements = frozenset(element_bodies)
@@ -204,10 +206,11 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
             visits, _, printed, element, current_conf = heapq.heappop(queue)
             num_remaining = len(all_elements) - len(printed)
             num_evaluated += 1
+            print('-'*5)
             if num_remaining < min_remaining:
                 min_remaining = num_remaining
                 cprint('New best: {}'.format(num_remaining), 'green')
-            cprint('Iteration: {} | Best: {} | Printed: {} | Element: {} | Index: {} | Time: {:.3f}'.format(
+            cprint('Eval Iter: {} | Best: {} | Printed: {} | Element: {} | Index: {} | Time: {:.3f}'.format(
                 num_evaluated, min_remaining, len(printed), element, id_from_element[element], elapsed_time(start_time)), 'blue')
             next_printed = printed | {element}
 
@@ -230,12 +233,16 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
                     bt_data.append(cur_data)
 
                     draw_action(node_points, next_printed, element)
+                    # color_structure(element_bodies, next_printed, element)
+
                     locker.restore()
                     cprint('Backtrack detected, press Enter to continue!', 'red')
                     wait_for_user()
-                    set_renderer(enable=False)
+                    locker = LockRenderer()
+                    # set_renderer(enable=False)
 
             if backtrack_limit < backtrack:
+                cprint('backtrack {} exceeds limit {}, exit.'.format(backtrack, backtrack_limit), 'red')
                 break # continue
 
             # * constraint checking
@@ -295,6 +302,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
         cprint('search terminated by user interruption or timeout.', 'red')
         if has_gui():
             color_structure(element_bodies, printed, element)
+            locker.restore()
             wait_for_user()
         assert False, 'search terminated.'
 
@@ -312,6 +320,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
 
     if not data['sequence'] and has_gui():
         color_structure(element_bodies, printed, element)
+        locker.restore()
         wait_for_user()
 
     return plan, data
@@ -337,7 +346,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
     #checker = None
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                     supports=False, bidirectional=False,
-                                    precompute_collisions=False, max_directions=500, max_attempts=1,
+                                    precompute_collisions=False, max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS,
                                     collisions=collisions, **kwargs)
     heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=False)
 

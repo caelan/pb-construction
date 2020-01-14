@@ -8,7 +8,7 @@ from itertools import cycle
 from pybullet_tools.utils import get_movable_joints, get_joint_positions, multiply, invert, \
     set_joint_positions, inverse_kinematics, get_link_pose, get_distance, point_from_pose, wrap_angle, get_sample_fn, \
     link_from_name, get_pose, get_collision_fn, set_pose, pairwise_collision, Pose, Euler, Point, interval_generator, \
-    randomize, get_extend_fn, user_input, INF, elapsed_time, wait_for_user
+    randomize, get_extend_fn, user_input, INF, elapsed_time, wait_for_user, WorldSaver
 from extrusion.utils import TOOL_LINK, get_disabled_collisions, get_node_neighbors, \
     PrintTrajectory, retrace_supporters, get_supported_orders, prune_dominated, Command, MotionTrajectory, RESOLUTION, \
     JOINT_WEIGHTS, EE_LINK, EndEffector, is_ground, get_custom_limits
@@ -40,6 +40,9 @@ ORTHOGONAL_GROUND = False
 STEP_SIZE = 1e-3  # 0.0025
 APPROACH_DISTANCE = 0.01
 JOINT_RESOLUTIONS = np.divide(0.25 * RESOLUTION * np.ones(JOINT_WEIGHTS.shape), JOINT_WEIGHTS)
+
+MAX_DIRECTIONS = 200 # | 500
+MAX_ATTEMPTS = 1
 
 ##################################################
 
@@ -176,7 +179,7 @@ def optimize_angle(end_effector, element_pose,
 
 APPROACH_DISTANCE = 0.01
 
-def plan_approach(robot, print_traj, collision_fn):
+def plan_approach(end_effector, print_traj, collision_fn):
     if APPROACH_DISTANCE == 0:
         return Command([print_traj])
     robot = end_effector.robot
@@ -330,9 +333,10 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                         reverse = random.choice([False, True])
                     n1, n2 = reversed(element) if reverse else element
                     # * generate print trajectory
-                    command = compute_direction_path(end_effector, length, reverse, element_bodies, element,
-                                                     direction, obstacles, collision_fn,
-                                                     ee_only=ee_only, **kwargs)
+                    with WorldSaver(): # TODO: just to help clear the scene for viz
+                        command = compute_direction_path(end_effector, length, reverse, element_bodies, element,
+                                                         direction, obstacles, collision_fn,
+                                                         ee_only=ee_only, **kwargs)
                     if command is None:
                         continue
                     # a command is successuflly generated, which means that all the extruded elements are
@@ -354,8 +358,8 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                         prune_dominated(trajectories)
                     if command not in trajectories:
                         continue
-                    print('{}) {}->{} | EE: {} | Supporters: {} | Attempts: {} | Trajectories: {} | Colliding: {}'.format(
-                        num, n1, n2, ee_only, len(supporters), attempt, len(trajectories),
+                    print('Collision check {}) {}->{} | EE: {} | Attempts: {} | Trajectories: {} | Colliding: {}'.format(
+                        num, n1, n2, ee_only, attempt, len(trajectories),
                         sorted(len(t.colliding) for t in trajectories)))
                     temp_time = time.time()
                     yield (command,)
@@ -372,8 +376,8 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                     if allow_failures:
                         yield None
             else:
-                cprint('{}) {}->{} | EE: {} | Supporters: {} | Attempts: {} | Max attempts exceeded!'.format(
-                       num, n1, n2, ee_only, len(supporters), max_directions), 'red')
+                cprint('Collision check {}) {}->{} | EE: {} | Attempts: {} | Max attempts exceeded!'.format(
+                       num, n1, n2, ee_only, max_directions), 'red')
                 return
                 #yield None
     return gen_fn

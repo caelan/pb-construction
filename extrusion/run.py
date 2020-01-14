@@ -33,7 +33,8 @@ from extrusion.lookahead import lookahead
 from extrusion.visualization import visualize_stiffness
 
 from pybullet_tools.utils import connect, disconnect, get_movable_joints, get_joint_positions, LockRenderer, \
-    unit_pose, reset_simulation, draw_pose, apply_alpha, BLACK, Pose, Euler, set_numpy_seed, set_random_seed, set_joint_positions
+    unit_pose, reset_simulation, draw_pose, apply_alpha, BLACK, Pose, Euler, set_numpy_seed, set_random_seed, set_joint_positions, \
+    INF
 
 ##################################################
 
@@ -110,7 +111,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
             trajectories = sample_trajectories(robot, obstacles, node_points, element_bodies, ground_nodes)
         pr = cProfile.Profile()
         pr.enable()
-        backtrack_limit = 0
+        backtrack_limit = INF
         if args.algorithm == 'stripstream':
             planned_trajectories, data = plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
                                                        trajectories=trajectories, collisions=not args.cfree,

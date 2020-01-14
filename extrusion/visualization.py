@@ -29,6 +29,8 @@ def label_nodes(node_points, **kwargs):
     return [add_text(node, position=point, **kwargs) for node, point in enumerate(node_points)]
 
 def color_structure(element_bodies, printed, next_element):
+    """printed element in blue, next element in green, remaining element in red
+    """
     # TODO: could also do this with debug segments
     element_colors = {}
     for element in printed:
