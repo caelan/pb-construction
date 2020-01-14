@@ -7,7 +7,7 @@ from collections import defaultdict, deque, namedtuple
 
 from pyconmech import StiffnessChecker
 
-from pybullet_tools.utils import get_link_pose, BodySaver, set_point, set_joint_positions, \
+from pybullet_tools.utils import get_link_pose, BodySaver, set_point, multiply, set_pose, set_joint_positions, \
     Point, load_model, HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, get_aabb, \
     get_distance, get_relative_pose, get_link_subtree, clone_body, randomize, pairwise_collision, wait_for_user, get_movable_joints
 from pddlstream.utils import get_connected_components
@@ -117,6 +117,10 @@ class EndEffector(object):
         #    set_color(tool_body, np.zeros(4), link)
     def get_tool_pose(self):
         return get_link_pose(self.robot, self.tool_link)
+    def set_pose(self, tool_pose):
+        pose = multiply(tool_pose, self.tool_from_ee)
+        set_pose(self.body, pose)
+        return pose
     @property
     def tool_from_root(self):
         return self.tool_from_ee

@@ -21,7 +21,7 @@ from extrusion.utils import get_disabled_collisions, MotionTrajectory, load_worl
 from extrusion.visualization import draw_ordered, set_extrusion_camera
 from extrusion.stream import SELF_COLLISIONS
 
-MIN_ELEMENTS = 3 # 2 | INF
+MIN_ELEMENTS = INF # 2 | 3 | INF
 
 def create_bounding_mesh(element_bodies, node_points, printed_elements):
     # TODO: use bounding boxes instead of points
@@ -55,13 +55,17 @@ def compute_motion(robot, fixed_obstacles, element_bodies, node_points,
     custom_limits = {}
     #element_from_body = {b: e for e, b in element_bodies.items()}
 
+    # TODO: precompute this
+    resolution = 0.25
     frequencies = {}
     for element in printed_elements:
-        z = np.average([node_points[n][2] for n in element])
-        #key = np.round(2*z, 1)
-        key = None
+        #key = None
+        midpoint = np.average([node_points[n] for n in element], axis=0)
+        #key = int(midpoint[2] / resolution)
+        key = tuple((midpoint / resolution).astype(int).tolist()) # round or int?
         frequencies.setdefault(key, []).append(element)
-    print(Counter({key: len(elements) for key, elements in frequencies.items()}))
+    #print(len(frequencies))
+    #print(Counter({key: len(elements) for key, elements in frequencies.items()}))
 
     # TODO: apply this elsewhere
     obstacles = list(fixed_obstacles)
