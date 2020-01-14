@@ -110,7 +110,7 @@ def score_stiffness(extrusion_path, element_from_id, elements, checker=None):
 
 ##################################################
 
-def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
+def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None, online=False):
     # TODO: penalize disconnected
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
     elements = frozenset(element_from_id.values())
@@ -129,6 +129,10 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
         structure = printed | {element} if forward else printed - {element}
         structure_ids = get_extructed_ids(element_from_id, structure)
         # TODO: build away from the robot
+        # TODO: heuristic that orders elements by angle
+
+        #if online:
+        #    distance_from_node = compute_distance_from_node(printed, node_points, ground_nodes)
 
         normalizer = 1
         #normalizer = len(structure)
@@ -157,10 +161,8 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
             z = np.average([node_points[n][2] for n in element])
             return sign*z
         elif heuristic == 'dijkstra':
-            # min, max, node not in set
-            # TODO: recompute online (but all at once)
             # TODO: sum of all element path distances
-            normalizer = np.average([distance_from_node[node] for node in element])
+            normalizer = np.average([distance_from_node[node] for node in element]) # min, max, average
             return sign * normalizer
         elif heuristic == 'load':
             nodal_loads = checker.get_nodal_loads(existing_ids=structure_ids, dof_flattened=False) # get_self_weight_loads

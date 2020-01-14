@@ -2,14 +2,19 @@ from __future__ import print_function
 
 import time
 import numpy as np
+import colorsys
+import random
+
 from scipy.spatial.qhull import QhullError
+from collections import Counter
 
 from pybullet_tools.utils import get_movable_joints, set_joint_positions, plan_joint_motion, \
     connect, point_from_pose, get_link_pose, link_from_name, add_line, \
     wait_for_duration, disconnect, elapsed_time, reset_simulation, wait_for_user, convex_hull, \
     create_mesh, draw_mesh, apply_alpha, RED, remove_body, pairwise_collision, randomize, \
     get_sample_fn, get_distance_fn, get_extend_fn, get_collision_fn, \
-    check_initial_end, birrt, INF
+    check_initial_end, birrt, INF, get_bodies_in_region, get_aabb, spaced_colors, vertices_from_data, \
+    BASE_LINK, vertices_from_link, apply_affine, get_pose
 
 from extrusion.utils import get_disabled_collisions, MotionTrajectory, load_world, PrintTrajectory, is_ground, \
     RESOLUTION, JOINT_WEIGHTS
@@ -18,18 +23,26 @@ from extrusion.stream import SELF_COLLISIONS
 
 MIN_ELEMENTS = 3 # 2 | INF
 
-def create_bounding_mesh(node_points, printed_elements):
+def create_bounding_mesh(element_bodies, node_points, printed_elements):
     # TODO: use bounding boxes instead of points
     # TODO: connected components
-    # TODO: decompose by height
-    printed_points = [node_points[n] for element in printed_elements for n in element]
+    #printed_points = [node_points[n] for element in printed_elements for n in element]
+    printed_points = []
+    for element in printed_elements:
+        body = element_bodies[element]
+        printed_points.extend(apply_affine(get_pose(body), vertices_from_link(body, BASE_LINK)))
+
+    rgb = colorsys.hsv_to_rgb(h=random.random(), s=1, v=1)
+    #rgb = RED
     try:
         mesh = convex_hull(printed_points)
         # handles = draw_mesh(mesh)
-        return create_mesh(mesh, under=True, color=apply_alpha(RED, 0.5))
+        return create_mesh(mesh, under=True, color=apply_alpha(rgb, 0.5))
         # TODO: check collisions with hull before the elements
-    except QhullError:
-        return None
+    except QhullError as e:
+        print(printed_elements)
+        raise e
+        #return None
 
 def compute_motion(robot, fixed_obstacles, element_bodies, node_points,
                    printed_elements, start_conf, end_conf, collisions=True):
@@ -40,18 +53,31 @@ def compute_motion(robot, fixed_obstacles, element_bodies, node_points,
     resolutions = np.divide(RESOLUTION * np.ones(weights.shape), weights)
     disabled_collisions = get_disabled_collisions(robot)
     custom_limits = {}
+    #element_from_body = {b: e for e, b in element_bodies.items()}
 
-    element_obstacles = randomize(element_bodies[e] for e in printed_elements)
+    frequencies = {}
+    for element in printed_elements:
+        z = np.average([node_points[n][2] for n in element])
+        #key = np.round(2*z, 1)
+        key = None
+        frequencies.setdefault(key, []).append(element)
+    print(Counter({key: len(elements) for key, elements in frequencies.items()}))
+
+    # TODO: apply this elsewhere
+    obstacles = list(fixed_obstacles)
     hulls = {}
-    if MIN_ELEMENTS <= len(printed_elements):
-        obstacles = fixed_obstacles
-        hull = create_bounding_mesh(node_points, printed_elements)
-        assert hull is not None
-        hulls[hull] = element_obstacles
-    else:
-        obstacles = fixed_obstacles + element_obstacles
+    for elements in frequencies.values():
+        element_obstacles = randomize(element_bodies[e] for e in elements)
+        if MIN_ELEMENTS <= len(elements):
+            hull = create_bounding_mesh(element_bodies, node_points, elements)
+            assert hull is not None
+            hulls[hull] = element_obstacles
+        else:
+            obstacles.extend(element_obstacles)
+
     if not collisions:
         obstacles = []
+        hulls = {}
     #print(hulls)
     #print(obstacles)
     #wait_for_user()
@@ -65,6 +91,9 @@ def compute_motion(robot, fixed_obstacles, element_bodies, node_points,
     def element_collision_fn(q):
         if collision_fn(q):
             return True
+        #for body in get_bodies_in_region(get_aabb(robot)): # Perform per link?
+        #    if (element_from_body.get(body, None) in printed_elements) and pairwise_collision(robot, body):
+        #        return True
         for hull, bodies in hulls.items():
             if pairwise_collision(robot, hull) and any(pairwise_collision(robot, body) for body in bodies):
                 return True

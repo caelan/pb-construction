@@ -221,9 +221,8 @@ def main():
     else:
         plan_extrusion(args, viewer=args.viewer, verbose=True, watch=True)
 
-    # TODO: collisions at the ends of elements?
+    # TODO: collisions at the ends of elements
     # TODO: slow down automatically near endpoints
-    # TODO: heuristic that orders elements by angle
     # TODO: check that both the start and end satisfy
     # python -m extrusion.run -n 10 2>&1 | tee log.txt
 
