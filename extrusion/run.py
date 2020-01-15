@@ -24,7 +24,8 @@ from extrusion.utils import load_world, PrintTrajectory
 from extrusion.parsing import load_extrusion, create_elements_bodies, \
     enumerate_problems, get_extrusion_path, affine_extrusion
 from extrusion.stream import get_print_gen_fn
-from extrusion.greedy import regression, progression, recover_directed_sequence
+from extrusion.greedy import progression, recover_directed_sequence
+from extrusion.regression import regression
 from extrusion.heuristics import HEURISTICS, downsample_structure
 from extrusion.validator import verify_plan
 from extrusion.lookahead import lookahead
@@ -138,16 +139,19 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
                                                    initial_conf, planned_trajectories, collisions=not args.cfree)
 
     safe = validate_trajectories(element_bodies, obstacles, planned_trajectories)
+    data['safe'] = safe
     print('Safe:', safe)
-
     reset_simulation()
     disconnect()
 
     #id_from_element = get_id_from_element(element_from_id)
     #planned_ids = [id_from_element[traj.element] for traj in planned_trajectories]
     planned_elements = recover_directed_sequence(planned_trajectories)
-    animate = not (args.disable or args.ee_only)
     valid = verify_plan(problem_path, planned_elements) #, use_gui=not animate)
+    data.update({
+        'safe': safe,
+        'valid': valid,
+    })
 
     plan_data = {
         'problem':  args.problem,
@@ -167,6 +171,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     #    json.dump(plan_data, f, indent=2, sort_keys=True)
 
     if watch:
+        animate = not (args.disable or args.ee_only)
         display_trajectories(node_points, ground_nodes, planned_trajectories, animate=animate)
     if not verbose:
         sys.stdout.close()
