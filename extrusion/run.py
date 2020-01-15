@@ -82,8 +82,8 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     # plan = plan_sequence_test(node_points, elements, ground_nodes)
     partial_orders = [] # TODO: could treat ground as partial orders
 
-    connect(use_gui=viewer)
-    with LockRenderer():
+    connect(use_gui=viewer) # TODO: avoid recreating
+    with LockRenderer(True):
         draw_pose(unit_pose(), length=1.)
         obstacles, robot = load_world()
         alpha = 1 # 0

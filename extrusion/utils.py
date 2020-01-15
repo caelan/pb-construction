@@ -9,7 +9,8 @@ from pyconmech import StiffnessChecker
 
 from pybullet_tools.utils import get_link_pose, BodySaver, set_point, multiply, set_pose, set_joint_positions, \
     Point, load_model, HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, get_aabb, \
-    get_distance, get_relative_pose, get_link_subtree, clone_body, randomize, pairwise_collision, wait_for_user, get_movable_joints
+    get_distance, get_relative_pose, get_link_subtree, clone_body, randomize, pairwise_collision, wait_for_user, \
+    get_movable_joints, get_all_links, get_bodies_in_region, pairwise_link_collision, draw_aabb, set_static, set_all_static
 from pddlstream.utils import get_connected_components
 
 KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
@@ -48,15 +49,17 @@ def load_world(use_floor=USE_FLOOR):
     obstacles = []
     with HideOutput():
         robot = load_pybullet(os.path.join(root_directory, KUKA_PATH), fixed_base=True)
+        set_static(robot)
         set_joint_positions(robot, get_movable_joints(robot), INITIAL_CONF)
         lower, _ = get_aabb(robot)
         if use_floor:
-            floor = load_model('models/short_floor.urdf')
+            floor = load_model('models/short_floor.urdf', fixed_base=True)
             obstacles.append(floor)
             #set_point(floor, Point(z=lower[2]))
             set_point(floor, Point(x=1.2, z=0.023-0.025))
         else:
             floor = None # TODO: make this an empty list of obstacles
+        #set_all_static()
     return obstacles, robot
 
 
@@ -113,6 +116,7 @@ class EndEffector(object):
         self.tool_from_ee = get_relative_pose(self.robot, self.ee_link, self.tool_link)
         tool_links = get_link_subtree(robot, self.ee_link)
         self.body = clone_body(robot, links=tool_links, **kwargs)
+        set_static(self.body)
         # for link in get_all_links(tool_body):
         #    set_color(tool_body, np.zeros(4), link)
     def get_tool_pose(self):
@@ -154,6 +158,8 @@ class Trajectory(object):
                     set_joint_positions(self.robot, self.joints, conf)
                     self.path_from_link[link].append(get_link_pose(self.robot, link))
         return self.path_from_link[link]
+    def __len__(self):
+        return len(self.path)
     def reverse(self):
         raise NotImplementedError()
     def iterate(self):
@@ -161,7 +167,7 @@ class Trajectory(object):
             set_joint_positions(self.robot, self.joints, conf)
             yield
 
-class MotionTrajectory(Trajectory):
+class MotionTrajectory(Trajectory): # Transfer
     def __init__(self, robot, joints, path, attachments=[]):
         super(MotionTrajectory, self).__init__(robot, joints, path)
         self.attachments = attachments
@@ -191,6 +197,8 @@ class PrintTrajectory(Trajectory):
                               self.tool_path[::-1], self.element, not self.is_reverse)
     def __repr__(self):
         return '{}->{}'.format(self.n1, self.n2)
+
+##################################################
 
 class Command(object):
     def __init__(self, trajectories=[], safe_per_element={}):

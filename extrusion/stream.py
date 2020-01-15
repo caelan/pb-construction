@@ -8,7 +8,7 @@ from pybullet_tools.utils import get_movable_joints, get_joint_positions, draw_a
     set_joint_positions, inverse_kinematics, get_link_pose, get_distance, point_from_pose, wrap_angle, get_sample_fn, \
     link_from_name, get_pose, get_collision_fn, set_pose, pairwise_collision, Pose, Euler, Point, interval_generator, \
     randomize, get_extend_fn, user_input, INF, elapsed_time, wait_for_user, get_bodies_in_region, get_aabb, get_all_links, \
-    link_pairs_collision, pairwise_link_collision
+    link_pairs_collision, pairwise_link_collision, get_link_name, get_links, step_simulation, STATIC_MASS, BASE_LINK
 from extrusion.utils import TOOL_LINK, get_disabled_collisions, get_node_neighbors, \
     PrintTrajectory, retrace_supporters, get_supported_orders, prune_dominated, Command, MotionTrajectory, RESOLUTION, \
     JOINT_WEIGHTS, EE_LINK, EndEffector, is_ground, get_custom_limits
@@ -273,23 +273,38 @@ def compute_direction_path(end_effector, length, reverse, element_bodies, elemen
 ##################################################
 
 def get_element_collision_fn(robot, obstacles):
-    movable_joints = get_movable_joints(robot)
+    joints = get_movable_joints(robot)
     disabled_collisions = get_disabled_collisions(robot)
     custom_limits = {} # get_custom_limits(robot) # specified within the kuka URDF
-    robot_links = get_all_links(robot)
+    robot_links = get_all_links(robot) # Base link isn't real
+    #robot_links = get_links(robot)
 
-    collision_fn = get_collision_fn(robot, movable_joints, obstacles=[],
+    collision_fn = get_collision_fn(robot, joints, obstacles=[],
                                     attachments=[], self_collisions=SELF_COLLISIONS,
                                     disabled_collisions=disabled_collisions,
                                     custom_limits=custom_limits)
 
+    # TODO: precompute bounding boxes and manually check
+    #for body in obstacles: # Calling before get_bodies_in_region does not act as step_simulation
+    #    get_aabb(body, link=None)
+    step_simulation() # Okay to call only once and then ignore the robot
+
     def element_collision_fn(q):
         if collision_fn(q):
             return True
-        for link in robot_links:
+        #step_simulation()  # Might only need to call this once
+        for robot_link in robot_links:
             #bodies = obstacles
-            bodies = {b for b, _ in get_bodies_in_region(get_aabb(robot, link)) if b in obstacles}
-            if any(pairwise_link_collision(robot, link, body) for body in bodies):
+            aabb = get_aabb(robot, link=robot_link)
+            bodies = {b for b, _ in get_bodies_in_region(aabb) if b in obstacles}
+            #set_joint_positions(robot, joints, q) # Need to reset
+            #draw_aabb(aabb)
+            #print(robot_link, get_link_name(robot, robot_link), len(bodies), aabb)
+            #print(sum(pairwise_link_collision(robot, robot_link, body, link2=0) for body, _ in region_bodies))
+            #print(sum(pairwise_collision(robot, body) for body, _ in region_bodies))
+            #wait_for_user()
+            if any(pairwise_link_collision(robot, robot_link, body, link2=BASE_LINK) for body in bodies):
+                #wait_for_user()
                 return True
         return False
     return element_collision_fn
@@ -309,7 +324,8 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
     incoming_supporters, _ = neighbors_from_orders(get_supported_orders(element_bodies, node_points))
 
     end_effector = EndEffector(robot, ee_link=link_from_name(robot, EE_LINK),
-                               tool_link=link_from_name(robot, TOOL_LINK), visual=False, collision=True)
+                               tool_link=link_from_name(robot, TOOL_LINK),
+                               visual=False, collision=True)
 
     def gen_fn(node1, element, extruded=[], trajectories=[]): # fluents=[]):
         #start_time = time.time()
