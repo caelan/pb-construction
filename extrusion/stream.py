@@ -179,6 +179,8 @@ def optimize_angle(end_effector, element_pose,
 ##################################################
 
 def plan_approach(end_effector, print_traj, collision_fn):
+    # TODO: collisions at the ends of elements
+    # TODO: slow down automatically near endpoints
     if APPROACH_DISTANCE == 0:
         return Command([print_traj])
     robot = end_effector.robot
@@ -360,7 +362,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
         collision_fn = get_element_collision_fn(robot, obstacles)
 
         if ORTHOGONAL_GROUND and is_ground(element, ground_nodes):
-            # TODO: orthogonal to the ground or aligned with element?
+            # TODO: orthogonal to the ground
             direction_generator = cycle([Pose(euler=Euler(roll=0, pitch=0))])
         else:
             direction_generator = get_direction_generator(use_halton=False)

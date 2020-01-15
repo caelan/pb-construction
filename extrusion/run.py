@@ -30,7 +30,7 @@ from extrusion.heuristics import HEURISTICS, downsample_structure
 from extrusion.validator import verify_plan
 from extrusion.lookahead import lookahead
 
-from pybullet_tools.utils import connect, disconnect, get_movable_joints, get_joint_positions, LockRenderer, \
+from pybullet_tools.utils import connect, disconnect, get_movable_joints, get_joint_positions, INF, LockRenderer, \
     unit_pose, reset_simulation, draw_pose, apply_alpha, BLACK, Pose, Euler, set_numpy_seed, set_random_seed, wait_for_user
 
 ##################################################
@@ -79,9 +79,11 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     #elements = downsample_structure(elements, node_points, ground_nodes, num=None)
     #elements, ground_nodes = downsample_nodes(elements, node_points, ground_nodes)
     # plan = plan_sequence_test(node_points, elements, ground_nodes)
-    partial_orders = [] # TODO: could treat ground as partial orders
 
-    connect(use_gui=viewer) # TODO: avoid recreating
+    partial_orders = [] # TODO: could treat ground as partial orders
+    backtrack_limit = INF # 0 | INF
+
+    connect(use_gui=viewer) # TODO: avoid reconnecting
     with LockRenderer(True):
         draw_pose(unit_pose(), length=1.)
         obstacles, robot = load_world()
@@ -104,7 +106,6 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
             sampled_trajectories = sample_trajectories(robot, obstacles, node_points, element_bodies, ground_nodes)
         pr = cProfile.Profile()
         pr.enable()
-        backtrack_limit = 0
         if args.algorithm == 'stripstream':
             planned_trajectories, data = plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
                                                        trajectories=sampled_trajectories, collisions=not args.cfree,
@@ -135,8 +136,8 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
                 sys.stdout.close()
             return args, data
         if args.motions:
-            planned_trajectories = compute_motions(robot, obstacles, element_bodies, node_points,
-                                                   initial_conf, planned_trajectories, collisions=not args.cfree)
+            planned_trajectories = compute_motions(robot, obstacles, element_bodies, node_points, initial_conf,
+                                                   planned_trajectories, collisions=not args.cfree)
 
     safe = validate_trajectories(element_bodies, obstacles, planned_trajectories)
     data['safe'] = safe
@@ -229,8 +230,6 @@ def main():
     else:
         plan_extrusion(args, viewer=args.viewer, verbose=True, watch=True)
 
-    # TODO: collisions at the ends of elements
-    # TODO: slow down automatically near endpoints
     # TODO: check that both the start and end satisfy
     # python -m extrusion.run -n 10 2>&1 | tee log.txt
 
@@ -239,6 +238,5 @@ if __name__ == '__main__':
     main()
 
 # TODO: local search to reduce the violation
-# TODO: introduce support structures and then require that they be removed
+# TODO: introduce support structure fixities and then require that they be removed
 # Robot spiderweb printing weaving hook which may slide
-# TODO: only consider axioms that could be relevant

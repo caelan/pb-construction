@@ -96,6 +96,7 @@ def plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
                   debug=False, max_time=30):
     # TODO: fail if wild stream produces unexpected facts
     # TODO: try search at different cost levels (i.e. w/ and w/o abstract)
+    # TODO: only consider axioms that could be relevant
     if trajectories is None:
         return None
     # TODO: iterated search using random restarts
