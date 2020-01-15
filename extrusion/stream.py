@@ -85,10 +85,10 @@ def tool_path_collision(end_effector, element_pose, translation_path, direction,
     # TODO: allow sampling in the full sphere by checking collision with an element while sliding
     for tool_pose in randomize(compute_tool_path(element_pose, translation_path, direction, angle, reverse)):
         end_effector.set_pose(tool_pose)
-        bodies = obstacles
-        #tool_aabb = get_aabb(end_effector.body) # TODO: could just translate
+        #bodies = obstacles
+        tool_aabb = get_aabb(end_effector.body) # TODO: could just translate
         #handles = draw_aabb(tool_aabb)
-        #bodies = {b for b, _ in get_bodies_in_region(tool_aabb) if b in obstacles}
+        bodies = {b for b, _ in get_bodies_in_region(tool_aabb) if b in obstacles}
         #print(bodies)
         #for body, link in bodies:
         #    handles.extend(draw_aabb(get_aabb(body, link)))
@@ -287,7 +287,8 @@ def get_element_collision_fn(robot, obstacles):
     # TODO: precompute bounding boxes and manually check
     #for body in obstacles: # Calling before get_bodies_in_region does not act as step_simulation
     #    get_aabb(body, link=None)
-    step_simulation() # Okay to call only once and then ignore the robot
+    step_simulation() # Okay to call only once and then just ignore the robot
+    # TODO: call this once globally
 
     def element_collision_fn(q):
         if collision_fn(q):

@@ -94,6 +94,8 @@ def get_pddlstream(robot, obstacles, node_points, element_bodies, ground_nodes,
 def plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
                   trajectories=[], collisions=True, disable=False,
                   debug=False, max_time=30):
+    # TODO: fail if wild stream produces unexpected facts
+    # TODO: try search at different cost levels (i.e. w/ and w/o abstract)
     if trajectories is None:
         return None
     # TODO: iterated search using random restarts

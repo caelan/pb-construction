@@ -18,7 +18,7 @@ sys.path.extend([
 
 from extrusion.visualization import label_element, set_extrusion_camera, label_nodes
 from extrusion.experiment import train_parallel
-from extrusion.motion import compute_motions, display_trajectories
+from extrusion.motion import compute_motions, display_trajectories, validate_trajectories
 from extrusion.stripstream import plan_sequence
 from extrusion.utils import load_world, PrintTrajectory
 from extrusion.parsing import load_extrusion, create_elements_bodies, \
@@ -30,7 +30,7 @@ from extrusion.validator import verify_plan
 from extrusion.lookahead import lookahead
 
 from pybullet_tools.utils import connect, disconnect, get_movable_joints, get_joint_positions, LockRenderer, \
-    unit_pose, reset_simulation, draw_pose, apply_alpha, BLACK, Pose, Euler, set_numpy_seed, set_random_seed
+    unit_pose, reset_simulation, draw_pose, apply_alpha, BLACK, Pose, Euler, set_numpy_seed, set_random_seed, wait_for_user
 
 ##################################################
 
@@ -63,8 +63,6 @@ def rotate_problem(problem_path, roll=np.pi):
 
 def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=False):
     # TODO: setCollisionFilterGroupMask
-    # TODO: fail if wild stream produces unexpected facts
-    # TODO: try search at different cost levels (i.e. w/ and w/o abstract)
     if not verbose:
         sys.stdout = open(os.devnull, 'w')
 
@@ -100,15 +98,15 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     # debug_elements(robot, node_points, node_order, elements)
 
     with LockRenderer(False):
-        trajectories = []
+        sampled_trajectories = []
         if precompute:
-            trajectories = sample_trajectories(robot, obstacles, node_points, element_bodies, ground_nodes)
+            sampled_trajectories = sample_trajectories(robot, obstacles, node_points, element_bodies, ground_nodes)
         pr = cProfile.Profile()
         pr.enable()
         backtrack_limit = 0
         if args.algorithm == 'stripstream':
             planned_trajectories, data = plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                                       trajectories=trajectories, collisions=not args.cfree,
+                                                       trajectories=sampled_trajectories, collisions=not args.cfree,
                                                        max_time=args.max_time, disable=args.disable, debug=False)
         elif args.algorithm == 'progression':
             planned_trajectories, data = progression(robot, obstacles, element_bodies, problem_path, partial_orders=partial_orders,
@@ -138,6 +136,10 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
         if args.motions:
             planned_trajectories = compute_motions(robot, obstacles, element_bodies, node_points,
                                                    initial_conf, planned_trajectories, collisions=not args.cfree)
+
+    safe = validate_trajectories(element_bodies, obstacles, planned_trajectories)
+    print('Safe:', safe)
+
     reset_simulation()
     disconnect()
 
@@ -155,6 +157,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
         'use_collisions': not args.cfree,
         'use_stiffness': args.stiffness,
         'plan': planned_elements,
+        'safe': safe,
         'valid': valid,
     }
     plan_data.update(data)
@@ -193,7 +196,7 @@ def main():
                         help='Disables trajectory planning')
     parser.add_argument('-e', '--ee_only', action='store_true',
                         help='Disables arm planning')
-    parser.add_argument('-m', '--motions', action='store_true',
+    parser.add_argument('-m', '--motions', action='store_false',
                         help='Plans motions between each extrusion')
     parser.add_argument('-n', '--num', default=0, type=int,
                         help='Number of experiment trials')

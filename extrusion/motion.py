@@ -152,6 +152,25 @@ def compute_motions(robot, fixed_obstacles, element_bodies, node_points, initial
 
 ##################################################
 
+def validate_trajectories(element_bodies, fixed_obstacles, trajectories):
+    if trajectories is None:
+        return False
+    # TODO: combine all validation procedures
+    print('Trajectories:', len(trajectories))
+    obstacles = list(fixed_obstacles)
+    for i, trajectory in enumerate(trajectories):
+        for _ in trajectory.iterate():
+            #wait_for_user()
+            if any(pairwise_collision(trajectory.robot, body) for body in obstacles):
+                wait_for_user()
+                return False
+        if isinstance(trajectory, PrintTrajectory):
+            obstacles.append(element_bodies[trajectory.element])
+    return True
+
+##################################################
+
+
 def display_trajectories(node_points, ground_nodes, trajectories, animate=True, time_step=0.02):
     if trajectories is None:
         return

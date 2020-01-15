@@ -10,7 +10,8 @@ from pyconmech import StiffnessChecker
 from pybullet_tools.utils import get_link_pose, BodySaver, set_point, multiply, set_pose, set_joint_positions, \
     Point, load_model, HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, get_aabb, \
     get_distance, get_relative_pose, get_link_subtree, clone_body, randomize, pairwise_collision, wait_for_user, \
-    get_movable_joints, get_all_links, get_bodies_in_region, pairwise_link_collision, draw_aabb, set_static, set_all_static
+    get_movable_joints, get_all_links, get_bodies_in_region, pairwise_link_collision, draw_aabb, set_static, \
+    set_all_static, BASE_LINK
 from pddlstream.utils import get_connected_components
 
 KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
@@ -139,6 +140,7 @@ class Trajectory(object):
         self.joints = joints
         self.path = path
         self.path_from_link = {}
+        self.intersecting = []
     @property
     def start_conf(self):
         if not self.path:
@@ -149,6 +151,24 @@ class Trajectory(object):
         if not self.path:
             return None
         return self.path[-1]
+    def get_intersecting(self):
+        if self.intersecting:
+            return self.intersecting
+        robot_links = get_all_links(self.robot)
+        # TODO: might need call step_simulation
+        with BodySaver(self.robot):
+            for conf in self.path:
+                set_joint_positions(self.robot, self.joints, conf)
+                intersecting = {}
+                for robot_link in robot_links:
+                    for body, _ in get_bodies_in_region(get_aabb(self.robot, link=robot_link)):
+                        if body != self.robot:
+                            intersecting.setdefault(robot_link, set()).add(body)
+                    #print(get_bodies_in_region(get_aabb(self.robot, robot_link)))
+                    #draw_aabb(get_aabb(self.robot, robot_link))
+                    #wait_for_user()
+                self.intersecting.append(intersecting)
+        return self.intersecting
     def get_link_path(self, link_name=TOOL_LINK):
         link = link_from_name(self.robot, link_name)
         if link not in self.path_from_link:
@@ -176,7 +196,7 @@ class MotionTrajectory(Trajectory): # Transfer
     def __repr__(self):
         return 'm({},{})'.format(len(self.joints), len(self.path))
 
-class PrintTrajectory(Trajectory):
+class PrintTrajectory(Trajectory): # TODO: add element body?
     def __init__(self, end_effector, joints, path, tool_path, element, is_reverse=False):
         super(PrintTrajectory, self).__init__(end_effector.robot, joints, path)
         self.end_effector = end_effector
@@ -236,13 +256,20 @@ class Command(object):
         if not unknown_elements:
             return True
         for trajectory in randomize(self.trajectories): # TODO: could cache each individual collision
-            for robot_conf in randomize(trajectory.path):
-                set_joint_positions(trajectory.robot, trajectory.joints, robot_conf)
+            intersecting = trajectory.get_intersecting()
+            for i in randomize(range(len(trajectory))):
+                set_joint_positions(trajectory.robot, trajectory.joints, trajectory.path[i])
                 for element in unknown_elements:
-                    safe = not pairwise_collision(trajectory.robot, element_bodies[element])
-                    if not safe:
-                        self.set_unsafe(element)
-                        return False
+                    body = element_bodies[element]
+                    #if not pairwise_collision(trajectory.robot, body):
+                    #    self.set_unsafe(element)
+                    #    return False
+                    for robot_link, bodies in intersecting[i].items():
+                        #print(robot_link, bodies, len(bodies))
+                        if (element_bodies[element] in bodies) and pairwise_link_collision(
+                                trajectory.robot, robot_link, body, link2=BASE_LINK):
+                            self.set_unsafe(element)
+                            return False
         self.update_safe(elements)
         return True
     def reverse(self):
