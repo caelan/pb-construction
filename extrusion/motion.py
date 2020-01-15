@@ -162,7 +162,7 @@ def validate_trajectories(element_bodies, fixed_obstacles, trajectories):
         for _ in trajectory.iterate():
             #wait_for_user()
             if any(pairwise_collision(trajectory.robot, body) for body in obstacles):
-                wait_for_user()
+                #wait_for_user() # TODO: wait iff viewer
                 return False
         if isinstance(trajectory, PrintTrajectory):
             obstacles.append(element_bodies[trajectory.element])
