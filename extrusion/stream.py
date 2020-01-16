@@ -37,11 +37,13 @@ else:
 SELF_COLLISIONS = True
 ORTHOGONAL_GROUND = False
 
-STEP_SIZE = 1e-3  # 0.0025
+STEP_SIZE = 2e-3 # 1e-3 # 0.0025
 APPROACH_DISTANCE = 0.01
 JOINT_RESOLUTIONS = np.divide(0.25 * RESOLUTION * np.ones(JOINT_WEIGHTS.shape), JOINT_WEIGHTS)
 
-MAX_DIRECTIONS = 200 # | 500
+# number of EE direction samples when checking validity of a path
+MAX_DIRECTIONS = 500 # | 500
+# number of rotation + ik attempts when checking path + direction
 MAX_ATTEMPTS = 1
 
 ##################################################
@@ -358,9 +360,9 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                         prune_dominated(trajectories)
                     if command not in trajectories:
                         continue
-                    print('Collision check {}) {}->{} | EE: {} | Attempts: {} | Trajectories: {} | Colliding: {}'.format(
+                    cprint('Collision check {}) {}->{} | EE: {} | Attempts: {} | Trajectories: {} | Colliding: {}'.format(
                         num, n1, n2, ee_only, attempt, len(trajectories),
-                        sorted(len(t.colliding) for t in trajectories)))
+                        sorted(len(t.colliding) for t in trajectories)), 'blue')
                     temp_time = time.time()
                     yield (command,)
                     idle_time += elapsed_time(temp_time)
@@ -376,7 +378,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                     if allow_failures:
                         yield None
             else:
-                cprint('Collision check {}) {}->{} | EE: {} | Attempts: {} | Max attempts exceeded!'.format(
+                cprint('### Collision check {}) {}->{} | EE: {} | Attempts: {} | Max attempts exceeded!'.format(
                        num, n1, n2, ee_only, max_directions), 'red')
                 return
                 #yield None
