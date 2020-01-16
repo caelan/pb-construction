@@ -30,8 +30,8 @@ ALL = 'all'
 ##################################################
 
 def score_result(result):
-    return '{{failure={:.3f}, runtime={:.0f}, evaluated={:.0f}, remaining={:.1f}, backtrack={:.1f}, max_trans={:.3E}, max_rot={:.3E}}}'.format(
-        (1. - result['success']), result.get('runtime', 0),
+    return '{{failure={:.3f}, runtime={:.0f}, valid={:.3f}, evaluated={:.0f}, remaining={:.1f}, backtrack={:.1f}, max_trans={:.3E}, max_rot={:.3E}}}'.format(
+        (1. - result['success']), result.get('runtime', 0), result.get('valid', False), # and result.get('safe', False)),
         result.get('num_evaluated', 0), result.get('min_remaining', 0), result.get('max_backtrack', 0),
         result.get('max_translation', 0), result.get('max_rotation', 0))
 
@@ -39,6 +39,7 @@ def load_experiment(filename, overall=False, write_report=False):
     # TODO: maybe just pass the random seed as a separate arg
     # TODO: aggregate over all problems and score using IPC rules
     # https://ipc2018-classical.bitbucket.io/
+    max_time = 0
     data_from_problem = OrderedDict()
     for config, result in read_pickle(filename):
         #config.problem = extrusion_name_from_path(config.problem)
@@ -52,6 +53,8 @@ def load_experiment(filename, overall=False, write_report=False):
         #result['max_trans'] = max_trans
         #result['max_rot'] = max_rot
         result.pop('sequence', None)
+        if result['success']:
+            max_time = max(max_time, result['runtime'])
         data_from_problem.setdefault(problem, []).append((config, result))
 
     column_names = ('config_id', 'shape','info','algorithm','bias',
@@ -111,6 +114,7 @@ def load_experiment(filename, overall=False, write_report=False):
                    if 2 <= len(value_per_field[field])}
             score = score_result(mean_result)
             print('{}) {} ({}): {}'.format(c_idx, str_from_object(key), len(results), str_from_object(score)))
+    print('Max time: {:.3f} sec'.format(max_time))
 
             df_data = {}
             df_data.update({'config_id' : c_idx})

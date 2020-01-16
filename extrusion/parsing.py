@@ -5,7 +5,8 @@ import numpy as np
 from collections import namedtuple, OrderedDict
 from pybullet_tools.utils import create_box, create_cylinder, set_point, set_quat, \
     quat_from_euler, Euler, tform_point, multiply, tform_from_pose, pose_from_tform, \
-    RED, apply_alpha, get_collision_data, get_visual_data, get_aabb_extent, get_aabb, wait_for_user, Pose, draw_aabb
+    RED, apply_alpha, get_collision_data, get_visual_data, get_aabb_extent, get_aabb, \
+    wait_for_user, Pose, draw_aabb, dump_body, get_all_links, STATIC_MASS
 
 RADIUS = 1e-3
 SHRINK = 0.003 # 0. | 0.002 | 0.005 | 0.003
@@ -188,13 +189,14 @@ def create_elements_bodies(node_points, elements, color=apply_alpha(RED, alpha=1
 
         # Much smaller than cylinder
         # Also faster, C_shape 177.398 vs 400
-        body = create_box(ELEMENT_DIAMETER, ELEMENT_DIAMETER, height, color=color)
+        body = create_box(ELEMENT_DIAMETER, ELEMENT_DIAMETER, height, color=color, mass=STATIC_MASS)
         set_point(body, center)
         set_quat(body, quat)
+        #dump_body(body, fixed=True)
 
         # Visually, smallest diameter is 2e-3
         # The geometries and bounding boxes seem correct though
-        #body = create_cylinder(ELEMENT_DIAMETER, height, color=color)
+        #body = create_cylinder(ELEMENT_DIAMETER, height, color=color, mass=STATIC_MASS)
         #print('Diameter={:.5f} | Height={:.5f}'.format(ELEMENT_DIAMETER/2., height))
         #print(get_aabb_extent(get_aabb(body)).round(6).tolist())
         #print(get_visual_data(body))

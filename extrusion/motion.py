@@ -20,9 +20,9 @@ from pybullet_tools.utils import get_movable_joints, set_joint_positions, plan_j
 from extrusion.utils import get_disabled_collisions, MotionTrajectory, load_world, PrintTrajectory, is_ground, \
     RESOLUTION, JOINT_WEIGHTS
 from extrusion.visualization import draw_ordered, set_extrusion_camera
-from extrusion.stream import SELF_COLLISIONS
+from extrusion.stream import SELF_COLLISIONS, get_element_collision_fn
 
-MIN_ELEMENTS = 3 # 2 | INF
+MIN_ELEMENTS = INF # 2 | 3 | INF
 
 def create_bounding_mesh(element_bodies, node_points, printed_elements):
     # TODO: use bounding boxes instead of points
@@ -56,29 +56,36 @@ def compute_motion(robot, fixed_obstacles, element_bodies, node_points,
     custom_limits = {}
     #element_from_body = {b: e for e, b in element_bodies.items()}
 
-    frequencies = {}
-    for element in printed_elements:
-        z = np.average([node_points[n][2] for n in element])
-        #key = np.round(2*z, 1)
-        key = None
-        frequencies.setdefault(key, []).append(element)
-    print(Counter({key: len(elements) for key, elements in frequencies.items()}))
-
-    # TODO: apply this elsewhere
-    obstacles = list(fixed_obstacles)
+    element_obstacles = {element_bodies[e] for e in printed_elements}
+    obstacles = set(fixed_obstacles) | element_obstacles
     hulls = {}
-    for elements in frequencies.values():
-        element_obstacles = randomize(element_bodies[e] for e in elements)
-        if MIN_ELEMENTS <= len(elements):
-            hull = create_bounding_mesh(element_bodies, node_points, elements)
-            assert hull is not None
-            hulls[hull] = element_obstacles
-        else:
-            obstacles.extend(element_obstacles)
+
+    # # TODO: precompute this
+    # resolution = 0.25
+    # frequencies = {}
+    # for element in printed_elements:
+    #     #key = None
+    #     midpoint = np.average([node_points[n] for n in element], axis=0)
+    #     #key = int(midpoint[2] / resolution)
+    #     key = tuple((midpoint / resolution).astype(int).tolist()) # round or int?
+    #     frequencies.setdefault(key, []).append(element)
+    # #print(len(frequencies))
+    # #print(Counter({key: len(elements) for key, elements in frequencies.items()}))
+    #
+    # # TODO: apply this elsewhere
+    # obstacles = list(fixed_obstacles)
+    # for elements in frequencies.values():
+    #     element_obstacles = randomize(element_bodies[e] for e in elements)
+    #     if MIN_ELEMENTS <= len(elements):
+    #         hull = create_bounding_mesh(element_bodies, node_points, elements)
+    #         assert hull is not None
+    #         hulls[hull] = element_obstacles
+    #     else:
+    #         obstacles.extend(element_obstacles)
 
     if not collisions:
-        obstacles = []
         hulls = {}
+        obstacles = []
     #print(hulls)
     #print(obstacles)
     #wait_for_user()
@@ -86,8 +93,9 @@ def compute_motion(robot, fixed_obstacles, element_bodies, node_points,
     sample_fn = get_sample_fn(robot, joints, custom_limits=custom_limits)
     distance_fn = get_distance_fn(robot, joints, weights=weights)
     extend_fn = get_extend_fn(robot, joints, resolutions=resolutions)
-    collision_fn = get_collision_fn(robot, joints, obstacles, attachments={}, self_collisions=SELF_COLLISIONS,
-                                    disabled_collisions=disabled_collisions, custom_limits=custom_limits, max_distance=0.)
+    #collision_fn = get_collision_fn(robot, joints, obstacles, attachments={}, self_collisions=SELF_COLLISIONS,
+    #                                disabled_collisions=disabled_collisions, custom_limits=custom_limits, max_distance=0.)
+    collision_fn = get_element_collision_fn(robot, obstacles)
 
     def element_collision_fn(q):
         if collision_fn(q):
@@ -144,6 +152,25 @@ def compute_motions(robot, fixed_obstacles, element_bodies, node_points, initial
     return all_trajectories
 
 ##################################################
+
+def validate_trajectories(element_bodies, fixed_obstacles, trajectories):
+    if trajectories is None:
+        return False
+    # TODO: combine all validation procedures
+    print('Trajectories:', len(trajectories))
+    obstacles = list(fixed_obstacles)
+    for i, trajectory in enumerate(trajectories):
+        for _ in trajectory.iterate():
+            #wait_for_user()
+            if any(pairwise_collision(trajectory.robot, body) for body in obstacles):
+                #wait_for_user() # TODO: wait iff viewer
+                return False
+        if isinstance(trajectory, PrintTrajectory):
+            obstacles.append(element_bodies[trajectory.element])
+    return True
+
+##################################################
+
 
 def display_trajectories(node_points, ground_nodes, trajectories, animate=True, time_step=0.02):
     if trajectories is None:

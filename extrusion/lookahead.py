@@ -176,7 +176,7 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
 
     plan = None
     min_remaining = INF
-    num_evaluated = worst_backtrack = num_deadends = 0
+    num_evaluated = worst_backtrack = num_deadends = transit_failures = 0
     while queue and (elapsed_time(start_time) < max_time):
         num_evaluated += 1
         visits, priority, printed, element, current_conf = heapq.heappop(queue)
@@ -241,6 +241,7 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
             motion_traj = compute_motion(robot, obstacles, element_bodies, node_points,
                                          printed, current_conf, start_conf, collisions=collisions)
             if motion_traj is None:
+                transit_failures += 1
                 continue
             command.trajectories.insert(0, motion_traj)
 
@@ -265,5 +266,6 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
         'max_backtrack': worst_backtrack,
         'max_translation': max_translation,
         'max_rotation': max_rotation,
+        'transit_failures': transit_failures,
     }
     return plan, data

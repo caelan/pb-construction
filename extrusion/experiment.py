@@ -7,9 +7,10 @@ from multiprocessing.context import TimeoutError
 
 from collections import namedtuple
 
+from extrusion.greedy import progression
 from extrusion.heuristics import HEURISTICS
-from extrusion.greedy import GREEDY_ALGORITHMS
 from extrusion.parsing import enumerate_problems
+from extrusion.regression import regression
 from pddlstream.utils import get_python_version
 from pybullet_tools.utils import is_darwin, user_input, write_pickle, elapsed_time
 
@@ -19,6 +20,10 @@ Configuration = namedtuple('Configuration', ['seed', 'problem', 'algorithm', 'bi
                                              'cfree', 'disable', 'stiffness', 'motions', 'ee_only'])
 #Score = namedtuple('Score', ['failure', 'runtime', 'max_trans', 'max_rot'])
 
+GREEDY_ALGORITHMS = [
+    progression.__name__,
+    regression.__name__,
+]
 ALGORITHMS = GREEDY_ALGORITHMS + ['lookahead'] #+ [STRIPSTREAM_ALGORITHM]
 #ALGORITHMS = ['lookahead']
 

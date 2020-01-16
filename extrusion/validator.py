@@ -44,11 +44,13 @@ def check_plan(extrusion_path, planned_elements, verbose=False):
 def verify_plan(extrusion_path, planned_elements, use_gui=False, **kwargs):
     # Path heuristic
     # Disable shadows
-    connect(use_gui=use_gui)
-    obstacles, robot = load_world()
+    if use_gui:
+        connect(use_gui=use_gui)
+        obstacles, robot = load_world()
     is_valid = check_plan(extrusion_path, planned_elements, **kwargs)
-    reset_simulation()
-    disconnect()
+    if use_gui:
+        reset_simulation()
+        disconnect()
     return is_valid
 
 ##################################################

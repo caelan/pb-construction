@@ -5,10 +5,11 @@ from termcolor import cprint
 
 from itertools import cycle
 
-from pybullet_tools.utils import get_movable_joints, get_joint_positions, multiply, invert, \
+from pybullet_tools.utils import get_movable_joints, get_joint_positions, draw_aabb, remove_handles, multiply, invert, \
     set_joint_positions, inverse_kinematics, get_link_pose, get_distance, point_from_pose, wrap_angle, get_sample_fn, \
     link_from_name, get_pose, get_collision_fn, set_pose, pairwise_collision, Pose, Euler, Point, interval_generator, \
-    randomize, get_extend_fn, user_input, INF, elapsed_time, wait_for_user, WorldSaver
+    randomize, get_extend_fn, user_input, INF, elapsed_time, wait_for_user, get_bodies_in_region, get_aabb, get_all_links, \
+    link_pairs_collision, pairwise_link_collision, get_link_name, get_links, step_simulation, STATIC_MASS, BASE_LINK
 from extrusion.utils import TOOL_LINK, get_disabled_collisions, get_node_neighbors, \
     PrintTrajectory, retrace_supporters, get_supported_orders, prune_dominated, Command, MotionTrajectory, RESOLUTION, \
     JOINT_WEIGHTS, EE_LINK, EndEffector, is_ground, get_custom_limits
@@ -92,9 +93,18 @@ def tool_path_collision(end_effector, element_pose, translation_path, direction,
     """check EE collision with obstacles along a extrusion path, no ik check is performed
     """
     # TODO: allow sampling in the full sphere by checking collision with an element while sliding
-    for tool_pose in compute_tool_path(element_pose, translation_path, direction, angle, reverse):
-        set_pose(end_effector.body, multiply(tool_pose, end_effector.tool_from_ee))
-        if any(pairwise_collision(end_effector.body, obst) for obst in obstacles):
+    for tool_pose in randomize(compute_tool_path(element_pose, translation_path, direction, angle, reverse)):
+        end_effector.set_pose(tool_pose)
+        #bodies = obstacles
+        tool_aabb = get_aabb(end_effector.body) # TODO: could just translate
+        #handles = draw_aabb(tool_aabb)
+        bodies = {b for b, _ in get_bodies_in_region(tool_aabb) if b in obstacles}
+        #print(bodies)
+        #for body, link in bodies:
+        #    handles.extend(draw_aabb(get_aabb(body, link)))
+        #wait_for_user()
+        #remove_handles(handles)
+        if any(pairwise_collision(end_effector.body, obst) for obst in bodies):
             # TODO: sort by angle with smallest violation
             return True
     return False
@@ -110,8 +120,7 @@ def command_collision(end_effector, command, bodies):
     # TODO: separate into another method. Sort paths by tool poses first
     for trajectory in command.trajectories:
         for tool_pose in randomize(trajectory.get_link_path()): # TODO: bisect
-            set_pose(end_effector.body, multiply(tool_pose, end_effector.tool_from_ee))
-            #tool_aabb = get_aabb(tool_body) # TODO: could just translate
+            end_effector.set_pose(tool_pose)
             #for body, _ in get_bodies_in_region(tool_aabb):
             for i, body in enumerate(bodies):
                 if body not in idx_from_body: # Robot
@@ -182,6 +191,8 @@ def optimize_angle(end_effector, element_pose,
 APPROACH_DISTANCE = 0.01
 
 def plan_approach(end_effector, print_traj, collision_fn):
+    # TODO: collisions at the ends of elements
+    # TODO: slow down automatically near endpoints
     if APPROACH_DISTANCE == 0:
         return Command([print_traj])
     robot = end_effector.robot
@@ -267,26 +278,62 @@ def compute_direction_path(end_effector, length, reverse, element_bodies, elemen
 
 ##################################################
 
+def get_element_collision_fn(robot, obstacles):
+    joints = get_movable_joints(robot)
+    disabled_collisions = get_disabled_collisions(robot)
+    custom_limits = {} # get_custom_limits(robot) # specified within the kuka URDF
+    robot_links = get_all_links(robot) # Base link isn't real
+    #robot_links = get_links(robot)
+
+    collision_fn = get_collision_fn(robot, joints, obstacles=[],
+                                    attachments=[], self_collisions=SELF_COLLISIONS,
+                                    disabled_collisions=disabled_collisions,
+                                    custom_limits=custom_limits)
+
+    # TODO: precompute bounding boxes and manually check
+    #for body in obstacles: # Calling before get_bodies_in_region does not act as step_simulation
+    #    get_aabb(body, link=None)
+    step_simulation() # Okay to call only once and then just ignore the robot
+    # TODO: call this once globally
+
+    def element_collision_fn(q):
+        if collision_fn(q):
+            return True
+        #step_simulation()  # Might only need to call this once
+        for robot_link in robot_links:
+            #bodies = obstacles
+            aabb = get_aabb(robot, link=robot_link)
+            bodies = {b for b, _ in get_bodies_in_region(aabb) if b in obstacles}
+            #set_joint_positions(robot, joints, q) # Need to reset
+            #draw_aabb(aabb)
+            #print(robot_link, get_link_name(robot, robot_link), len(bodies), aabb)
+            #print(sum(pairwise_link_collision(robot, robot_link, body, link2=0) for body, _ in region_bodies))
+            #print(sum(pairwise_collision(robot, body) for body, _ in region_bodies))
+            #wait_for_user()
+            if any(pairwise_link_collision(robot, robot_link, body, link2=BASE_LINK) for body in bodies):
+                #wait_for_user()
+                return True
+        return False
+    return element_collision_fn
+
+##################################################
+
 def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground_nodes,
-                     precompute_collisions=True, supports=True, bidirectional=False,
+                     precompute_collisions=False, supports=False, bidirectional=False,
                      collisions=True, disable=False, ee_only=False, allow_failures=False,
                      max_directions=1000, max_attempts=1, max_time=INF, **kwargs):
     # TODO: print on full sphere and just check for collisions with the printed element
     # TODO: can slide a component of the element down
-    # TODO: prioritize choices that don't collide with too many edges
-    # TODO: sort by number of end-effector collisions
     if not collisions:
         precompute_collisions = False
-    movable_joints = get_movable_joints(robot)
-    custom_limits = {} # get_custom_limits(robot) # specified within the kuka URDF
-    disabled_collisions = get_disabled_collisions(robot)
     #element_neighbors = get_element_neighbors(element_bodies)
     # neighboring elements from node
     node_neighbors = get_node_neighbors(element_bodies)
     incoming_supporters, _ = neighbors_from_orders(get_supported_orders(element_bodies, node_points))
 
     end_effector = EndEffector(robot, ee_link=link_from_name(robot, EE_LINK),
-                               tool_link=link_from_name(robot, TOOL_LINK), visual=False, collision=True)
+                               tool_link=link_from_name(robot, TOOL_LINK),
+                               visual=False, collision=True)
 
     def gen_fn(node1, element, extruded=[], trajectories=[]): # fluents=[]):
         #start_time = time.time()
@@ -310,19 +357,18 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
         supporters = []
         if supports:
             retrace_supporters(element, incoming_supporters, supporters)
-        obstacles = set(fixed_obstacles + [element_bodies[e] for e in supporters + list(extruded)])
+        element_obstacles = {element_bodies[e] for e in supporters + list(extruded)}
+        obstacles = set(fixed_obstacles) | element_obstacles
         if not collisions:
             #obstacles = set()
             obstacles = set(fixed_obstacles)
 
         # * unprinted elements (not including the current one)
         elements_order = [e for e in element_bodies if (e != element) and (element_bodies[e] not in obstacles)]
-        collision_fn = get_collision_fn(robot, movable_joints, obstacles,
-                                        attachments=[], self_collisions=SELF_COLLISIONS,
-                                        disabled_collisions=disabled_collisions,
-                                        custom_limits=custom_limits)
+        collision_fn = get_element_collision_fn(robot, obstacles)
+
         if ORTHOGONAL_GROUND and is_ground(element, ground_nodes):
-            # TODO: orthogonal to the ground or aligned with element?
+            # TODO: orthogonal to the ground
             direction_generator = cycle([Pose(euler=Euler(roll=0, pitch=0))])
         else:
             direction_generator = get_direction_generator(use_halton=False)
@@ -355,6 +401,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                                 command.set_safe(element2)
                     if not is_ground(element, ground_nodes) and (neighboring_elements <= command.colliding):
                         continue # If all neighbors collide
+
                     trajectories.append(command)
                     if precompute_collisions:
                         prune_dominated(trajectories)
@@ -365,6 +412,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                         sorted(len(t.colliding) for t in trajectories)), 'blue')
                     temp_time = time.time()
                     yield (command,)
+
                     idle_time += elapsed_time(temp_time)
                     if precompute_collisions:
                         if len(command.colliding) == 0:
