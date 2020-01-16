@@ -14,7 +14,7 @@ from pybullet_tools.utils import get_movable_joints, set_joint_positions, plan_j
     create_mesh, draw_mesh, apply_alpha, RED, remove_body, pairwise_collision, randomize, \
     get_sample_fn, get_distance_fn, get_extend_fn, get_collision_fn, \
     check_initial_end, birrt, INF, get_bodies_in_region, get_aabb, spaced_colors, vertices_from_data, \
-    BASE_LINK, vertices_from_link, apply_affine, get_pose
+    BASE_LINK, vertices_from_link, apply_affine, get_pose, has_gui, set_color, remove_all_debug
 
 from extrusion.utils import get_disabled_collisions, MotionTrajectory, load_world, PrintTrajectory, is_ground, \
     RESOLUTION, JOINT_WEIGHTS
@@ -156,16 +156,24 @@ def validate_trajectories(element_bodies, fixed_obstacles, trajectories):
     if trajectories is None:
         return False
     # TODO: combine all validation procedures
+    remove_all_debug()
+    for body in element_bodies.values():
+        set_color(body, np.zeros(4))
+
     print('Trajectories:', len(trajectories))
     obstacles = list(fixed_obstacles)
     for i, trajectory in enumerate(trajectories):
         for _ in trajectory.iterate():
             #wait_for_user()
             if any(pairwise_collision(trajectory.robot, body) for body in obstacles):
-                #wait_for_user() # TODO: wait iff viewer
+                if has_gui():
+                    print('Collision on trajectory {}'.format(i))
+                    wait_for_user()
                 return False
         if isinstance(trajectory, PrintTrajectory):
-            obstacles.append(element_bodies[trajectory.element])
+            body = element_bodies[trajectory.element]
+            set_color(body, apply_alpha(RED))
+            obstacles.append(body)
     return True
 
 ##################################################

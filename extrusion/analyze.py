@@ -28,10 +28,11 @@ ALL = 'all'
 ##################################################
 
 def score_result(result):
-    return '{{failure={:.3f}, runtime={:.0f}, valid={:.3f}, evaluated={:.0f}, remaining={:.1f}, backtrack={:.1f}, max_trans={:.3E}, max_rot={:.3E}}}'.format(
-        (1. - result['success']), result.get('runtime', 0), result.get('valid', False), # and result.get('safe', False)),
-        result.get('num_evaluated', 0), result.get('min_remaining', 0), result.get('max_backtrack', 0),
-        result.get('max_translation', 0), result.get('max_rotation', 0))
+    return '{{failure={:.3f}, runtime={:.0f}, valid={:.3f}, safe={:.3f}, evaluated={:.0f}, ' \
+           'remaining={:.1f}, backtrack={:.1f}, transit_failures={:.1f}, max_trans={:.3E}, max_rot={:.3E}}}'.format(
+            (1. - result['success']), result.get('runtime', 0), result.get('valid', 0), result.get('safe', 0),
+            result.get('num_evaluated', 0), result.get('min_remaining', 0), result.get('max_backtrack', 0),
+            result.get('transit_fails', 0), result.get('max_translation', 0), result.get('max_rotation', 0))
 
 
 def load_experiment(filename, overall=False):

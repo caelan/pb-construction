@@ -2,7 +2,8 @@ import heapq
 import random
 import time
 
-from extrusion.greedy import Node, sample_extrusion, retrace_trajectories, recover_sequence, recover_directed_sequence
+from extrusion.progression import Node, sample_extrusion, retrace_trajectories, recover_sequence, \
+    recover_directed_sequence, MAX_DIRECTIONS, MAX_ATTEMPTS
 from extrusion.heuristics import get_heuristic_fn
 from extrusion.motion import compute_motion
 from extrusion.parsing import load_extrusion
@@ -34,8 +35,8 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
     checker = create_stiffness_checker(extrusion_path, verbose=False)
     #checker = None
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                    supports=False, bidirectional=False,
-                                    precompute_collisions=False, max_directions=500, max_attempts=1,
+                                    supports=False, bidirectional=False, precompute_collisions=False,
+                                    max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS,
                                     collisions=collisions, **kwargs)
     heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=False)
 
@@ -76,7 +77,6 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
     # TODO: immediately select if becomes more stable
     # TODO: focus branching factor on most stable regions
 
-    # TODO: computed number of motion planning failures
     plan = None
     min_remaining = len(all_elements)
     num_evaluated = max_backtrack = transit_failures = 0

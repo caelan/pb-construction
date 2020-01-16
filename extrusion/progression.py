@@ -10,12 +10,12 @@ from extrusion.validator import compute_plan_deformation
 from extrusion.heuristics import get_heuristic_fn
 from pybullet_tools.utils import elapsed_time, \
     LockRenderer, reset_simulation, disconnect, randomize
-from extrusion.parsing import load_extrusion
+from extrusion.parsing import load_extrusion, ELEMENT_DIAMETER, ELEMENT_SHRINK
 from extrusion.visualization import draw_element
-from extrusion.stream import get_print_gen_fn
+from extrusion.stream import get_print_gen_fn, STEP_SIZE, APPROACH_DISTANCE
 from extrusion.utils import check_connected, test_stiffness, \
     create_stiffness_checker, get_id_from_element, load_world, PrintTrajectory, \
-    compute_printed_nodes, compute_printable_elements
+    compute_printed_nodes, compute_printable_elements, TRANS_TOL, ROT_TOL, RESOLUTION
 from extrusion.motion import compute_motion
 
 # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
@@ -26,7 +26,21 @@ from pddlstream.utils import incoming_from_edges
 #State = namedtuple('State', ['element', 'printed', 'plan'])
 Node = namedtuple('Node', ['action', 'state'])
 
+MAX_DIRECTIONS = 500
+MAX_ATTEMPTS = 1
+
 ##################################################
+
+def get_global_parameters():
+    return {
+        'translation_tolerance': TRANS_TOL,
+        'rotation_tolerance': ROT_TOL,
+        'joint_resolution': RESOLUTION,
+        'step_size': STEP_SIZE,
+        'approach_distance': APPROACH_DISTANCE,
+        'max_directions': MAX_DIRECTIONS,
+        'max_attempts': MAX_ATTEMPTS,
+    }
 
 def retrace_trajectories(visited, current_state, horizon=INF, reverse=False):
     command, prev_state = visited[current_state]
@@ -127,8 +141,8 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
     checker = create_stiffness_checker(extrusion_path, verbose=False)
     #checker = None
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                    supports=False, bidirectional=False,
-                                    precompute_collisions=False, max_directions=500, max_attempts=1,
+                                    supports=False, bidirectional=False, precompute_collisions=False,
+                                    max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS,
                                     collisions=collisions, **kwargs)
     id_from_element = get_id_from_element(element_from_id)
     all_elements = frozenset(element_bodies)

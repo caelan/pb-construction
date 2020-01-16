@@ -5,7 +5,8 @@ import time
 from collections import defaultdict
 
 from extrusion.validator import compute_plan_deformation
-from extrusion.greedy import Node, retrace_trajectories, add_successors, recover_directed_sequence, recover_sequence
+from extrusion.progression import Node, retrace_trajectories, add_successors, recover_directed_sequence, \
+    recover_sequence, MAX_DIRECTIONS, MAX_ATTEMPTS
 from extrusion.heuristics import get_heuristic_fn
 from extrusion.parsing import load_extrusion
 from extrusion.stream import get_print_gen_fn
@@ -82,8 +83,8 @@ def topological_sort(robot, obstacles, element_bodies, extrusion_path):
 ##################################################
 
 def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[],
-              num_ee=0, num_arm=1, max_directions=500, max_attempts=1,
-              plan_all=False, use_conflicts=False, use_replan=False, heuristic='z', max_time=INF,  backtrack_limit=INF,
+              num_ee=0, num_arm=1, max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS,
+              plan_all=False, use_conflicts=False, use_replan=False, heuristic='z', max_time=INF, backtrack_limit=INF,
               revisit=False, ee_only=False, collisions=True, stiffness=True, motions=True, **kwargs):
     if not use_conflicts:
         num_ee, num_arm = min(num_ee, 1),  min(num_arm, 1)
@@ -112,7 +113,7 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
     id_from_element = get_id_from_element(element_from_id)
     all_elements = frozenset(element_bodies)
     heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=True)
-    distance_fn = get_distance_fn(robot, joints, weights=JOINT_WEIGHTS)
+    #distance_fn = get_distance_fn(robot, joints, weights=JOINT_WEIGHTS)
     # TODO: 2-step lookahead based on neighbors or spatial proximity
 
     full_sample_traj, full_trajs_from_element = get_sample_traj(element_bodies, full_print_gen_fn, max_directions=INF, #max_directions,
@@ -136,9 +137,8 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
         return all(sample_fn(printed, next_printed, element, num, **kwargs) for element in randomize(elements))
 
     def conflict_fn(printed, element, conf):
+        # Dead-end detection without stability performs reasonably well
         # TODO: could add element if desired
-        if not use_conflicts:
-            return 0 # Dead-end detection without stability performs reasonably well
         order = retrace_elements(visited, printed)
         printed = frozenset(order[:-1]) # Remove last element (to ensure at least one traj)
         if use_replan:
@@ -158,7 +158,10 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
         # TODO: minimize instability while printing (dynamic programming)
         #return (-num_colliding, distance)
 
-    priority_fn = lambda *args: (conflict_fn(*args), heuristic_fn(*args))
+    if use_conflicts:
+        priority_fn = lambda *args: (conflict_fn(*args), heuristic_fn(*args))
+    else:
+        priority_fn = heuristic_fn
 
     #########################
 
