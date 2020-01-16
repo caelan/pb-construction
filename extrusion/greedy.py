@@ -1,5 +1,9 @@
 from __future__ import print_function
 
+# https://github.com/ContinuumIO/anaconda-issues/issues/905
+import os
+os.environ['FOR_DISABLE_CONSOLE_CTRL_HANDLER'] = 'T'
+
 import heapq
 import random
 import time
@@ -182,8 +186,9 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
     heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=True)
 
     # ! step-by-step diagnosis
-    visualize_action=False
-    check_backtrack=False
+    visualize_action = False
+    check_backtrack = False
+    record_snapshots = True
 
     initial_printed = frozenset()
     queue = []
@@ -200,10 +205,44 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
     plan = None
     min_remaining = len(all_elements)
     num_evaluated = max_backtrack = 0
-    # log data
-    num_stiffness_violation = 0
+    stiffness_failures = transit_failures = 0
     bt_data = [] # backtrack history
     cons_data = [] # constraint violation history
+
+    def snapshot_state(data_list=None, reason=''):
+        cur_data = {}
+        cur_data['iter'] = num_evaluated - 1
+        cur_data['reason'] = reason
+        cur_data['min_remain'] = min_remaining
+        cur_data['max_backtrack'] = max_backtrack
+        cur_data['backtrack'] = backtrack
+        cur_data['total_q_len'] = len(queue)
+        cur_data['num_stiffness_violation'] = stiffness_failures
+
+        cur_data['chosen_element'] = element
+        record_plan = retrace_trajectories(visited, printed)
+        planned_elements = recover_directed_sequence(record_plan)
+        cur_data['planned_elements'] = planned_elements
+
+        # queue_log_cnt = 200
+        # cur_data['queue'] = []
+        # cur_data['queue'].append((id_from_element[element], priority))
+        # for candidate in heapq.nsmallest(queue_log_cnt, queue):
+        #     cur_data['queue'].append((id_from_element[candidate[2]], candidate[0]))
+
+        if data_list:
+            data_list.append(cur_data)
+        if check_backtrack:
+            draw_action(node_points, next_printed, element)
+            # color_structure(element_bodies, next_printed, element)
+
+            # TODO: can take picture here
+            locker.restore()
+            cprint('{} detected, press Enter to continue!'.format(reason), 'red')
+            wait_for_user()
+            locker = LockRenderer()
+        return cur_data
+
     try:
         while queue:
             if elapsed_time(start_time) > max_time:
@@ -223,33 +262,9 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
             if backtrack > max_backtrack:
                 max_backtrack = backtrack
                 # * (optional) visualization for diagnosis
-                if has_gui():
+                if record_snapshots:
                     cprint('max backtrack increased to {}'.format(max_backtrack), 'cyan')
-                    # save data
-                    cur_data = {}
-                    cur_data['iter'] = num_evaluated - 1
-                    cur_data['min_remain'] = min_remaining
-                    cur_data['max_backtrack'] = max_backtrack
-                    cur_data['backtrack'] = backtrack
-                    cur_data['total_q_len'] = len(queue)
-                    cur_data['num_stiffness_violation'] = num_stiffness_violation
-
-                    cur_data['chosen_element'] = element
-                    # cur_data['printed'] = list(printed)
-                    record_plan = retrace_trajectories(visited, printed)
-                    planned_elements = recover_directed_sequence(record_plan)
-                    cur_data['planned_elements'] = planned_elements
-
-                    bt_data.append(cur_data)
-
-                    if check_backtrack:
-                        draw_action(node_points, next_printed, element)
-                        # color_structure(element_bodies, next_printed, element)
-
-                        locker.restore()
-                        cprint('Backtrack detected, press Enter to continue!', 'red')
-                        wait_for_user()
-                        locker = LockRenderer()
+                    snapshot_state(bt_data, reason='Backtrack')
 
             if backtrack_limit < backtrack:
                 cprint('backtrack {} exceeds limit {}, exit.'.format(backtrack, backtrack_limit), 'red')
@@ -262,36 +277,10 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
             # stiffness constraint
             if stiffness and not test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker):
                 cprint('&&& stiffness not passed.', 'red')
-                num_stiffness_violation += 1
-
+                stiffness_failures += 1
                 # * (optional) visualization for diagnosis
-                if has_gui():
-                    # save data
-                    cur_data = {}
-                    cur_data['reason'] = 'stiffness_violation'
-                    cur_data['iter'] = num_evaluated - 1
-                    cur_data['min_remain'] = min_remaining
-                    cur_data['max_backtrack'] = max_backtrack
-                    cur_data['backtrack'] = backtrack
-                    cur_data['chosen_element'] = element
-                    cur_data['total_q_len'] = len(queue)
-                    cur_data['num_stiffness_violation'] = num_stiffness_violation
-                    # cur_data['printed'] = list(printed)
-
-                    record_plan = retrace_trajectories(visited, printed)
-                    planned_elements = recover_directed_sequence(record_plan)
-                    cur_data['planned_elements'] = planned_elements
-
-                    cons_data.append(cur_data)
-
-                    if check_backtrack:
-                        draw_action(node_points, next_printed, element)
-                        # color_structure(element_bodies, next_printed, element)
-
-                        locker.restore()
-                        cprint('stiffness violation detected, press Enter to continue!', 'red')
-                        wait_for_user()
-                        locker = LockRenderer()
+                if record_snapshots:
+                    snapshot_state(cons_data, reason='stiffness_violation')
                 continue
             # manipulation constraint
             command = sample_extrusion(print_gen_fn, ground_nodes, printed, element)
@@ -299,10 +288,13 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
                 continue
             # transition motion constraint
             if motions:
-                cprint('>>> transition motion not passed.', 'red')
-                motion_traj = compute_motion(robot, obstacles, element_bodies, printed,
+                motion_traj = compute_motion(robot, obstacles, element_bodies, node_points, printed,
                                              current_conf, command.start_conf, collisions=collisions)
                 if motion_traj is None:
+                    cprint('>>> transition motion not passed.', 'red')
+                    transit_failures += 1
+                    if record_snapshots:
+                        snapshot_state(cons_data, reason='transit_failure')
                     continue
                 command.trajectories.insert(0, motion_traj)
 
@@ -318,31 +310,11 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
         cur_data = {}
         cur_data['search_method'] = 'progression'
         cur_data['heuristic'] = heuristic
-
-        when_stop_data = {}
-        when_stop_data['iter'] = num_evaluated - 1
-        when_stop_data['min_remain'] = min_remaining
-        when_stop_data['max_backtrack'] = max_backtrack
-        when_stop_data['backtrack'] = backtrack+1 if abs(backtrack) != INF else 0
-        when_stop_data['chosen_element'] = element
-        when_stop_data['total_q_len'] = len(queue)
-        when_stop_data['num_stiffness_violation'] = num_stiffness_violation
-        # when_stop_data['printed'] = list(printed)
-
-        plan = retrace_trajectories(visited, printed)
-        planned_elements = recover_directed_sequence(plan)
-        when_stop_data['planned_elements'] = planned_elements
+        when_stop_data = snapshot_state(reason='external stop')
 
         cur_data['when_stopped'] = when_stop_data
-
         cur_data['backtrack_history'] = bt_data
         cur_data['constraint_violation_history'] = cons_data
-
-        # queue_log_cnt = 200
-        # cur_data['queue'] = []
-        # cur_data['queue'].append((id_from_element[element], priority))
-        # for candidate in heapq.nsmallest(queue_log_cnt, queue):
-        #     cur_data['queue'].append((id_from_element[candidate[2]], candidate[0]))
 
         export_log_data(extrusion_path, cur_data, overwrite=False)
 
@@ -363,6 +335,8 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
         'max_backtrack': max_backtrack,
         'max_translation': max_translation,
         'max_rotation': max_rotation,
+        'transit_failures' : transit_failures,
+        'stiffness_failures' : stiffness_failures,
     }
 
     if not data['sequence'] and has_gui():
@@ -440,7 +414,45 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
     plan = None
     min_remaining = len(all_elements)
     num_evaluated = max_backtrack = 0
-    num_stiffness_violation = 0
+    stiffness_failures = transit_failures = 0
+
+    check_backtrack = False
+    record_snapshots = True
+
+    def snapshot_state(data_list=None, reason=''):
+        cur_data = {}
+        cur_data['iter'] = num_evaluated - 1
+        cur_data['reason'] = reason
+        cur_data['min_remain'] = min_remaining
+        cur_data['max_backtrack'] = max_backtrack
+        cur_data['backtrack'] = backtrack
+        cur_data['total_q_len'] = len(queue)
+        cur_data['num_stiffness_violation'] = stiffness_failures
+
+        cur_data['chosen_element'] = element
+        record_plan = retrace_trajectories(visited, printed)
+        planned_elements = recover_directed_sequence(record_plan)
+        cur_data['planned_elements'] = planned_elements
+
+        # queue_log_cnt = 200
+        # cur_data['queue'] = []
+        # cur_data['queue'].append((id_from_element[element], priority))
+        # for candidate in heapq.nsmallest(queue_log_cnt, queue):
+        #     cur_data['queue'].append((id_from_element[candidate[2]], candidate[0]))
+
+        if data_list:
+            data_list.append(cur_data)
+        if check_backtrack:
+            draw_action(node_points, next_printed, element)
+            # color_structure(element_bodies, next_printed, element)
+
+            # TODO: can take picture here
+            locker.restore()
+            cprint('{} detected, press Enter to continue!'.format(reason), 'red')
+            wait_for_user()
+            locker = LockRenderer()
+        return cur_data
+
     try:
         while queue:
             if elapsed_time(start_time) > max_time:
@@ -458,17 +470,17 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
 
             # hypothetical printed elements if element is selected
             next_printed = printed - {element}
-            draw_action(node_points, next_printed, element)
-            if 3 < backtrack + 1:
-               remove_all_debug()
-               set_renderer(enable=True)
-               draw_model(next_printed, node_points, ground_nodes)
-               wait_for_user()
+            # draw_action(node_points, next_printed, element)
+            # if 3 < backtrack + 1:
+            #    remove_all_debug()
+            #    set_renderer(enable=True)
+            #    draw_model(next_printed, node_points, ground_nodes)
+            #    wait_for_user()
 
             if (next_printed in visited) or not check_connected(ground_nodes, next_printed):
                 continue
-            if not implies(stiffness, test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker)):
-                num_stiffness_violation += 1
+            if not implies(stiffness, test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker):
+                stiffness_failures += 1
                 continue
             # TODO: could do this eagerly to inspect the full branching factor
             command = sample_extrusion(print_gen_fn, ground_nodes, next_printed, element)
@@ -515,13 +527,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         planned_elements = recover_directed_sequence(plan)
         cur_data['planned_elements'] = planned_elements
 
-        # queue_log_cnt = 200
-        # cur_data['queue'] = []
-        # cur_data['queue'].append((id_from_element[element], priority))
-        # for candidate in heapq.nsmallest(queue_log_cnt, queue):
-        #     cur_data['queue'].append((id_from_element[candidate[2]], candidate[0]))
-
-        export_log_data(extrusion_path, cur_data, indent=1)
+        export_log_data(extrusion_path, cur_data, indent=None)
 
         if has_gui():
             color_structure(element_bodies, printed, element)
@@ -541,6 +547,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         'max_translation': max_translation,
         'max_rotation': max_rotation,
         'num_stiffness_violation': num_stiffness_violation,
+        # 'transit_failures': transit_failures,
     }
     return plan, data
 
