@@ -14,7 +14,7 @@ from collections import OrderedDict, Counter
 
 from extrusion.experiment import EXCLUDE, Configuration, EXPERIMENTS_DIR
 from extrusion.parsing import get_extrusion_path, load_extrusion
-from pddlstream.utils import INF, str_from_object
+from pddlstream.utils import INF, str_from_object, get_python_version
 from pybullet_tools.utils import read_pickle
 
 import pandas as pd
@@ -22,6 +22,8 @@ import pandas as pd
 # Geometric: python3 -m extrusion.run -l experiments/19-08-09_01-58-34.pk3
 # CFree: python3 -m extrusion.run -l experiments/19-08-14_10-46-35.pk3
 # Disable: python3 -m extrusion.run -l experiments/19-08-14_01-33-13.pk3
+
+# Motions: python3 -m extrusion.analyze experiments/20-01-07_17-39-48.pk3
 
 ALL = 'all'
 
@@ -135,6 +137,7 @@ def enumerate_experiments():
 ##################################################
 
 def main():
+    assert get_python_version() == 3
     parser = argparse.ArgumentParser()
     parser.add_argument('-p', '--path', help='The absolute path to an experiment pickle file')
     parser.add_argument('-a', '--all', action='store_true',

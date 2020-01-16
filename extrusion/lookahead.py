@@ -238,7 +238,7 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
         if not ee_only:
             start_conf, end_conf = command.start_conf, command.end_conf
         if (start_conf is not None) and motions:
-            motion_traj = compute_motion(robot, obstacles, element_bodies,
+            motion_traj = compute_motion(robot, obstacles, element_bodies, node_points,
                                          printed, current_conf, start_conf, collisions=collisions)
             if motion_traj is None:
                 continue

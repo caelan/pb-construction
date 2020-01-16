@@ -27,7 +27,7 @@ from extrusion.parsing import load_extrusion, create_elements_bodies, \
     enumerate_problems, get_extrusion_path, affine_extrusion, RADIUS, SHRINK
 from extrusion.stream import get_print_gen_fn, STEP_SIZE, APPROACH_DISTANCE
 from extrusion.greedy import regression, progression, recover_directed_sequence
-from extrusion.heuristics import HEURISTICS
+from extrusion.heuristics import HEURISTICS, downsample_structure
 from extrusion.validator import verify_plan
 from extrusion.lookahead import lookahead
 from extrusion.visualization import visualize_stiffness
@@ -55,7 +55,7 @@ def sample_trajectories(robot, obstacles, node_points, element_bodies, ground_no
 def rotate_problem(problem_path, roll=np.pi):
     tform = Pose(euler=Euler(roll=roll))
     json_data = affine_extrusion(problem_path, tform)
-    path = 'rotated.json' # TODO: folder
+    path = 'rotated.json' # TODO: create folder
     with open(path, 'w') as f:
         json.dump(json_data, f, indent=2, sort_keys=True)
     problem_path = path
@@ -79,12 +79,12 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     problem_path = get_extrusion_path(args.problem)
     #problem_path = rotate_problem(problem_path)
 
-    # TODO: lazily plan for the end-effector before each manipulation
     element_from_id, node_points, ground_nodes = load_extrusion(problem_path, verbose=True)
     elements = list(element_from_id.values())
+    #elements = downsample_structure(elements, node_points, ground_nodes, num=None)
     #elements, ground_nodes = downsample_nodes(elements, node_points, ground_nodes)
     # plan = plan_sequence_test(node_points, elements, ground_nodes)
-    partial_orders = [] # TODO: could test ground as partial orders
+    partial_orders = [] # TODO: could treat ground as partial orders
 
     connect(use_gui=viewer)
     with LockRenderer():
@@ -142,8 +142,8 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
                 sys.stdout.close()
             return args, data
         if args.motions:
-            planned_trajectories = compute_motions(robot, obstacles, element_bodies, initial_conf, planned_trajectories,
-                                                   collisions=not args.cfree)
+            planned_trajectories = compute_motions(robot, obstacles, element_bodies, node_points,
+                                                   initial_conf, planned_trajectories, collisions=not args.cfree)
     reset_simulation()
     disconnect()
 
@@ -242,10 +242,9 @@ def main():
     else:
         plan_extrusion(args, viewer=args.viewer, verbose=True, watch=True)
 
+    # TODO: collisions at the ends of elements
     # TODO: YJ: parse saved partial ordering to help certify feasibility
-    # TODO: collisions at the ends of elements?
     # TODO: slow down automatically near endpoints
-    # TODO: heuristic that orders elements by angle
     # TODO: check that both the start and end satisfy
     # python -m extrusion.run -n 10 2>&1 | tee log.txt
 
