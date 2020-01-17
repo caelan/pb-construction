@@ -10,9 +10,9 @@ from extrusion.progression import Node, retrace_trajectories, add_successors, re
 from extrusion.heuristics import get_heuristic_fn
 from extrusion.parsing import load_extrusion
 from extrusion.stream import get_print_gen_fn, MAX_DIRECTIONS, MAX_ATTEMPTS
-from extrusion.utils import check_connected, test_stiffness, \
-    create_stiffness_checker, get_id_from_element, PrintTrajectory, JOINT_WEIGHTS, compute_printed_nodes, \
+from extrusion.utils import check_connected, get_id_from_element, PrintTrajectory, JOINT_WEIGHTS, compute_printed_nodes, \
     compute_printable_elements, roundrobin
+from extrusion.stiffness import create_stiffness_checker, test_stiffness
 from extrusion.visualization import color_structure
 from extrusion.motion import compute_motion
 # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp

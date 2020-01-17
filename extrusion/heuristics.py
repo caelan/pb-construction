@@ -4,7 +4,8 @@ import numpy as np
 
 from extrusion.equilibrium import compute_all_reactions, compute_node_reactions
 from extrusion.parsing import load_extrusion
-from extrusion.utils import get_extructed_ids, force_from_reaction, create_stiffness_checker, torque_from_reaction, downselect_elements
+from extrusion.utils import get_extructed_ids, downselect_elements
+from extrusion.stiffness import create_stiffness_checker, force_from_reaction, torque_from_reaction
 from pddlstream.utils import adjacent_from_edges
 from pybullet_tools.utils import get_distance, INF
 

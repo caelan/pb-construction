@@ -1,7 +1,7 @@
 from extrusion.parsing import load_extrusion, extrusion_name_from_path, get_extrusion_path
 from extrusion.visualization import draw_element
-from extrusion.utils import check_connected, test_stiffness, get_connected_structures, load_world, TRANS_TOL, ROT_TOL, \
-    create_stiffness_checker, evaluate_stiffness
+from extrusion.utils import check_connected, get_connected_structures, load_world
+from extrusion.stiffness import TRANS_TOL, ROT_TOL, create_stiffness_checker, evaluate_stiffness, test_stiffness
 from pybullet_tools.utils import has_gui, wait_for_user, connect, reset_simulation, \
     disconnect, wait_for_duration, BLACK, RED
 

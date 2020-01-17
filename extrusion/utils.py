@@ -3,15 +3,13 @@ from __future__ import print_function
 import os
 import numpy as np
 
-from collections import defaultdict, deque, namedtuple
+from collections import defaultdict, deque
 from itertools import islice, cycle
-from pyconmech import StiffnessChecker
 
 from pybullet_tools.utils import get_link_pose, BodySaver, set_point, multiply, set_pose, set_joint_positions, \
     Point, load_model, HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, get_aabb, \
-    get_distance, get_relative_pose, get_link_subtree, clone_body, randomize, pairwise_collision, wait_for_user, \
-    get_movable_joints, get_all_links, get_bodies_in_region, pairwise_link_collision, draw_aabb, set_static, \
-    set_all_static, BASE_LINK
+    get_distance, get_relative_pose, get_link_subtree, clone_body, randomize, get_movable_joints, get_all_links, get_bodies_in_region, pairwise_link_collision, \
+    set_static, BASE_LINK
 from pddlstream.utils import get_connected_components
 
 KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
@@ -37,9 +35,6 @@ USE_FLOOR = True
 RESOLUTION = 0.005
 JOINT_WEIGHTS = np.array([0.3078557810844393, 0.443600199302506, 0.23544367607317915,
                           0.03637161028426032, 0.04644626184081511, 0.015054267683041092])
-
-TRANS_TOL = 0.0015
-ROT_TOL = 5 * np.pi / 180
 
 INITIAL_CONF = [0, -np.pi/4, np.pi/4, 0, 0, 0]
 
@@ -416,23 +411,6 @@ def get_connected_structures(elements):
 
 ##################################################
 
-def create_stiffness_checker(extrusion_path, verbose=False):
-    # TODO: the stiffness checker likely has a memory leak
-    # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
-    if not os.path.exists(extrusion_path):
-        raise FileNotFoundError(extrusion_path)
-    with HideOutput():
-        checker = StiffnessChecker(json_file_path=extrusion_path, verbose=verbose)
-    #checker.set_output_json(True)
-    #checker.set_output_json_path(file_path=os.getcwd(), file_name="stiffness-results.json")
-    checker.set_self_weight_load(True)
-    #checker.set_nodal_displacement_tol(transl_tol=0.005, rot_tol=10 * np.pi / 180)
-    #checker.set_nodal_displacement_tol(transl_tol=0.003, rot_tol=5 * np.pi / 180)
-    # checker.set_nodal_displacement_tol(transl_tol=1e-3, rot_tol=3 * (np.pi / 360))
-    checker.set_nodal_displacement_tol(trans_tol=TRANS_TOL, rot_tol=ROT_TOL)
-    #checker.set_loads(point_loads=None, include_self_weight=False, uniform_distributed_load={})
-    return checker
-
 def get_id_from_element(element_from_id):
     return {e: i for i, e in element_from_id.items()}
 
@@ -445,66 +423,3 @@ def get_extructed_ids(element_from_id, directed_elements):
         element = directed[::-1] if is_reverse else directed
         extruded_ids.append(id_from_element[element])
     return sorted(extruded_ids)
-
-Deformation = namedtuple('Deformation', ['success', 'displacements', 'fixities', 'reactions']) # TODO: get_max_nodal_deformation
-Displacement = namedtuple('Displacement', ['dx', 'dy', 'dz', 'theta_x', 'theta_y', 'theta_z'])
-Reaction = namedtuple('Reaction', ['fx', 'fy', 'fz', 'mx', 'my', 'mz'])
-
-def force_from_reaction(reaction):
-    return reaction[:3]
-
-def torque_from_reaction(reaction):
-    return reaction[3:]
-
-##################################################
-
-def evaluate_stiffness(extrusion_path, element_from_id, elements, checker=None, verbose=True):
-    # TODO: check each component individually
-    if not elements:
-        return Deformation(True, {}, {}, {})
-    #return True
-    if checker is None:
-        checker = create_stiffness_checker(extrusion_path, verbose=False)
-    # TODO: load element_from_id
-    extruded_ids = get_extructed_ids(element_from_id, elements)
-    #print(checker.get_element_local2global_rot_matrices())
-    #print(checker.get_element_stiffness_matrices(in_local_coordinate=False))
-
-    #nodal_loads = checker.get_nodal_loads(existing_ids=[], dof_flattened=False) # per node
-    #weight_loads = checker.get_self_weight_loads(existing_ids=[], dof_flattened=False) # get_nodal_loads = get_self_weight_loads?
-    #for node in sorted(nodal_load):
-    #    print(node, nodal_loads[node] - weight_loads[node])
-
-    is_stiff = checker.solve(exist_element_ids=extruded_ids, if_cond_num=True)
-    #print("has stored results: {0}".format(checker.has_stored_result()))
-    success, nodal_displacement, fixities_reaction, element_reaction = checker.get_solved_results()
-    assert is_stiff == success # TODO: this sometimes isn't true
-    displacements = {i: Displacement(*d) for i, d in nodal_displacement.items()}
-    fixities = {i: Reaction(*d) for i, d in fixities_reaction.items()}
-    reactions = {i: (Reaction(*d[0]), Reaction(*d[1])) for i, d in element_reaction.items()}
-
-    #translation = np.max(np.linalg.norm([d[:3] for d in displacements.values()], axis=1))
-    #rotation = np.max(np.linalg.norm([d[3:] for d in displacements.values()], axis=1))
-
-    #print("nodal displacement (m/rad):\n{0}".format(nodal_displacement)) # nodes x 7
-    # TODO: investigate if nodal displacement can be used to select an ordering
-    #print("fixities reaction (kN, kN-m):\n{0}".format(fixities_reaction)) # ground x 7
-    #print("element reaction (kN, kN-m):\n{0}".format(element_reaction)) # elements x 13
-    trans_tol, rot_tol = checker.get_nodal_deformation_tol()
-    max_trans, max_rot, max_trans_vid, max_rot_vid = checker.get_max_nodal_deformation()
-    # The inverse of stiffness is flexibility or compliance
-    if verbose:
-        print('Stiff: {} | Compliance: {:.5f}'.format(is_stiff, checker.get_compliance()))
-        print('Max translation deformation: {0:.5f} / {1:.5} = {2:.5}, at node #{3}'.format(
-            max_trans, trans_tol, max_trans / trans_tol, max_trans_vid))
-        print('Max rotation deformation: {0:.5f} / {1:.5} = {2:.5}, at node #{3}'.format(
-            max_rot, rot_tol, max_rot / rot_tol, max_rot_vid))
-    #disc = 10
-    #exagg_ratio = 1.0
-    #time_step = 1.0
-    #orig_beam_shape = checker.get_original_shape(disc=disc, draw_full_shape=False)
-    #beam_disp = checker.get_deformed_shape(exagg_ratio=exagg_ratio, disc=disc)
-    return Deformation(is_stiff, displacements, fixities, reactions)
-
-def test_stiffness(extrusion_path, element_from_id, elements, **kwargs):
-    return evaluate_stiffness(extrusion_path, element_from_id, elements, **kwargs).success

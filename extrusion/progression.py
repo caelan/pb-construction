@@ -13,9 +13,9 @@ from pybullet_tools.utils import elapsed_time, \
 from extrusion.parsing import load_extrusion
 from extrusion.visualization import draw_element
 from extrusion.stream import get_print_gen_fn, STEP_SIZE, APPROACH_DISTANCE, MAX_DIRECTIONS, MAX_ATTEMPTS
-from extrusion.utils import check_connected, test_stiffness, \
-    create_stiffness_checker, get_id_from_element, load_world, PrintTrajectory, \
-    compute_printed_nodes, compute_printable_elements, TRANS_TOL, ROT_TOL, RESOLUTION
+from extrusion.utils import check_connected, get_id_from_element, load_world, PrintTrajectory, \
+    compute_printed_nodes, compute_printable_elements, RESOLUTION
+from extrusion.stiffness import TRANS_TOL, ROT_TOL, create_stiffness_checker, test_stiffness
 from extrusion.motion import compute_motion
 
 # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp

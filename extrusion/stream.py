@@ -344,6 +344,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
             command = Command([traj])
             yield (command,)
             return
+        # TODO: cache the set of considered directions
 
         n1, n2 = reversed(element) if reverse else element
         delta = node_points[n2] - node_points[n1]

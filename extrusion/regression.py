@@ -8,8 +8,9 @@ from extrusion.heuristics import get_heuristic_fn
 from extrusion.motion import compute_motion
 from extrusion.parsing import load_extrusion
 from extrusion.stream import get_print_gen_fn, MAX_DIRECTIONS, MAX_ATTEMPTS
-from extrusion.utils import get_id_from_element, get_ground_elements, create_stiffness_checker, is_ground, \
-    check_connected, test_stiffness
+from extrusion.utils import get_id_from_element, get_ground_elements, is_ground, \
+    check_connected
+from extrusion.stiffness import create_stiffness_checker, test_stiffness
 from extrusion.validator import compute_plan_deformation
 from extrusion.visualization import draw_ordered
 from pddlstream.utils import outgoing_from_edges
