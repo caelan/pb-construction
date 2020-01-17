@@ -180,8 +180,10 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
         if command is None:
             continue
         if motions:
+            # TODO: test reachability from initial_conf
             motion_traj = compute_motion(robot, obstacles, element_bodies, node_points, printed,
-                                         current_conf, command.start_conf, collisions=collisions)
+                                         current_conf, command.start_conf, collisions=collisions,
+                                         max_time=max_time - elapsed_time(start_time))
             if motion_traj is None:
                 transit_failures += 1
                 continue

@@ -82,8 +82,7 @@ def topological_sort(robot, obstacles, element_bodies, extrusion_path):
 
 ##################################################
 
-def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[],
-              num_ee=0, num_arm=1, max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS,
+def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[], num_ee=0, num_arm=1,
               plan_all=False, use_conflicts=False, use_replan=False, heuristic='z', max_time=INF, backtrack_limit=INF,
               revisit=False, ee_only=False, collisions=True, stiffness=True, motions=True, **kwargs):
     if not use_conflicts:
@@ -102,14 +101,14 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
 
     #print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
     #                                precompute_collisions=False, supports=False, bidirectional=False, ee_only=ee_only,
-    #                                max_directions=500, max_attempts=1, collisions=collisions, **kwargs)
+    #                                max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS, collisions=collisions, **kwargs)
     full_print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                          precompute_collisions=False, supports=False, bidirectional=True, ee_only=ee_only, allow_failures=True,
-                                         max_directions=max_directions, max_attempts=max_attempts, collisions=collisions, **kwargs)
+                                         max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS, collisions=collisions, **kwargs)
     # TODO: could just check environment collisions & kinematics instead of element collisions
     ee_print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                         precompute_collisions=False, supports=False, bidirectional=True, ee_only=True, allow_failures=True,
-                                        max_directions=max_directions, max_attempts=max_attempts, collisions=collisions, **kwargs)
+                                        max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS, collisions=collisions, **kwargs)
     id_from_element = get_id_from_element(element_from_id)
     all_elements = frozenset(element_bodies)
     heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=True)
@@ -229,6 +228,7 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
         assert any(n in printed_nodes for n in print_traj.element)
         if print_traj.n1 not in printed_nodes:
             command = command.reverse()
+            # TODO: could this print in a way that causes collisions?
 
         print('Sampling successors')
         if not sample_remaining(condition, next_printed, full_sample_traj, num=num_arm):
@@ -242,7 +242,8 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
             start_conf, end_conf = command.start_conf, command.end_conf
         if (start_conf is not None) and motions:
             motion_traj = compute_motion(robot, obstacles, element_bodies, node_points,
-                                         printed, current_conf, start_conf, collisions=collisions)
+                                         printed, current_conf, start_conf, collisions=collisions,
+                                         max_time=max_time - elapsed_time(start_time))
             if motion_traj is None:
                 transit_failures += 1
                 continue
