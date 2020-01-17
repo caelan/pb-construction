@@ -4,7 +4,7 @@ import os
 import numpy as np
 
 from collections import defaultdict, deque, namedtuple
-
+from itertools import islice, cycle
 from pyconmech import StiffnessChecker
 
 from pybullet_tools.utils import get_link_pose, BodySaver, set_point, multiply, set_pose, set_joint_positions, \
@@ -42,6 +42,22 @@ TRANS_TOL = 0.0015
 ROT_TOL = 5 * np.pi / 180
 
 INITIAL_CONF = [0, -np.pi/4, np.pi/4, 0, 0, 0]
+
+##################################################
+
+# https://docs.python.org/3.1/library/itertools.html#recipes
+def roundrobin(*iterables):
+    "roundrobin('ABC', 'D', 'EF') --> A D E B F C"
+    # Recipe credited to George Sakkis
+    pending = len(iterables)
+    nexts = cycle(iter(it).__next__ for it in iterables)
+    while pending:
+        try:
+            for next in nexts:
+                yield next()
+        except StopIteration:
+            pending -= 1
+            nexts = cycle(islice(nexts, pending))
 
 ##################################################
 
@@ -284,11 +300,14 @@ class Command(object):
 
 ##################################################
 
-def is_start_node(n1, e, node_points):
-    return not element_supports(e, n1, node_points)
+def is_reversed(node1, element):
+    assert node1 in element
+    return node1 != element[0]
 
-def doubly_printable(e, node_points):
-    return all(is_start_node(n, e, node_points) for n in e)
+def get_directed_element(node1, element):
+    if is_reversed(node1, element):
+        return reversed(element)
+    return element
 
 def get_other_node(node1, element):
     assert node1 in element
@@ -319,6 +338,12 @@ def compute_printable_elements(all_elements, ground_nodes, printed):
             if is_printable(element, nodes)}
 
 ##################################################
+
+def is_start_node(n1, e, node_points):
+    return not element_supports(e, n1, node_points)
+
+def doubly_printable(e, node_points):
+    return all(is_start_node(n, e, node_points) for n in e)
 
 def get_supported_orders(elements, node_points):
     node_neighbors = get_node_neighbors(elements)

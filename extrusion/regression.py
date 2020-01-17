@@ -3,11 +3,11 @@ import random
 import time
 
 from extrusion.progression import Node, sample_extrusion, retrace_trajectories, recover_sequence, \
-    recover_directed_sequence, MAX_DIRECTIONS, MAX_ATTEMPTS
+    recover_directed_sequence
 from extrusion.heuristics import get_heuristic_fn
 from extrusion.motion import compute_motion
 from extrusion.parsing import load_extrusion
-from extrusion.stream import get_print_gen_fn
+from extrusion.stream import get_print_gen_fn, MAX_DIRECTIONS, MAX_ATTEMPTS
 from extrusion.utils import get_id_from_element, get_ground_elements, create_stiffness_checker, is_ground, \
     check_connected, test_stiffness
 from extrusion.validator import compute_plan_deformation
@@ -35,7 +35,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
     checker = create_stiffness_checker(extrusion_path, verbose=False)
     #checker = None
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                    supports=False, bidirectional=False, precompute_collisions=False,
+                                    supports=False, precompute_collisions=False,
                                     max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS,
                                     collisions=collisions, **kwargs)
     heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=False)

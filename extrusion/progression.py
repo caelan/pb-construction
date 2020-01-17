@@ -10,9 +10,9 @@ from extrusion.validator import compute_plan_deformation
 from extrusion.heuristics import get_heuristic_fn
 from pybullet_tools.utils import elapsed_time, \
     LockRenderer, reset_simulation, disconnect, randomize
-from extrusion.parsing import load_extrusion, ELEMENT_DIAMETER, ELEMENT_SHRINK
+from extrusion.parsing import load_extrusion
 from extrusion.visualization import draw_element
-from extrusion.stream import get_print_gen_fn, STEP_SIZE, APPROACH_DISTANCE
+from extrusion.stream import get_print_gen_fn, STEP_SIZE, APPROACH_DISTANCE, MAX_DIRECTIONS, MAX_ATTEMPTS
 from extrusion.utils import check_connected, test_stiffness, \
     create_stiffness_checker, get_id_from_element, load_world, PrintTrajectory, \
     compute_printed_nodes, compute_printable_elements, TRANS_TOL, ROT_TOL, RESOLUTION
@@ -26,8 +26,6 @@ from pddlstream.utils import incoming_from_edges
 #State = namedtuple('State', ['element', 'printed', 'plan'])
 Node = namedtuple('Node', ['action', 'state'])
 
-MAX_DIRECTIONS = 500
-MAX_ATTEMPTS = 1
 
 ##################################################
 
@@ -67,7 +65,6 @@ def recover_directed_sequence(plan):
 
 def sample_extrusion(print_gen_fn, ground_nodes, printed, element):
     printed_nodes = compute_printed_nodes(ground_nodes, printed)
-    # TODO: could always reverse these trajectories
     for node in element:
         # TODO: sample between different orientations if both are feasible
         if node in printed_nodes:
@@ -141,7 +138,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
     checker = create_stiffness_checker(extrusion_path, verbose=False)
     #checker = None
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                    supports=False, bidirectional=False, precompute_collisions=False,
+                                    supports=False, precompute_collisions=False,
                                     max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS,
                                     collisions=collisions, **kwargs)
     id_from_element = get_id_from_element(element_from_id)

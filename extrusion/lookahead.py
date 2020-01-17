@@ -6,13 +6,13 @@ from collections import defaultdict
 
 from extrusion.validator import compute_plan_deformation
 from extrusion.progression import Node, retrace_trajectories, add_successors, recover_directed_sequence, \
-    recover_sequence, MAX_DIRECTIONS, MAX_ATTEMPTS
+    recover_sequence
 from extrusion.heuristics import get_heuristic_fn
 from extrusion.parsing import load_extrusion
-from extrusion.stream import get_print_gen_fn
+from extrusion.stream import get_print_gen_fn, MAX_DIRECTIONS, MAX_ATTEMPTS
 from extrusion.utils import check_connected, test_stiffness, \
     create_stiffness_checker, get_id_from_element, PrintTrajectory, JOINT_WEIGHTS, compute_printed_nodes, \
-    compute_printable_elements
+    compute_printable_elements, roundrobin
 from extrusion.visualization import color_structure
 from extrusion.motion import compute_motion
 # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
@@ -25,46 +25,49 @@ def retrace_elements(visited, current_state, **kwargs):
 
 ##################################################
 
-def get_sample_traj(element_bodies, print_gen_fn, max_directions=INF, max_extrusions=INF,
+def get_sample_traj(ground_nodes, element_bodies, print_gen_fn, max_directions=INF, max_extrusions=INF,
                     condition=True, collisions=True):
-    gen_from_element = {element: print_gen_fn(node1=None, element=element, extruded=[], trajectories=[])
-                        for element in element_bodies}
-    count_per_element = {element: 0 for element in element_bodies}
+    gen_from_element = {(node, element): print_gen_fn(node1=None, element=element, extruded=[], trajectories=[])
+                        for element in element_bodies for node in element}
+    count_per_element = {(node, element): 0 for element in element_bodies for node in element}
     trajs_from_element = defaultdict(list)
     #gen_from_element_printed = {}
     # TODO: make a generator for each parent vertex when scanning next extrusions
     # TODO: soft-heuristic that counts the number of failures but doesn't cause a hard deadend
 
-    def enumerate_extrusions(printed, element):
-        for traj in trajs_from_element[element]:
+    def enumerate_extrusions(printed, node, element):
+        for traj in trajs_from_element[node, element]:
             yield traj
-        if (max_directions <= count_per_element[element]) or \
-                (max_extrusions <= len(trajs_from_element[element])):
+        if (max_directions <= count_per_element[node, element]) or \
+                (max_extrusions <= len(trajs_from_element[node, element])):
             return
         with LockRenderer(True):
             if condition:
-                generator = print_gen_fn(node1=None, element=element, extruded=printed,
-                                         trajectories=trajs_from_element[element])
+                # TODO: could perform bidirectional here again
+                generator = print_gen_fn(node1=node, element=element, extruded=printed,
+                                         trajectories=trajs_from_element[node, element])
             else:
-                generator = gen_from_element[element]
+                generator = gen_from_element[node, element]
             for traj in generator: # TODO: islice for the num to sample
-                count_per_element[element] += 1
+                count_per_element[node, element] += 1
                 if traj is not None:
                     traj, = traj
-                    trajs_from_element[element].append(traj)
+                    trajs_from_element[node, element].append(traj)
                     yield traj
-                if max_directions <= count_per_element[element]:
+                if max_directions <= count_per_element[node, element]:
                     print('Enumerated {}: {} directions and {} trajectories'.format(
-                        element, count_per_element[element], len(trajs_from_element[element])))
+                        element, count_per_element[node, element], len(trajs_from_element[node, element])))
                     break
             #for _ in range(100):
             #    traj, = next(print_gen_fn(None, element, extruded=[]), (None,))
 
-    def sample_traj(printed, next_printed, element, num=1):
+    def sample_traj(printed, next_printed, element, connected=True, num=1):
         # TODO: other num conditions: max time, min collisions, etc
         assert 1 <= num
+        printed_nodes = compute_printed_nodes(ground_nodes, printed)
+        start_nodes = set(element) & printed_nodes if connected else element
         safe_trajectories = []
-        for traj in enumerate_extrusions(printed, element):
+        for traj in roundrobin(*[enumerate_extrusions(printed, node, element) for node in start_nodes]):
             #safe = not (traj.colliding & next_printed)
             safe = not collisions or traj.is_safe(next_printed, element_bodies)
             if safe:
@@ -90,7 +93,7 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
     if ee_only:
         num_ee, num_arm = max(num_arm, num_ee), 0
     print('#EE: {} | #Arm: {}'.format(num_ee, num_arm))
-    # TODO: only check nearby elements
+    # TODO: only check nearby remaining_elements
     # TODO: only check collisions conditioned on current decisions
     start_time = time.time()
     joints = get_movable_joints(robot)
@@ -100,14 +103,14 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
     #checker = None
 
     #print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
-    #                                precompute_collisions=False, supports=False, bidirectional=False, ee_only=ee_only,
+    #                                precompute_collisions=False, supports=False, ee_only=ee_only,
     #                                max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS, collisions=collisions, **kwargs)
     full_print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                         precompute_collisions=False, supports=False, bidirectional=True, ee_only=ee_only, allow_failures=True,
+                                         precompute_collisions=False, supports=False, ee_only=ee_only, allow_failures=True,
                                          max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS, collisions=collisions, **kwargs)
     # TODO: could just check environment collisions & kinematics instead of element collisions
     ee_print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                        precompute_collisions=False, supports=False, bidirectional=True, ee_only=True, allow_failures=True,
+                                        precompute_collisions=False, supports=False, ee_only=True, allow_failures=True,
                                         max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS, collisions=collisions, **kwargs)
     id_from_element = get_id_from_element(element_from_id)
     all_elements = frozenset(element_bodies)
@@ -115,9 +118,9 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
     #distance_fn = get_distance_fn(robot, joints, weights=JOINT_WEIGHTS)
     # TODO: 2-step lookahead based on neighbors or spatial proximity
 
-    full_sample_traj, full_trajs_from_element = get_sample_traj(element_bodies, full_print_gen_fn, max_directions=INF, #max_directions,
+    full_sample_traj, full_trajs_from_element = get_sample_traj(ground_nodes, element_bodies, full_print_gen_fn,
                                                                 collisions=collisions)
-    ee_sample_traj, ee_trajs_from_element = get_sample_traj(element_bodies, ee_print_gen_fn, max_directions=INF, #max_directions,
+    ee_sample_traj, ee_trajs_from_element = get_sample_traj(ground_nodes, element_bodies, ee_print_gen_fn,
                                                             collisions=collisions)
     if ee_only:
         full_sample_traj = ee_sample_traj
@@ -131,9 +134,11 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
     def sample_remaining(printed, next_printed, sample_fn, num=1, **kwargs):
         if num == 0:
             return True
-        elements = (all_elements - next_printed) if plan_all else \
+        remaining_elements = (all_elements - next_printed) if plan_all else \
             compute_printable_elements(all_elements, ground_nodes, next_printed)
-        return all(sample_fn(printed, next_printed, element, num, **kwargs) for element in randomize(elements))
+        # TODO: could just consider nodes in printed (connected=True)
+        return all(sample_fn(printed, next_printed, element, connected=False, num=num, **kwargs)
+                   for element in randomize(remaining_elements))
 
     def conflict_fn(printed, element, conf):
         # Dead-end detection without stability performs reasonably well
@@ -208,7 +213,6 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
         #condition = printed # horizon=1
         condition = next_printed
 
-        # TODO: the directionality actually matters for the printing orientation
         if not sample_remaining(condition, next_printed, ee_sample_traj, num=num_ee):
             # Soft dead-end
             num_deadends += 1
@@ -217,18 +221,12 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
 
         print('Sampling transition')
         #command = sample_extrusion(print_gen_fn, ground_nodes, printed, element)
-        command = next(iter(full_sample_traj(printed, printed, element)), None)
+        command = next(iter(full_sample_traj(printed, printed, element, connected=True)), None)
         if command is None:
             # Soft dead-end
             #num_deadends += 1
             print('The transition could not be sampled!')
             continue
-        print_traj = command.print_trajectory
-        printed_nodes = compute_printed_nodes(ground_nodes, printed)
-        assert any(n in printed_nodes for n in print_traj.element)
-        if print_traj.n1 not in printed_nodes:
-            command = command.reverse()
-            # TODO: could this print in a way that causes collisions?
 
         print('Sampling successors')
         if not sample_remaining(condition, next_printed, full_sample_traj, num=num_arm):
