@@ -84,7 +84,8 @@ def load_experiment(filename, overall=False):
             for result in results:
                 for name, value in result.items():
                     #if result['success'] or (name == 'success'):
-                    accumulated_result.setdefault(name, []).append(value)
+                    if isinstance(value, int) or isinstance(value, float):
+                        accumulated_result.setdefault(name, []).append(value)
             mean_result = {name: round(np.average(values), 3) for name, values in accumulated_result.items()}
             key = {field: value for field, value in config._asdict().items()
                    if 2 <= len(value_per_field[field])}

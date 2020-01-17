@@ -12,7 +12,7 @@ from pybullet_tools.utils import get_distance, INF
 DISTANCE_HEURISTICS = [
     'z',
     'dijkstra',
-    # 'fixed-dijkstra',
+    'online-dijkstra'
 ]
 TOPOLOGICAL_HEURISTICS = [
     'length',
@@ -111,7 +111,7 @@ def score_stiffness(extrusion_path, element_from_id, elements, checker=None):
 
 ##################################################
 
-def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None, online=False):
+def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
     # TODO: penalize disconnected
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
     elements = frozenset(element_from_id.values())
@@ -124,28 +124,25 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None, online=Fa
         stiffness_cache.update({element: score_stiffness(extrusion_path, element_from_id, elements - {element},
                                                          checker=checker) for element in elements})
     reaction_cache = {}
+    distance_cache = {}
 
     def fn(printed, element, conf):
         # Queue minimizes the statistic
         structure = printed | {element} if forward else printed - {element}
         structure_ids = get_extructed_ids(element_from_id, structure)
-        # TODO: build away from the robot
-        # TODO: heuristic that orders elements by angle
-
-        #if online:
-        #    distance_from_node = compute_distance_from_node(printed, node_points, ground_nodes)
+        # TODO: build away from the robot (x)
+        # TODO: order elements by angle
 
         normalizer = 1
         #normalizer = len(structure)
         #normalizer = compute_element_distance(node_points, elements)
 
-        operator = sum # sum | max
-        fn = force_from_reaction  # force_from_reaction | torque_from_reaction
+        reduce_op = sum # sum | max | average
+        reaction_fn = force_from_reaction  # force_from_reaction | torque_from_reaction
 
         if heuristic == 'none':
             return 0
         elif heuristic == 'degree':
-            # TODO: online/offline and ground
             # TODO: other graph statistics
             #printed_nodes = {n for e in printed for n in e}
             #n1, n2 = element
@@ -158,32 +155,35 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None, online=Fa
             n1, n2 = element
             return get_distance(node_points[n2], node_points[n1])
         elif heuristic == 'z':
-            # TODO: tiebreak by angle or x
-            z = np.average([node_points[n][2] for n in element])
-            return sign*z
-        elif heuristic == 'dijkstra':
+            # Distance to a ground plane
+            # Opposing gravitational force
+            return sign*np.average([node_points[n][2] for n in element])
+        elif heuristic == 'dijkstra': # offline
             # TODO: sum of all element path distances
-            normalizer = np.average([distance_from_node[node] for node in element]) # min, max, average
-            return sign * normalizer
+            return sign*np.average([distance_from_node[node] for node in element]) # min, max, average
+        elif heuristic == 'online-dijkstra':
+            if printed not in distance_cache:
+                distance_cache[printed] = compute_distance_from_node(printed, node_points, ground_nodes)
+            return sign*min(distance_cache[printed].get(node, INF) for node in element)
         elif heuristic == 'load':
             nodal_loads = checker.get_nodal_loads(existing_ids=structure_ids, dof_flattened=False) # get_self_weight_loads
-            return operator(np.linalg.norm(force_from_reaction(reaction)) for reaction in nodal_loads.values())
+            return reduce_op(np.linalg.norm(force_from_reaction(reaction)) for reaction in nodal_loads.values())
         elif heuristic == 'fixed-forces':
             #printed = elements # disable to use most up-to-date
             # TODO: relative to the load introduced
             if printed not in reaction_cache:
                 reaction_cache[printed] = compute_all_reactions(extrusion_path, elements, checker=checker)
-            force = operator(np.linalg.norm(fn(reaction)) for reaction in reaction_cache[printed].reactions[element])
+            force = reduce_op(np.linalg.norm(reaction_fn(reaction)) for reaction in reaction_cache[printed].reactions[element])
             return force / normalizer
         elif heuristic == 'forces':
             reactions_from_nodes = compute_node_reactions(extrusion_path, structure, checker=checker)
             #torque = sum(np.linalg.norm(np.sum([torque_from_reaction(reaction) for reaction in reactions], axis=0))
             #            for reactions in reactions_from_nodes.values())
             #return torque / normalizer
-            total = operator(np.linalg.norm(fn(reaction)) for reactions in reactions_from_nodes.values()
+            total = reduce_op(np.linalg.norm(reaction_fn(reaction)) for reactions in reactions_from_nodes.values()
                             for reaction in reactions)
             return total / normalizer
-            #return max(sum(np.linalg.norm(fn(reaction)) for reaction in reactions)
+            #return max(sum(np.linalg.norm(reaction_fn(reaction)) for reaction in reactions)
             #               for reactions in reactions_from_nodes.values())
         elif heuristic == 'stiffness':
             # TODO: add different variations
