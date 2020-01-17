@@ -9,7 +9,8 @@ from pybullet_tools.utils import get_movable_joints, get_joint_positions, draw_a
     set_joint_positions, inverse_kinematics, get_link_pose, get_distance, point_from_pose, wrap_angle, get_sample_fn, \
     link_from_name, get_pose, get_collision_fn, set_pose, pairwise_collision, Pose, Euler, Point, interval_generator, \
     randomize, get_extend_fn, user_input, INF, elapsed_time, wait_for_user, get_bodies_in_region, get_aabb, get_all_links, \
-    link_pairs_collision, pairwise_link_collision, get_link_name, get_links, step_simulation, STATIC_MASS, BASE_LINK
+    link_pairs_collision, pairwise_link_collision, get_link_name, get_links, step_simulation, STATIC_MASS, BASE_LINK, \
+    WorldSaver
 from extrusion.utils import TOOL_LINK, get_disabled_collisions, get_node_neighbors, \
     PrintTrajectory, retrace_supporters, get_supported_orders, prune_dominated, Command, MotionTrajectory, RESOLUTION, \
     JOINT_WEIGHTS, EE_LINK, EndEffector, is_ground, get_custom_limits

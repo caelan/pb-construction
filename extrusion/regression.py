@@ -1,8 +1,14 @@
 import heapq
 import random
 import time
+from termcolor import cprint
 
-from extrusion.greedy import Node, sample_extrusion, retrace_trajectories, recover_sequence, recover_directed_sequence
+# https://github.com/ContinuumIO/anaconda-issues/issues/905
+import os
+os.environ['FOR_DISABLE_CONSOLE_CTRL_HANDLER'] = 'T'
+
+from extrusion.greedy import Node, sample_extrusion, retrace_trajectories, recover_sequence, recover_directed_sequence, \
+    draw_action
 from extrusion.heuristics import get_heuristic_fn
 from extrusion.motion import compute_motion
 from extrusion.parsing import load_extrusion
@@ -13,7 +19,7 @@ from extrusion.validator import compute_plan_deformation
 from extrusion.visualization import draw_ordered
 from pddlstream.utils import outgoing_from_edges
 from pybullet_tools.utils import INF, get_movable_joints, get_joint_positions, randomize, implies, has_gui, \
-    remove_all_debug, wait_for_user, elapsed_time
+    remove_all_debug, wait_for_user, elapsed_time, LockRenderer
 
 
 def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=[],
@@ -76,59 +82,137 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
     # TODO: immediately select if becomes more stable
     # TODO: focus branching factor on most stable regions
 
+    check_backtrack = False
+    record_snapshots = True
+    locker = LockRenderer()
+
     # TODO: computed number of motion planning failures
     plan = None
     min_remaining = len(all_elements)
-    num_evaluated = max_backtrack = transit_failures = 0
-    while queue and (elapsed_time(start_time) < max_time):
-        priority, printed, element, current_conf = heapq.heappop(queue)
-        num_remaining = len(printed)
-        backtrack = num_remaining - min_remaining
-        max_backtrack = max(max_backtrack, backtrack)
-        if backtrack_limit < backtrack:
-            break # continue
-        num_evaluated += 1
+    num_evaluated = max_backtrack = 0
+    stiffness_failures = transit_failures = 0
+    bt_data = [] # backtrack history
+    cons_data = [] # constraint violation history
 
-        print('Iteration: {} | Best: {} | Printed: {} | Element: {} | Index: {} | Time: {:.3f}'.format(
-            num_evaluated, min_remaining, len(printed), element, id_from_element[element], elapsed_time(start_time)))
-        next_printed = printed - {element}
-        #draw_action(node_points, next_printed, element)
-        #if 3 < backtrack + 1:
-        #    remove_all_debug()
-        #    set_renderer(enable=True)
-        #    draw_model(next_printed, node_points, ground_nodes)
-        #    wait_for_user()
+    def snapshot_state(data_list=None, reason=''):
+        cur_data = {}
+        cur_data['iter'] = num_evaluated - 1
+        cur_data['reason'] = reason
+        cur_data['min_remain'] = min_remaining
+        cur_data['max_backtrack'] = max_backtrack
+        cur_data['backtrack'] = backtrack
+        cur_data['total_q_len'] = len(queue)
+        cur_data['num_stiffness_violation'] = stiffness_failures
 
-        if (next_printed in visited) or not check_connected(ground_nodes, next_printed) or \
-                not implies(stiffness, test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker)):
-            continue
-        # TODO: could do this eagerly to inspect the full branching factor
-        command = sample_extrusion(print_gen_fn, ground_nodes, next_printed, element)
-        if command is None:
-            continue
-        if motions:
-            motion_traj = compute_motion(robot, obstacles, element_bodies, node_points, printed,
-                                         command.end_conf, current_conf, collisions=collisions)
-            if motion_traj is None:
-                transit_failures += 1
+        cur_data['chosen_element'] = element
+        record_plan = retrace_trajectories(visited, printed)
+        planned_elements = recover_directed_sequence(record_plan)
+        cur_data['planned_elements'] = planned_elements
+
+        # queue_log_cnt = 200
+        # cur_data['queue'] = []
+        # cur_data['queue'].append((id_from_element[element], priority))
+        # for candidate in heapq.nsmallest(queue_log_cnt, queue):
+        #     cur_data['queue'].append((id_from_element[candidate[2]], candidate[0]))
+
+        if data_list:
+            data_list.append(cur_data)
+        if check_backtrack:
+            draw_action(node_points, next_printed, element)
+            # color_structure(element_bodies, next_printed, element)
+
+            # TODO: can take picture here
+            locker.restore()
+            cprint('{} detected, press Enter to continue!'.format(reason), 'red')
+            wait_for_user()
+            locker = LockRenderer()
+        return cur_data
+
+    try:
+        while queue and (elapsed_time(start_time) < max_time):
+            priority, printed, element, current_conf = heapq.heappop(queue)
+            num_remaining = len(printed)
+            num_evaluated += 1
+            print('-'*5)
+
+            if num_remaining < min_remaining:
+                min_remaining = num_remaining
+                cprint('New best: {}/{}'.format(num_remaining, len(all_elements)), 'green')
+
+            cprint('Eval Iter: {} | Best: {}/{} | Printed: {} | Element: {} | E-Id: {} | Time: {:.3f}'.format(
+                num_evaluated, min_remaining, len(all_elements), len(printed), element, id_from_element[element], elapsed_time(start_time)))
+            next_printed = printed - {element}
+
+            backtrack = num_remaining - min_remaining
+            if backtrack > max_backtrack:
+                max_backtrack = backtrack
+                # * (optional) visualization for diagnosis
+                if record_snapshots:
+                    cprint('max backtrack increased to {}'.format(max_backtrack), 'cyan')
+                    snapshot_state(bt_data, reason='Backtrack')
+
+            if backtrack_limit < backtrack:
+                cprint('backtrack {} exceeds limit {}, exit.'.format(backtrack, backtrack_limit), 'red')
+                break # continue
+
+            
+            # * constraint checking
+            # ! connectivity and avoid checking duplicate states
+            if (next_printed in visited) or not check_connected(ground_nodes, next_printed):
                 continue
-            command.trajectories.append(motion_traj)
 
-        if num_remaining < min_remaining:
-            min_remaining = num_remaining
-            print('New best: {}'.format(num_remaining))
-            #if has_gui():
-            #    # TODO: change link transparency
-            #    remove_all_debug()
-            #    draw_model(next_printed, node_points, ground_nodes)
-            #    wait_for_duration(0.5)
+            # ! stiffness constraint
+            if not implies(stiffness, test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker)):
+                cprint('&&& stiffness not passed.', 'red')
+                stiffness_failures += 1
+                # * (optional) visualization for diagnosis
+                if record_snapshots:
+                    snapshot_state(cons_data, reason='stiffness_violation')
+                continue
 
-        visited[next_printed] = Node(command, printed) # TODO: be careful when multiple trajs
-        if not next_printed:
-            min_remaining = 0
-            plan = retrace_trajectories(visited, next_printed, reverse=True)
-            break
-        add_successors(next_printed, command.start_conf)
+            # ! extrusion feasibility
+            # TODO: could do this eagerly to inspect the full branching factor
+            command = sample_extrusion(print_gen_fn, ground_nodes, next_printed, element)
+            if command is None:
+                continue
+            
+            # ! transition feasibility
+            if motions:
+                motion_traj = compute_motion(robot, obstacles, element_bodies, node_points, printed,
+                                             command.end_conf, current_conf, collisions=collisions)
+                if motion_traj is None:
+                    transit_failures += 1
+                    cprint('>>> transition motion not passed.', 'red')
+                    if record_snapshots:
+                        snapshot_state(cons_data, reason='transit_failure')
+                    continue
+                command.trajectories.append(motion_traj)
+
+            visited[next_printed] = Node(command, printed) # TODO: be careful when multiple trajs
+            if not next_printed:
+                min_remaining = 0
+                plan = retrace_trajectories(visited, next_printed, reverse=True)
+                break
+            add_successors(next_printed, command.start_conf)
+    except (KeyboardInterrupt, TimeoutError):
+        # log data
+        cur_data = {}
+        cur_data['search_method'] = 'regression'
+        cur_data['heuristic'] = heuristic
+        when_stop_data = snapshot_state(reason='external stop')
+
+        cur_data['when_stopped'] = when_stop_data
+        cur_data['backtrack_history'] = bt_data
+        cur_data['constraint_violation_history'] = cons_data
+
+        export_log_data(extrusion_path, cur_data, overwrite=False)
+
+        cprint('search terminated by user interruption or timeout.', 'red')
+        if has_gui():
+            color_structure(element_bodies, printed, element)
+            locker.restore()
+            wait_for_user()
+        assert False, 'search terminated.'
 
     max_translation, max_rotation = compute_plan_deformation(extrusion_path, recover_sequence(plan))
     data = {

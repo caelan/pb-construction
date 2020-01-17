@@ -271,10 +271,11 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
                 break # continue
 
             # * constraint checking
-            # connectivity and avoid checking duplicate states
+            # ! connectivity and avoid checking duplicate states
             if (next_printed in visited) or not check_connected(ground_nodes, next_printed):
                 continue
-            # stiffness constraint
+
+            # ! stiffness constraint
             if stiffness and not test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker):
                 cprint('&&& stiffness not passed.', 'red')
                 stiffness_failures += 1

@@ -26,7 +26,8 @@ from extrusion.utils import load_world, PrintTrajectory
 from extrusion.parsing import load_extrusion, create_elements_bodies, \
     enumerate_problems, get_extrusion_path, affine_extrusion, RADIUS, SHRINK
 from extrusion.stream import get_print_gen_fn, STEP_SIZE, APPROACH_DISTANCE
-from extrusion.greedy import regression, progression, recover_directed_sequence
+from extrusion.greedy import progression, recover_directed_sequence
+from extrusion.regression import regression
 from extrusion.heuristics import HEURISTICS, downsample_structure
 from extrusion.validator import verify_plan
 from extrusion.lookahead import lookahead

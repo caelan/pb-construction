@@ -114,7 +114,7 @@ def load_experiment(filename, overall=False, write_report=False):
                    if 2 <= len(value_per_field[field])}
             score = score_result(mean_result)
             print('{}) {} ({}): {}'.format(c_idx, str_from_object(key), len(results), str_from_object(score)))
-    print('Max time: {:.3f} sec'.format(max_time))
+            print('Max time: {:.3f} sec'.format(max_time))
 
             df_data = {}
             df_data.update({'config_id' : c_idx})
