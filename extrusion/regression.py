@@ -131,6 +131,16 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
             break
         add_successors(next_printed, command.start_conf)
 
+    if plan is not None and motions:
+        motion_traj = compute_motion(robot, obstacles, element_bodies, node_points, frozenset(),
+                                     initial_conf, plan[0].start_conf, collisions=collisions,
+                                     max_time=max_time - elapsed_time(start_time))
+        if motion_traj is None:
+            transit_failures += 1
+            plan = None
+        else:
+            plan.insert(0, motion_traj)
+
     max_translation, max_rotation = compute_plan_deformation(extrusion_path, recover_sequence(plan))
     data = {
         'sequence': recover_directed_sequence(plan),

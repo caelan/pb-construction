@@ -197,6 +197,16 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
         add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn, next_printed, command.end_conf,
                        partial_orders=partial_orders)
 
+    if plan is not None and motions:
+        motion_traj = compute_motion(robot, obstacles, element_bodies, node_points, all_elements,
+                                     plan[-1].end_conf, initial_conf, collisions=collisions,
+                                     max_time=max_time - elapsed_time(start_time))
+        if motion_traj is None:
+            transit_failures += 1
+            plan = None
+        else:
+            plan.append(motion_traj)
+
     max_translation, max_rotation = compute_plan_deformation(extrusion_path, recover_sequence(plan))
     data = {
         'sequence': recover_directed_sequence(plan),
