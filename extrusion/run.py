@@ -118,7 +118,8 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
                                                        trajectories=sampled_trajectories, collisions=not args.cfree,
                                                        max_time=args.max_time, disable=args.disable, debug=False)
         elif args.algorithm == 'progression':
-            planned_trajectories, data = progression(robot, obstacles, element_bodies, problem_path, partial_orders=partial_orders,
+            planned_trajectories, data = progression(robot, obstacles, element_bodies, problem_path, 
+                                                     partial_orders=partial_orders,
                                                      heuristic=args.bias, max_time=args.max_time,
                                                      backtrack_limit=backtrack_limit, collisions=not args.cfree,
                                                      disable=args.disable, stiffness=args.stiffness, motions=args.motions)
@@ -185,14 +186,19 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     #with open(plan_path, 'w') as f:
     #    json.dump(plan_data, f, indent=2, sort_keys=True)
 
-    result_file_dir = "C:/Users/yijiangh/Documents/pb_ws/pychoreo/tests/test_data"
+    # result_file_dir = "C:/Users/yijiangh/Documents/pb_ws/pychoreo/tests/test_data"
+    here = os.path.abspath(os.path.dirname(__file__))
+    result_file_dir = os.path.join(here, 'extrusion_results')
+    if not os.path.exists(result_file_dir):
+        os.makedirs(result_file_dir) 
+
     print('result dir: ', result_file_dir)
     if not os.path.exists(result_file_dir):
         os.makedirs(result_file_dir) 
 
     plan_path = os.path.join(result_file_dir, '{}_solution_{}-{}.json'.format(args.problem, args.algorithm, args.bias))
     with open(plan_path, 'w') as f:
-        json.dump(plan_data, f, indent=2, sort_keys=True)
+        json.dump(plan_data, f, indent=None)
 
     if watch:
         animate = not (args.disable or args.ee_only)

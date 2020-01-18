@@ -15,7 +15,7 @@ from extrusion.validator import compute_plan_deformation
 from extrusion.heuristics import get_heuristic_fn
 from pybullet_tools.utils import elapsed_time, \
     LockRenderer, reset_simulation, disconnect, randomize
-from extrusion.parsing import load_extrusion, ELEMENT_DIAMETER, ELEMENT_SHRINK
+from extrusion.parsing import load_extrusion
 from extrusion.visualization import draw_element, draw_ordered, draw_model, color_structure
 from extrusion.stream import get_print_gen_fn
 from extrusion.utils import check_connected, test_stiffness, \
@@ -23,6 +23,7 @@ from extrusion.utils import check_connected, test_stiffness, \
     compute_printed_nodes, compute_printable_elements
 from extrusion.motion import compute_motion
 from extrusion.stream import MAX_DIRECTIONS, MAX_ATTEMPTS, STEP_SIZE
+from extrusion.logger import export_log_data
 
 # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
 from pybullet_tools.utils import connect, ClientSaver, wait_for_user, INF, has_gui, remove_all_debug, \
@@ -97,43 +98,6 @@ def draw_action(node_points, printed, element, remained_elements=None):
             handles.extend(draw_element(node_points, e, color=(0, 0, 1)) for e in remained_elements)
     # wait_for_user()
     return handles
-
-##################################################    
-
-def export_log_data(extrusion_file_path, log_data, overwrite=True, indent=None):
-    import os
-    import datetime
-    import json
-    from collections import OrderedDict
-
-    with open(extrusion_file_path, 'r') as f:
-        shape_data = json.loads(f.read())
-    
-    if 'model_name' in shape_data:
-        file_name = shape_data['model_name']
-    else:
-        file_name = extrusion_file_path.split('.json')[-2].split(os.sep)[-1]
-
-    # result_file_dir = r'C:\Users\yijiangh\Documents\pb_ws\pychoreo\tests\test_data'
-    here = os.path.abspath(os.path.dirname(__file__))
-    result_file_dir = here
-    result_file_dir = os.path.join(result_file_dir, 'extrusion_log')
-    if not os.path.exists(result_file_dir):
-        os.makedirs(result_file_dir) 
-    
-    data = OrderedDict()
-    data['file_name'] = file_name
-    date = datetime.datetime.now().strftime('%y-%m-%d_%H-%M-%S')
-    data['write_time'] = date
-    data.update(log_data)
-
-    file_name_tag = log_data['search_method'] + '-' + log_data['heuristic']
-    # if log_data['heuristic'] in ['stiffness', 'fixed-stiffness']:
-    #     file_name_tag += '-' + log_data['stiffness_criteria']
-    plan_path = os.path.join(result_file_dir, '{}_log_{}{}.json'.format(file_name, 
-        file_name_tag,  '_'+data['write_time'] if not overwrite else ''))
-    with open(plan_path, 'w') as f:
-        json.dump(data, f, indent=indent)
 
 ##################################################
 
@@ -213,6 +177,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
         cur_data = {}
         cur_data['iter'] = num_evaluated - 1
         cur_data['reason'] = reason
+        cur_data['elapsed_time'] = elapsed_time(start_time)
         cur_data['min_remain'] = min_remaining
         cur_data['max_backtrack'] = max_backtrack
         cur_data['backtrack'] = backtrack
@@ -283,7 +248,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
                 if record_snapshots:
                     snapshot_state(cons_data, reason='stiffness_violation')
                 continue
-            # manipulation constraint
+            # ! manipulation constraint
             command = sample_extrusion(print_gen_fn, ground_nodes, printed, element)
             if command is None:
                 continue
@@ -338,11 +303,14 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
         'max_rotation': max_rotation,
         'transit_failures' : transit_failures,
         'stiffness_failures' : stiffness_failures,
+        'backtrack_history' : bt_data,
+        'constraint_violation_history' : cons_data,
     }
 
     if not data['sequence'] and has_gui():
         color_structure(element_bodies, printed, element)
         locker.restore()
+        cprint('No plan found.', 'red')
         wait_for_user()
 
     return plan, data

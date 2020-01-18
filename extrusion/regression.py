@@ -16,10 +16,12 @@ from extrusion.stream import get_print_gen_fn
 from extrusion.utils import get_id_from_element, get_ground_elements, create_stiffness_checker, is_ground, \
     check_connected, test_stiffness
 from extrusion.validator import compute_plan_deformation
-from extrusion.visualization import draw_ordered
+from extrusion.visualization import draw_ordered, color_structure
 from pddlstream.utils import outgoing_from_edges
 from pybullet_tools.utils import INF, get_movable_joints, get_joint_positions, randomize, implies, has_gui, \
     remove_all_debug, wait_for_user, elapsed_time, LockRenderer
+from extrusion.logger import export_log_data
+from extrusion.stream import MAX_DIRECTIONS, MAX_ATTEMPTS, STEP_SIZE
 
 
 def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=[],
@@ -41,7 +43,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
     #checker = None
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                     supports=False, bidirectional=False,
-                                    precompute_collisions=False, max_directions=500, max_attempts=1,
+                                    precompute_collisions=False, max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS,
                                     collisions=collisions, **kwargs)
     heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=False)
 
@@ -98,6 +100,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         cur_data = {}
         cur_data['iter'] = num_evaluated - 1
         cur_data['reason'] = reason
+        cur_data['elapsed_time'] = elapsed_time(start_time)
         cur_data['min_remain'] = min_remaining
         cur_data['max_backtrack'] = max_backtrack
         cur_data['backtrack'] = backtrack
@@ -129,7 +132,9 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         return cur_data
 
     try:
-        while queue and (elapsed_time(start_time) < max_time):
+        while queue:
+            if elapsed_time(start_time) > max_time:
+                raise TimeoutError
             priority, printed, element, current_conf = heapq.heappop(queue)
             num_remaining = len(printed)
             num_evaluated += 1
@@ -154,7 +159,6 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
             if backtrack_limit < backtrack:
                 cprint('backtrack {} exceeds limit {}, exit.'.format(backtrack, backtrack_limit), 'red')
                 break # continue
-
             
             # * constraint checking
             # ! connectivity and avoid checking duplicate states
@@ -225,5 +229,15 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         'max_translation': max_translation,
         'max_rotation': max_rotation,
         'transit_failures': transit_failures,
+        'stiffness_failures' : stiffness_failures,
+        'backtrack_history' : bt_data,
+        'constraint_violation_history' : cons_data,
     }
+
+    if not data['sequence'] and has_gui():
+        color_structure(element_bodies, printed, element)
+        locker.restore()
+        cprint('No plan found.', 'red')
+        wait_for_user()
+
     return plan, data
