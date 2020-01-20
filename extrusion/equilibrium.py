@@ -3,8 +3,8 @@ from collections import namedtuple
 import numpy as np
 
 from extrusion.parsing import load_extrusion
-from extrusion.utils import get_extructed_ids, create_stiffness_checker, evaluate_stiffness, Reaction, \
-    force_from_reaction, compute_element_distance
+from extrusion.utils import get_extructed_ids, compute_element_distance
+from extrusion.stiffness import create_stiffness_checker, Reaction, force_from_reaction, evaluate_stiffness
 from pybullet_tools.utils import get_unit_vector
 
 ReactionForces = namedtuple('Reactions', ['loads', 'fixities', 'reactions'])

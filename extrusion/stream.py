@@ -5,15 +5,14 @@ from termcolor import cprint
 
 from itertools import cycle
 
-from pybullet_tools.utils import get_movable_joints, get_joint_positions, draw_aabb, remove_handles, multiply, invert, \
+from pybullet_tools.utils import get_movable_joints, get_joint_positions, multiply, invert, \
     set_joint_positions, inverse_kinematics, get_link_pose, get_distance, point_from_pose, wrap_angle, get_sample_fn, \
     link_from_name, get_pose, get_collision_fn, set_pose, pairwise_collision, Pose, Euler, Point, interval_generator, \
-    randomize, get_extend_fn, user_input, INF, elapsed_time, wait_for_user, get_bodies_in_region, get_aabb, get_all_links, \
-    link_pairs_collision, pairwise_link_collision, get_link_name, get_links, step_simulation, STATIC_MASS, BASE_LINK, \
-    WorldSaver
+    randomize, get_extend_fn, user_input, INF, elapsed_time, get_bodies_in_region, get_aabb, get_all_links, \
+    pairwise_link_collision, step_simulation, BASE_LINK, WorldSaver
 from extrusion.utils import TOOL_LINK, get_disabled_collisions, get_node_neighbors, \
     PrintTrajectory, retrace_supporters, get_supported_orders, prune_dominated, Command, MotionTrajectory, RESOLUTION, \
-    JOINT_WEIGHTS, EE_LINK, EndEffector, is_ground, get_custom_limits
+    JOINT_WEIGHTS, EE_LINK, EndEffector, is_ground, is_reversed
 #from extrusion.run import USE_IKFAST, get_supported_orders, retrace_supporters, SELF_COLLISIONS, USE_CONMECH
 from pddlstream.language.stream import WildOutput
 from pddlstream.utils import neighbors_from_orders, irange
@@ -43,10 +42,9 @@ STEP_SIZE = 2e-3 # 1e-3 # 0.0025
 APPROACH_DISTANCE = 0.01
 JOINT_RESOLUTIONS = np.divide(0.25 * RESOLUTION * np.ones(JOINT_WEIGHTS.shape), JOINT_WEIGHTS)
 
-# number of EE direction samples when checking validity of a path
-MAX_DIRECTIONS = 500 # | 500
-# number of rotation + ik attempts when checking path + direction
+MAX_DIRECTIONS = 500
 MAX_ATTEMPTS = 1
+TRANSLATION_TOLERANCE = 1e-2
 
 ##################################################
 
@@ -159,7 +157,7 @@ def solve_ik(end_effector, target_pose, nearby=True):
 
 def optimize_angle(end_effector, element_pose,
                    translation, direction, reverse, candidate_angles,
-                   collision_fn, nearby=True, max_error=1e-2):
+                   collision_fn, nearby=True, max_error=TRANSLATION_TOLERANCE):
     robot = end_effector.robot
     movable_joints = get_movable_joints(robot)
     best_error, best_angle, best_conf = max_error, None, None
@@ -320,9 +318,9 @@ def get_element_collision_fn(robot, obstacles):
 ##################################################
 
 def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground_nodes,
-                     precompute_collisions=False, supports=False, bidirectional=False,
+                     precompute_collisions=False, supports=False, # bidirectional=False,
                      collisions=True, disable=False, ee_only=False, allow_failures=False,
-                     max_directions=1000, max_attempts=1, max_time=INF, **kwargs):
+                     max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS, max_time=INF, **kwargs):
     # TODO: print on full sphere and just check for collisions with the printed element
     # TODO: can slide a component of the element down
     if not collisions:
@@ -337,15 +335,16 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                                visual=False, collision=True)
 
     def gen_fn(node1, element, extruded=[], trajectories=[]): # fluents=[]):
-        #start_time = time.time()
+        start_time = time.time()
         idle_time = 0
-        reverse = (node1 != element[0])
+        reverse = is_reversed(node1, element)
         if disable:
             path, tool_path = [], []
             traj = PrintTrajectory(end_effector, get_movable_joints(robot), path, tool_path, element, reverse)
             command = Command([traj])
             yield (command,)
             return
+        # TODO: cache the set of considered directions
 
         n1, n2 = reversed(element) if reverse else element
         delta = node_points[n2] - node_points[n1]
@@ -358,6 +357,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
         supporters = []
         if supports:
             retrace_supporters(element, incoming_supporters, supporters)
+
         element_obstacles = {element_bodies[e] for e in supporters + list(extruded)}
         obstacles = set(fixed_obstacles) | element_obstacles
         if not collisions:
@@ -378,11 +378,12 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
             for attempt in irange(max_directions):
                 direction = next(direction_generator)
                 for _ in range(max_attempts):
-                    if bidirectional:
-                        reverse = random.choice([False, True])
-                    n1, n2 = reversed(element) if reverse else element
-                    # * generate print trajectory
-                    with WorldSaver(): # TODO: just to help clear the scene for viz
+                    if max_time <= elapsed_time(start_time):
+                        return
+                    #if bidirectional:
+                    #    reverse = random.choice([False, True])
+                    #n1, n2 = reversed(element) if reverse else element
+                    with WorldSaver():
                         command = compute_direction_path(end_effector, length, reverse, element_bodies, element,
                                                          direction, obstacles, collision_fn,
                                                          ee_only=ee_only, **kwargs)

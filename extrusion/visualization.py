@@ -4,7 +4,8 @@ import numpy as np
 
 from extrusion.equilibrium import compute_node_reactions
 from extrusion.parsing import load_extrusion
-from extrusion.utils import get_node_neighbors, force_from_reaction, is_ground
+from extrusion.utils import get_node_neighbors, is_ground
+from extrusion.stiffness import force_from_reaction
 from pybullet_tools.utils import add_text, draw_pose, get_pose, wait_for_user, add_line, remove_debug, has_gui, \
     draw_point, LockRenderer, set_camera_pose, set_color, apply_alpha, RED, BLUE, GREEN, get_visual_data
 

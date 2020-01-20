@@ -1,3 +1,6 @@
+import heapq
+from termcolor import cprint
+
 ##################################################    
 
 def export_log_data(extrusion_file_path, log_data, overwrite=True, indent=None):
@@ -34,3 +37,7 @@ def export_log_data(extrusion_file_path, log_data, overwrite=True, indent=None):
         file_name_tag,  '_'+data['write_time'] if not overwrite else ''))
     with open(plan_path, 'w') as f:
         json.dump(data, f, indent=indent)
+
+    cprint('Log file saved to: {}'.format(plan_path), 'green')
+
+##################################################    

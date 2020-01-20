@@ -7,7 +7,7 @@ from multiprocessing.context import TimeoutError
 
 from collections import namedtuple
 
-from extrusion.greedy import progression
+from extrusion.progression import progression
 from extrusion.heuristics import HEURISTICS
 from extrusion.parsing import enumerate_problems
 from extrusion.regression import regression

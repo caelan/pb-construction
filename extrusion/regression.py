@@ -7,21 +7,23 @@ from termcolor import cprint
 import os
 os.environ['FOR_DISABLE_CONSOLE_CTRL_HANDLER'] = 'T'
 
-from extrusion.greedy import Node, sample_extrusion, retrace_trajectories, recover_sequence, recover_directed_sequence, \
-    draw_action
-from extrusion.heuristics import get_heuristic_fn
+from extrusion.progression import Node, sample_extrusion, retrace_trajectories, recover_sequence, \
+    recover_directed_sequence, draw_action
+from extrusion.progression import Node, sample_extrusion, retrace_trajectories, recover_sequence, \
+    recover_directed_sequence
+from extrusion.heuristics import get_heuristic_fn, score_stiffness
 from extrusion.motion import compute_motion
 from extrusion.parsing import load_extrusion
-from extrusion.stream import get_print_gen_fn
-from extrusion.utils import get_id_from_element, get_ground_elements, create_stiffness_checker, is_ground, \
-    check_connected, test_stiffness
+from extrusion.stream import get_print_gen_fn, MAX_DIRECTIONS, MAX_ATTEMPTS
+from extrusion.utils import get_id_from_element, get_ground_elements, is_ground, \
+    check_connected
+from extrusion.stiffness import create_stiffness_checker, test_stiffness
 from extrusion.validator import compute_plan_deformation
 from extrusion.visualization import draw_ordered, color_structure
 from pddlstream.utils import outgoing_from_edges
 from pybullet_tools.utils import INF, get_movable_joints, get_joint_positions, randomize, implies, has_gui, \
     remove_all_debug, wait_for_user, elapsed_time, LockRenderer
 from extrusion.logger import export_log_data
-from extrusion.stream import MAX_DIRECTIONS, MAX_ATTEMPTS, STEP_SIZE
 
 
 def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=[],
@@ -42,8 +44,8 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
     checker = create_stiffness_checker(extrusion_path, verbose=False)
     #checker = None
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                    supports=False, bidirectional=False,
-                                    precompute_collisions=False, max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS,
+                                    supports=False, precompute_collisions=False,
+                                    max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS,
                                     collisions=collisions, **kwargs)
     heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=False)
 
@@ -86,6 +88,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
 
     check_backtrack = False
     record_snapshots = True
+    record_queue = True
     locker = LockRenderer()
 
     # TODO: computed number of motion planning failures
@@ -95,8 +98,11 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
     stiffness_failures = transit_failures = 0
     bt_data = [] # backtrack history
     cons_data = [] # constraint violation history
+    queue_data = []  # queue candidates history
 
-    def snapshot_state(data_list=None, reason=''):
+    def snapshot_state(data_list=None, reason='', queue_log_cnt=0):
+        """a lot of global parameters are used
+        """
         cur_data = {}
         cur_data['iter'] = num_evaluated - 1
         cur_data['reason'] = reason
@@ -112,14 +118,33 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         planned_elements = recover_directed_sequence(record_plan)
         cur_data['planned_elements'] = planned_elements
 
-        # queue_log_cnt = 200
-        # cur_data['queue'] = []
-        # cur_data['queue'].append((id_from_element[element], priority))
-        # for candidate in heapq.nsmallest(queue_log_cnt, queue):
-        #     cur_data['queue'].append((id_from_element[candidate[2]], candidate[0]))
+        print('++++++++++++')
+        if queue_log_cnt > 0:
+            cur_data['queue'] = []
+            top_candidates = [(priority, printed, element)] + list(heapq.nsmallest(queue_log_cnt, queue))
+            for candidate in top_candidates:
+                # * for progression
+                temporal_chosen_element = candidate[2]
+                temp_visits, temp_priority = 0, candidate[0]
+                temporal_structure = printed - {temporal_chosen_element}
+                if len(temporal_structure) == len(printed):
+                    continue
 
-        if data_list:
+                stiffness_score = score_stiffness(
+                    extrusion_path, element_from_id, temporal_structure, checker=checker)
+                temp_command = sample_extrusion(
+                    print_gen_fn, ground_nodes, temporal_structure, temporal_chosen_element)
+                extrusion_feasible = 0 if temp_command is None else 1
+                # lower is better
+                print('cand: {}, compl: {}, feas: {}'.format(
+                    temporal_chosen_element, stiffness_score, extrusion_feasible))
+                cur_data['queue'].append(
+                    (list(temporal_chosen_element), stiffness_score, extrusion_feasible, temp_visits, temp_priority))
+        print('++++++++++++')
+
+        if data_list is not None:
             data_list.append(cur_data)
+
         if check_backtrack:
             draw_action(node_points, next_printed, element)
             # color_structure(element_bodies, next_printed, element)
@@ -159,6 +184,10 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
             if backtrack_limit < backtrack:
                 cprint('backtrack {} exceeds limit {}, exit.'.format(backtrack, backtrack_limit), 'red')
                 break # continue
+
+            if record_queue:
+                snapshot_state(
+                    queue_data, reason='queue_history', queue_log_cnt=10)
             
             # * constraint checking
             # ! connectivity and avoid checking duplicate states
@@ -183,7 +212,8 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
             # ! transition feasibility
             if motions:
                 motion_traj = compute_motion(robot, obstacles, element_bodies, node_points, printed,
-                                             command.end_conf, current_conf, collisions=collisions)
+                                             command.end_conf, current_conf, collisions=collisions,
+                                             max_time=max_time - elapsed_time(start_time))
                 if motion_traj is None:
                     transit_failures += 1
                     cprint('>>> transition motion not passed.', 'red')
@@ -208,6 +238,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         cur_data['when_stopped'] = when_stop_data
         cur_data['backtrack_history'] = bt_data
         cur_data['constraint_violation_history'] = cons_data
+        cur_data['queue_history'] = queue_data
 
         export_log_data(extrusion_path, cur_data, overwrite=False)
 
@@ -217,6 +248,30 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
             locker.restore()
             wait_for_user()
         assert False, 'search terminated.'
+
+    if plan is not None and motions:
+        motion_traj = compute_motion(robot, obstacles, element_bodies, node_points, frozenset(),
+                                     initial_conf, plan[0].start_conf, collisions=collisions,
+                                     max_time=max_time - elapsed_time(start_time))
+        if motion_traj is None:
+            transit_failures += 1
+            plan = None
+        else:
+            plan.insert(0, motion_traj)
+
+    if record_queue:
+        # log data
+        cur_data = {}
+        cur_data['search_method'] = 'progression'
+        cur_data['heuristic'] = heuristic
+        when_stop_data = snapshot_state(reason='external stop')
+
+        cur_data['when_stopped'] = when_stop_data
+        cur_data['backtrack_history'] = bt_data
+        cur_data['constraint_violation_history'] = cons_data
+        cur_data['queue_history'] = queue_data
+
+        export_log_data(extrusion_path, cur_data, overwrite=False)
 
     max_translation, max_rotation = compute_plan_deformation(extrusion_path, recover_sequence(plan))
     data = {

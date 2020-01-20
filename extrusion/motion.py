@@ -15,7 +15,7 @@ from pybullet_tools.utils import get_movable_joints, set_joint_positions, plan_j
     create_mesh, draw_mesh, apply_alpha, RED, remove_body, pairwise_collision, randomize, \
     get_sample_fn, get_distance_fn, get_extend_fn, get_collision_fn, \
     check_initial_end, birrt, INF, get_bodies_in_region, get_aabb, spaced_colors, vertices_from_data, \
-    BASE_LINK, vertices_from_link, apply_affine, get_pose
+    BASE_LINK, vertices_from_link, apply_affine, get_pose, has_gui, set_color, remove_all_debug
 
 from extrusion.utils import get_disabled_collisions, MotionTrajectory, load_world, PrintTrajectory, is_ground, \
     RESOLUTION, JOINT_WEIGHTS
@@ -46,7 +46,8 @@ def create_bounding_mesh(element_bodies, node_points, printed_elements):
         #return None
 
 def compute_motion(robot, fixed_obstacles, element_bodies, node_points,
-                   printed_elements, start_conf, end_conf, collisions=True):
+                   printed_elements, start_conf, end_conf,
+                   collisions=True, max_time=INF):
     # TODO: can also just plan to initial conf and then shortcut
     joints = get_movable_joints(robot)
     assert len(joints) == len(end_conf)
@@ -111,7 +112,7 @@ def compute_motion(robot, fixed_obstacles, element_bodies, node_points,
     path = None
     if check_initial_end(start_conf, end_conf, collision_fn):
         path = birrt(start_conf, end_conf, distance_fn, sample_fn, extend_fn, element_collision_fn,
-                     restarts=50, iterations=100, smooth=100)
+                     restarts=50, iterations=100, smooth=100) #, max_time=max_time)
 
     # path = plan_joint_motion(robot, joints, end_conf, obstacles=obstacles,
     #                          self_collisions=SELF_COLLISIONS, disabled_collisions=disabled_collisions,
@@ -157,16 +158,24 @@ def validate_trajectories(element_bodies, fixed_obstacles, trajectories):
     if trajectories is None:
         return False
     # TODO: combine all validation procedures
+    remove_all_debug()
+    for body in element_bodies.values():
+        set_color(body, np.zeros(4))
+
     print('Trajectories:', len(trajectories))
     obstacles = list(fixed_obstacles)
     for i, trajectory in enumerate(trajectories):
         for _ in trajectory.iterate():
             #wait_for_user()
             if any(pairwise_collision(trajectory.robot, body) for body in obstacles):
-                #wait_for_user() # TODO: wait iff viewer
+                if has_gui():
+                    print('Collision on trajectory {}'.format(i))
+                    wait_for_user()
                 return False
         if isinstance(trajectory, PrintTrajectory):
-            obstacles.append(element_bodies[trajectory.element])
+            body = element_bodies[trajectory.element]
+            set_color(body, apply_alpha(RED))
+            obstacles.append(body)
     return True
 
 ##################################################

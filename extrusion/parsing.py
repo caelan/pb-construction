@@ -14,8 +14,8 @@ SHRINK = 0.003 # 0. | 0.002 | 0.005 | 0.003
 Element = namedtuple('Element', ['id', 'layer', 'nodes'])
 
 # https://github.com/yijiangh/assembly_instances/tree/master/extrusion
-# EXTRUSION_DIRECTORY = os.path.join('..', 'assembly_instances', 'extrusion')
-EXTRUSION_DIRECTORY = r'C:\Users\yijiangh\Documents\pb_ws\pychoreo\src\pychoreo_examples\data\assembly_instances\extrusion'
+EXTRUSION_DIRECTORY = os.path.join('..', 'assembly_instances', 'extrusion')
+# EXTRUSION_DIRECTORY = r'C:\Users\yijiangh\Documents\pb_ws\pychoreo\src\pychoreo_examples\data\assembly_instances\extrusion'
 EXTRUSION_FILENAMES = {
     # bunny (3)
     'C': 'C_shape.json',

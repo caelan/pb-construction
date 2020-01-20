@@ -24,9 +24,9 @@ from extrusion.motion import compute_motions, display_trajectories, validate_tra
 from extrusion.stripstream import plan_sequence
 from extrusion.utils import load_world, PrintTrajectory 
 from extrusion.parsing import load_extrusion, create_elements_bodies, \
-    enumerate_problems, get_extrusion_path, affine_extrusion, RADIUS, SHRINK
-from extrusion.stream import get_print_gen_fn, STEP_SIZE, APPROACH_DISTANCE
-from extrusion.greedy import progression, recover_directed_sequence
+    enumerate_problems, get_extrusion_path, affine_extrusion
+from extrusion.stream import get_print_gen_fn
+from extrusion.progression import progression, recover_directed_sequence, get_global_parameters
 from extrusion.regression import regression
 from extrusion.heuristics import HEURISTICS, downsample_structure
 from extrusion.validator import verify_plan
@@ -106,15 +106,15 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     # visualize_stiffness(problem_path)
     # debug_elements(robot, node_points, node_order, elements)
 
-    with LockRenderer(False):
-        sampled_trajectories = []
-        if precompute:
-            sampled_trajectories = sample_trajectories(robot, obstacles, node_points, element_bodies, ground_nodes)
+    with LockRenderer(True):
         pr = cProfile.Profile()
         pr.enable()
         backtrack_limit = INF
         if args.algorithm == 'stripstream':
-            planned_trajectories, data = plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
+            sampled_trajectories = []
+            if precompute:
+                sampled_trajectories = sample_trajectories(robot, obstacles, node_points, element_bodies, ground_nodes)
+            trajectories, data = plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
                                                        trajectories=sampled_trajectories, collisions=not args.cfree,
                                                        max_time=args.max_time, disable=args.disable, debug=False)
         elif args.algorithm == 'progression':
@@ -124,12 +124,12 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
                                                      backtrack_limit=backtrack_limit, collisions=not args.cfree,
                                                      disable=args.disable, stiffness=args.stiffness, motions=args.motions)
         elif args.algorithm == 'regression':
-            planned_trajectories, data = regression(robot, obstacles, element_bodies, problem_path,
+            trajectories, data = regression(robot, obstacles, element_bodies, problem_path,
                                                     heuristic=args.bias, max_time=args.max_time,
                                                     backtrack_limit=backtrack_limit, collisions=not args.cfree,
                                                     disable=args.disable, stiffness=args.stiffness, motions=args.motions)
         elif args.algorithm == 'lookahead':
-            planned_trajectories, data = lookahead(robot, obstacles, element_bodies, problem_path,
+            trajectories, data = lookahead(robot, obstacles, element_bodies, problem_path,
                                                    partial_orders=partial_orders, heuristic=args.bias,
                                                    max_time=args.max_time, backtrack_limit=backtrack_limit,
                                                    ee_only=args.ee_only, collisions=not args.cfree,
@@ -139,27 +139,28 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
         pr.disable()
         pstats.Stats(pr).sort_stats('tottime').print_stats(10) # tottime | cumtime
         print(data)
-        if planned_trajectories is None:
+        if trajectories is None:
             if not verbose:
                 sys.stdout.close()
             return args, data
         if args.motions:
-            planned_trajectories = compute_motions(robot, obstacles, element_bodies, node_points, initial_conf,
-                                                   planned_trajectories, collisions=not args.cfree)
+            trajectories = compute_motions(robot, obstacles, element_bodies, node_points, initial_conf,
+                                           trajectories, collisions=not args.cfree)
 
-    safe = validate_trajectories(element_bodies, obstacles, planned_trajectories)
+    safe = validate_trajectories(element_bodies, obstacles, trajectories)
     data['safe'] = safe
     print('Safe:', safe)
     reset_simulation()
     disconnect()
 
     #id_from_element = get_id_from_element(element_from_id)
-    #planned_ids = [id_from_element[traj.element] for traj in planned_trajectories]
-    planned_elements = recover_directed_sequence(planned_trajectories)
-    valid = verify_plan(problem_path, planned_elements) #, use_gui=not animate)
+    #planned_ids = [id_from_element[traj.element] for traj in trajectories]
+    sequence = recover_directed_sequence(trajectories)
+    valid = verify_plan(problem_path, sequence) #, use_gui=not animate)
     data.update({
         'safe': safe,
         'valid': valid,
+        'parameters': get_global_parameters(),
     })
 
     plan_data = OrderedDict({
@@ -169,13 +170,8 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
         'plan_extrusions': not args.disable,
         'use_collisions': not args.cfree,
         'use_stiffness': args.stiffness,
-        'valid': valid,
+        'plan': sequence,
         'write_time' : str(datetime.datetime.now()),
-        'plan': planned_elements,
-        'step_size' : STEP_SIZE,
-        'radius' : RADIUS,
-        'shrink' : SHRINK,
-        'approach_distance' : APPROACH_DISTANCE,
         'safe': safe,
     })
  
@@ -202,7 +198,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
 
     if watch:
         animate = not (args.disable or args.ee_only)
-        display_trajectories(node_points, ground_nodes, planned_trajectories, animate=animate)
+        display_trajectories(node_points, ground_nodes, trajectories, animate=animate)
     if not verbose:
         sys.stdout.close()
     return args, data
