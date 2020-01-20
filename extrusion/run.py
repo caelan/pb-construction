@@ -139,7 +139,8 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
             trajectories = compute_motions(robot, obstacles, element_bodies, node_points, initial_conf,
                                            trajectories, collisions=not args.cfree)
 
-    safe = validate_trajectories(element_bodies, obstacles, trajectories)
+    safe = validate_trajectories(element_bodies, obstacles, trajectories) # Can be quite slow
+    #safe = True
     data['safe'] = safe
     print('Safe:', safe)
     reset_simulation()

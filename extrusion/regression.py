@@ -14,7 +14,7 @@ from extrusion.stiffness import create_stiffness_checker, test_stiffness
 from extrusion.validator import compute_plan_deformation
 from extrusion.visualization import draw_ordered
 from pddlstream.utils import outgoing_from_edges
-from pybullet_tools.utils import INF, get_movable_joints, get_joint_positions, randomize, implies, has_gui, \
+from pybullet_tools.utils import INF, get_movable_joints, get_joint_positions, randomize, has_gui, \
     remove_all_debug, wait_for_user, elapsed_time
 
 def plan_stiffness(checker, extrusion_path, element_from_id, node_points, ground_nodes, remaining_elements, max_time=INF):
@@ -37,7 +37,7 @@ def plan_stiffness(checker, extrusion_path, element_from_id, node_points, ground
     return False
 
 def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=[],
-               heuristic='z', max_time=INF, backtrack_limit=INF,
+               heuristic='z', max_time=INF, backtrack_limit=INF, plan_stiff=False,
                collisions=True, stiffness=True, motions=True, **kwargs):
     # Focused has the benefit of reusing prior work
     # Greedy has the benefit of conditioning on previous choices
@@ -72,7 +72,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         for element in randomize(printed):
             if outgoing_from_element[element] & printed:
                 continue
-            if implies(is_ground(element, ground_nodes), ground_remaining):
+            if not is_ground(element, ground_nodes) or ground_remaining:
                 bias = heuristic_fn(printed, element, conf=None)
                 priority = (num_remaining, bias, random.random())
                 heapq.heappush(queue, (priority, printed, element, conf))
@@ -120,10 +120,10 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
 
         if (next_printed in visited) or not check_connected(ground_nodes, next_printed):
             continue
-        if not implies(stiffness, test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker)):
+        if stiffness and not test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker):
             stiffness_failures += 1
             continue
-        if not implies(stiffness, plan_stiffness(checker, extrusion_path, element_from_id, node_points, ground_nodes, next_printed)):
+        if stiffness and plan_stiff and not plan_stiffness(checker, extrusion_path, element_from_id, node_points, ground_nodes, next_printed):
             continue
 
         # TODO: could do this eagerly to inspect the full branching factor
