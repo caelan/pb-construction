@@ -56,8 +56,8 @@ def train_parallel(args):
     initial_time = time.time()
     problems = sorted(set(enumerate_problems()) - set(EXCLUDE))
     #problems = ['simple_frame']
-    algorithms = ALGORITHMS
-    #algorithms = ['regression']
+    #algorithms = ALGORITHMS
+    algorithms = ['regression']
     heuristics = HEURISTICS
     #heuristics = ['dijkstra']
 

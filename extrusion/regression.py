@@ -4,12 +4,12 @@ import time
 
 from extrusion.progression import Node, sample_extrusion, retrace_trajectories, recover_sequence, \
     recover_directed_sequence
-from extrusion.heuristics import get_heuristic_fn
+from extrusion.heuristics import get_heuristic_fn, compute_z_distance
 from extrusion.motion import compute_motion
 from extrusion.parsing import load_extrusion
 from extrusion.stream import get_print_gen_fn, MAX_DIRECTIONS, MAX_ATTEMPTS
 from extrusion.utils import get_id_from_element, get_ground_elements, is_ground, \
-    check_connected
+    check_connected, compute_printable_elements
 from extrusion.stiffness import create_stiffness_checker, test_stiffness
 from extrusion.validator import compute_plan_deformation
 from extrusion.visualization import draw_ordered
@@ -17,6 +17,24 @@ from pddlstream.utils import outgoing_from_edges
 from pybullet_tools.utils import INF, get_movable_joints, get_joint_positions, randomize, implies, has_gui, \
     remove_all_debug, wait_for_user, elapsed_time
 
+def plan_stiffness(checker, extrusion_path, element_from_id, node_points, ground_nodes, remaining_elements, max_time=INF):
+    # TODO: use the ordering as a heuristic as well
+    start_time = time.time()
+    queue = [(None, frozenset())]
+    while queue and (elapsed_time(start_time) < max_time):
+        _, printed = heapq.heappop(queue)
+        if not test_stiffness(extrusion_path, element_from_id, printed, checker=checker, verbose=False):
+            continue
+        if printed == remaining_elements:
+            return True
+        for element in randomize(compute_printable_elements(remaining_elements, ground_nodes, printed)):
+            new_printed = printed | {element}
+            num_remaining = len(remaining_elements) - len(new_printed)
+            bias = compute_z_distance(node_points, element)
+            #bias = heuristic_fn(printed, element, conf=None) # TODO: experiment with other biases
+            priority = (num_remaining, bias, random.random())
+            heapq.heappush(queue, (priority, new_printed))
+    return False
 
 def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=[],
                heuristic='z', max_time=INF, backtrack_limit=INF,
@@ -80,7 +98,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
 
     plan = None
     min_remaining = len(all_elements)
-    num_evaluated = max_backtrack = transit_failures = 0
+    num_evaluated = max_backtrack = transit_failures = stiffness_failures = 0
     while queue and (elapsed_time(start_time) < max_time):
         priority, printed, element, current_conf = heapq.heappop(queue)
         num_remaining = len(printed)
@@ -100,9 +118,14 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         #    draw_model(next_printed, node_points, ground_nodes)
         #    wait_for_user()
 
-        if (next_printed in visited) or not check_connected(ground_nodes, next_printed) or \
-                not implies(stiffness, test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker)):
+        if (next_printed in visited) or not check_connected(ground_nodes, next_printed):
             continue
+        if not implies(stiffness, test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker)):
+            stiffness_failures += 1
+            continue
+        if not implies(stiffness, plan_stiffness(checker, extrusion_path, element_from_id, node_points, ground_nodes, next_printed)):
+            continue
+
         # TODO: could do this eagerly to inspect the full branching factor
         command = sample_extrusion(print_gen_fn, ground_nodes, next_printed, element)
         if command is None:
@@ -152,6 +175,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         'max_backtrack': max_backtrack,
         'max_translation': max_translation,
         'max_rotation': max_rotation,
+        'stiffness_failures': stiffness_failures,
         'transit_failures': transit_failures,
     }
     return plan, data

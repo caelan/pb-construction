@@ -12,7 +12,7 @@ from pybullet_tools.utils import get_distance, INF
 DISTANCE_HEURISTICS = [
     'z',
     'dijkstra',
-    'online-dijkstra'
+    #'online-dijkstra'
 ]
 TOPOLOGICAL_HEURISTICS = [
     'length',
@@ -111,6 +111,11 @@ def score_stiffness(extrusion_path, element_from_id, elements, checker=None):
 
 ##################################################
 
+def compute_z_distance(node_points, element):
+    # Distance to a ground plane
+    # Opposing gravitational force
+    return np.average([node_points[n][2] for n in element])
+
 def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
     # TODO: penalize disconnected
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
@@ -155,9 +160,7 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
             n1, n2 = element
             return get_distance(node_points[n2], node_points[n1])
         elif heuristic == 'z':
-            # Distance to a ground plane
-            # Opposing gravitational force
-            return sign*np.average([node_points[n][2] for n in element])
+            return sign*compute_z_distance(node_points, element)
         elif heuristic == 'dijkstra': # offline
             # TODO: sum of all element path distances
             return sign*np.average([distance_from_node[node] for node in element]) # min, max, average
