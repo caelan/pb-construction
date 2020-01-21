@@ -17,12 +17,18 @@ from pddlstream.utils import outgoing_from_edges
 from pybullet_tools.utils import INF, get_movable_joints, get_joint_positions, randomize, has_gui, \
     remove_all_debug, wait_for_user, elapsed_time
 
-def plan_stiffness(checker, extrusion_path, element_from_id, node_points, ground_nodes, remaining_elements, max_time=INF):
+def plan_stiffness(checker, extrusion_path, element_from_id, node_points, ground_nodes, remaining_elements,
+                   max_time=INF, max_backtrack=0):
     # TODO: use the ordering as a heuristic as well
     start_time = time.time()
+    min_remaining = len(remaining_elements)
     queue = [(None, frozenset())]
     while queue and (elapsed_time(start_time) < max_time):
         _, printed = heapq.heappop(queue)
+        num_remaining = len(remaining_elements) - len(printed)
+        backtrack = num_remaining - min_remaining
+        if max_backtrack < backtrack:
+            break # continue
         if not test_stiffness(extrusion_path, element_from_id, printed, checker=checker, verbose=False):
             continue
         if printed == remaining_elements:
@@ -30,14 +36,18 @@ def plan_stiffness(checker, extrusion_path, element_from_id, node_points, ground
         for element in randomize(compute_printable_elements(remaining_elements, ground_nodes, printed)):
             new_printed = printed | {element}
             num_remaining = len(remaining_elements) - len(new_printed)
-            bias = compute_z_distance(node_points, element)
+            min_remaining = min(min_remaining, num_remaining)
+            bias = None
+            #bias = compute_z_distance(node_points, element)
             #bias = heuristic_fn(printed, element, conf=None) # TODO: experiment with other biases
             priority = (num_remaining, bias, random.random())
             heapq.heappush(queue, (priority, new_printed))
+    print('Failed to stiffness plan! Elements: {}, Min remaining {}, Time: {:.3f}'.format(
+        len(remaining_elements), min_remaining, elapsed_time(start_time)))
     return False
 
 def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=[],
-               heuristic='z', max_time=INF, backtrack_limit=INF, plan_stiff=False,
+               heuristic='z', max_time=INF, backtrack_limit=INF, stiffness_attempts=1,
                collisions=True, stiffness=True, motions=True, **kwargs):
     # Focused has the benefit of reusing prior work
     # Greedy has the benefit of conditioning on previous choices
@@ -123,7 +133,10 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         if stiffness and not test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker):
             stiffness_failures += 1
             continue
-        if stiffness and plan_stiff and not plan_stiffness(checker, extrusion_path, element_from_id, node_points, ground_nodes, next_printed):
+        for _ in range(stiffness_attempts):
+            if not stiffness or plan_stiffness(checker, extrusion_path, element_from_id, node_points, ground_nodes, next_printed):
+                break
+        else:
             continue
 
         # TODO: could do this eagerly to inspect the full branching factor
