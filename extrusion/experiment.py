@@ -32,6 +32,7 @@ EXCLUDE = [
     'rotated_dented_cube', # Structure violates stiffness
     'robarch_tree', # Cannot print ground elements
     'DJMM_bridge', # Too large for pybullet
+    'klein_bottle_trail', # Structure violates stiffness
 ]
 
 EXPERIMENTS_DIR = 'experiments/'
