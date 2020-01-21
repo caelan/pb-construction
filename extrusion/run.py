@@ -81,7 +81,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     # plan = plan_sequence_test(node_points, elements, ground_nodes)
 
     partial_orders = [] # TODO: could treat ground as partial orders
-    backtrack_limit = INF # 0 | INF
+    backtrack_limit = 0 # 0 | INF
 
     connect(use_gui=viewer) # TODO: avoid reconnecting
     with LockRenderer(True):
@@ -217,6 +217,10 @@ def main():
     parser.add_argument('-v', '--viewer', action='store_true',
                         help='Enables the viewer during planning')
     args = parser.parse_args()
+    if args.disable:
+        args.cfree = True
+        args.motions = False
+        args.max_time = 60*60
     print('Arguments:', args)
     np.set_printoptions(precision=3)
 

@@ -181,7 +181,7 @@ def validate_trajectories(element_bodies, fixed_obstacles, trajectories):
 ##################################################
 
 
-def display_trajectories(node_points, ground_nodes, trajectories, animate=True, time_step=0.02):
+def display_trajectories(node_points, ground_nodes, trajectories, animate=True, time_step=0.02, video=False):
     if trajectories is None:
         return
     connect(use_gui=True)
@@ -195,13 +195,15 @@ def display_trajectories(node_points, ground_nodes, trajectories, animate=True, 
         disconnect()
         return
 
-    # elements = {traj.element for traj in trajectories if isinstance(traj, PrintTrajectory)}
-    # handles = draw_model(elements, node_points, ground_nodes)
-    # wait_for_user()
-    # remove_all_debug()
-    # wait_for_user()
-    # video = VideoSaver('video.mp4') # has_gui()
-    # time_step = 0.001
+    video_saver = None
+    if video:
+        elements = {traj.element for traj in trajectories if isinstance(traj, PrintTrajectory)}
+        handles = draw_model(elements, node_points, ground_nodes) # Allows user to adjust the camera
+        wait_for_user()
+        remove_all_debug()
+        wait_for_user()
+        video_saver = VideoSaver('video.mp4') # has_gui()
+        time_step = 0.001
 
     wait_for_user()
     #element_bodies = dict(zip(elements, create_elements(node_points, elements)))
@@ -235,7 +237,8 @@ def display_trajectories(node_points, ground_nodes, trajectories, animate=True, 
                 wait_for_user()
             connected_nodes.add(trajectory.n2)
 
-    #video.restore()
+    if video_saver is not None:
+        video_saver.restore()
     wait_for_user()
     reset_simulation()
     disconnect()

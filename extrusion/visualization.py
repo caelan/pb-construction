@@ -145,6 +145,7 @@ def sample_colors(num, lower=0.0, upper=0.75): # for now wrap around
 
 
 def draw_ordered(elements, node_points):
+    # TODO: account for oriented elements
     #colors = spaced_colors(len(elements))
     colors = sample_colors(len(elements))
     handles = []
