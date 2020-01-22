@@ -1,11 +1,14 @@
+import heapq
 import os
+import random
+import time
 from collections import namedtuple
 
 import numpy as np
 from pyconmech import StiffnessChecker
 
-from extrusion.utils import get_extructed_ids
-from pybullet_tools.utils import HideOutput
+from extrusion.utils import get_extructed_ids, compute_printable_elements
+from pybullet_tools.utils import HideOutput, INF, elapsed_time, randomize
 
 TRANS_TOL = 0.0015
 ROT_TOL = 5 * np.pi / 180
@@ -92,3 +95,34 @@ def evaluate_stiffness(extrusion_path, element_from_id, elements, checker=None, 
 
 def test_stiffness(extrusion_path, element_from_id, elements, **kwargs):
     return evaluate_stiffness(extrusion_path, element_from_id, elements, **kwargs).success
+
+##################################################
+
+def plan_stiffness(checker, extrusion_path, element_from_id, node_points, ground_nodes, remaining_elements,
+                   max_time=INF, max_backtrack=0):
+    # TODO: use the ordering as a heuristic as well
+    start_time = time.time()
+    min_remaining = len(remaining_elements)
+    queue = [(None, frozenset())]
+    while queue and (elapsed_time(start_time) < max_time):
+        _, printed = heapq.heappop(queue)
+        num_remaining = len(remaining_elements) - len(printed)
+        backtrack = num_remaining - min_remaining
+        if max_backtrack < backtrack:
+            break # continue
+        if not test_stiffness(extrusion_path, element_from_id, printed, checker=checker, verbose=False):
+            continue
+        if printed == remaining_elements:
+            return True
+        for element in randomize(compute_printable_elements(remaining_elements, ground_nodes, printed)):
+            new_printed = printed | {element}
+            num_remaining = len(remaining_elements) - len(new_printed)
+            min_remaining = min(min_remaining, num_remaining)
+            bias = None
+            #bias = compute_z_distance(node_points, element)
+            #bias = heuristic_fn(printed, element, conf=None) # TODO: experiment with other biases
+            priority = (num_remaining, bias, random.random())
+            heapq.heappush(queue, (priority, new_printed))
+    print('Failed to stiffness plan! Elements: {}, Min remaining {}, Time: {:.3f}'.format(
+        len(remaining_elements), min_remaining, elapsed_time(start_time)))
+    return False

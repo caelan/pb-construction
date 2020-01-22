@@ -4,12 +4,12 @@ import time
 
 from extrusion.progression import Node, sample_extrusion, retrace_trajectories, recover_sequence, \
     recover_directed_sequence
-from extrusion.heuristics import get_heuristic_fn, compute_z_distance
+from extrusion.heuristics import get_heuristic_fn
 from extrusion.motion import compute_motion
 from extrusion.parsing import load_extrusion
 from extrusion.stream import get_print_gen_fn, MAX_DIRECTIONS, MAX_ATTEMPTS
 from extrusion.utils import get_id_from_element, get_ground_elements, is_ground, \
-    check_connected, compute_printable_elements
+    check_connected
 from extrusion.stiffness import create_stiffness_checker, test_stiffness
 from extrusion.validator import compute_plan_deformation
 from extrusion.visualization import draw_ordered
@@ -17,34 +17,7 @@ from pddlstream.utils import outgoing_from_edges
 from pybullet_tools.utils import INF, get_movable_joints, get_joint_positions, randomize, has_gui, \
     remove_all_debug, wait_for_user, elapsed_time
 
-def plan_stiffness(checker, extrusion_path, element_from_id, node_points, ground_nodes, remaining_elements,
-                   max_time=INF, max_backtrack=0):
-    # TODO: use the ordering as a heuristic as well
-    start_time = time.time()
-    min_remaining = len(remaining_elements)
-    queue = [(None, frozenset())]
-    while queue and (elapsed_time(start_time) < max_time):
-        _, printed = heapq.heappop(queue)
-        num_remaining = len(remaining_elements) - len(printed)
-        backtrack = num_remaining - min_remaining
-        if max_backtrack < backtrack:
-            break # continue
-        if not test_stiffness(extrusion_path, element_from_id, printed, checker=checker, verbose=False):
-            continue
-        if printed == remaining_elements:
-            return True
-        for element in randomize(compute_printable_elements(remaining_elements, ground_nodes, printed)):
-            new_printed = printed | {element}
-            num_remaining = len(remaining_elements) - len(new_printed)
-            min_remaining = min(min_remaining, num_remaining)
-            bias = None
-            #bias = compute_z_distance(node_points, element)
-            #bias = heuristic_fn(printed, element, conf=None) # TODO: experiment with other biases
-            priority = (num_remaining, bias, random.random())
-            heapq.heappush(queue, (priority, new_printed))
-    print('Failed to stiffness plan! Elements: {}, Min remaining {}, Time: {:.3f}'.format(
-        len(remaining_elements), min_remaining, elapsed_time(start_time)))
-    return False
+# https://developers.google.com/optimization/routing/tsp
 
 def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=[],
                heuristic='z', max_time=INF, backtrack_limit=INF, stiffness_attempts=1,
@@ -133,11 +106,11 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         if stiffness and not test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker):
             stiffness_failures += 1
             continue
-        for _ in range(stiffness_attempts):
-            if not stiffness or plan_stiffness(checker, extrusion_path, element_from_id, node_points, ground_nodes, next_printed):
-                break
-        else:
-            continue
+        # for _ in range(stiffness_attempts): # should be larger than zero
+        #     if not stiffness or plan_stiffness(checker, extrusion_path, element_from_id, node_points, ground_nodes, next_printed):
+        #         break
+        # else:
+        #     continue
 
         # TODO: could do this eagerly to inspect the full branching factor
         command = sample_extrusion(print_gen_fn, ground_nodes, next_printed, element)
