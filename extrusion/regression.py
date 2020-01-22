@@ -106,8 +106,9 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         if stiffness and not test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker):
             stiffness_failures += 1
             continue
+        #if stiffness:
         # for _ in range(stiffness_attempts): # should be larger than zero
-        #     if not stiffness or plan_stiffness(checker, extrusion_path, element_from_id, node_points, ground_nodes, next_printed):
+        #     if plan_stiffness(checker, extrusion_path, element_from_id, node_points, ground_nodes, next_printed) is None:
         #         break
         # else:
         #     continue
