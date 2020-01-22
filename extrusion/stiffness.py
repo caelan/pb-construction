@@ -11,7 +11,7 @@ from extrusion.utils import get_extructed_ids, compute_printable_elements, compu
 from pybullet_tools.utils import HideOutput, INF, elapsed_time, randomize
 
 TRANS_TOL = 0.0015
-ROT_TOL = 5 * np.pi / 180
+ROT_TOL = INF # 5 * np.pi / 180
 
 Deformation = namedtuple('Deformation', ['success', 'displacements', 'fixities', 'reactions']) # TODO: get_max_nodal_deformation
 Displacement = namedtuple('Displacement', ['dx', 'dy', 'dz', 'theta_x', 'theta_y', 'theta_z'])
@@ -45,10 +45,9 @@ def torque_from_reaction(reaction):
 
 
 def evaluate_stiffness(extrusion_path, element_from_id, elements, checker=None, verbose=True):
-    # TODO: check each component individually
+    # TODO: check each connected component individually
     if not elements:
         return Deformation(True, {}, {}, {})
-    #return True
     if checker is None:
         checker = create_stiffness_checker(extrusion_path, verbose=False)
     # TODO: load element_from_id
@@ -64,13 +63,10 @@ def evaluate_stiffness(extrusion_path, element_from_id, elements, checker=None, 
     is_stiff = checker.solve(exist_element_ids=extruded_ids, if_cond_num=True)
     #print("has stored results: {0}".format(checker.has_stored_result()))
     success, nodal_displacement, fixities_reaction, element_reaction = checker.get_solved_results()
-    assert is_stiff == success # TODO: this sometimes isn't true
+    assert is_stiff == success
     displacements = {i: Displacement(*d) for i, d in nodal_displacement.items()}
     fixities = {i: Reaction(*d) for i, d in fixities_reaction.items()}
     reactions = {i: (Reaction(*d[0]), Reaction(*d[1])) for i, d in element_reaction.items()}
-
-    #translation = np.max(np.linalg.norm([d[:3] for d in displacements.values()], axis=1))
-    #rotation = np.max(np.linalg.norm([d[3:] for d in displacements.values()], axis=1))
 
     #print("nodal displacement (m/rad):\n{0}".format(nodal_displacement)) # nodes x 7
     # TODO: investigate if nodal displacement can be used to select an ordering
@@ -79,6 +75,11 @@ def evaluate_stiffness(extrusion_path, element_from_id, elements, checker=None, 
     trans_tol, rot_tol = checker.get_nodal_deformation_tol()
     max_trans, max_rot, max_trans_vid, max_rot_vid = checker.get_max_nodal_deformation()
     # The inverse of stiffness is flexibility or compliance
+
+    translation = np.max(np.linalg.norm([d[:3] for d in displacements.values()], ord=2, axis=1))
+    rotation = np.max(np.linalg.norm([d[3:] for d in displacements.values()], ord=2, axis=1))
+    is_stiff &= (translation <= trans_tol) and (rotation <= rot_tol)
+
     if verbose:
         print('Stiff: {} | Compliance: {:.5f}'.format(is_stiff, checker.get_compliance()))
         print('Max translation deformation: {0:.5f} / {1:.5} = {2:.5}, at node #{3}'.format(
@@ -86,10 +87,9 @@ def evaluate_stiffness(extrusion_path, element_from_id, elements, checker=None, 
         print('Max rotation deformation: {0:.5f} / {1:.5} = {2:.5}, at node #{3}'.format(
             max_rot, rot_tol, max_rot / rot_tol, max_rot_vid))
     #disc = 10
-    #exagg_ratio = 1.0
     #time_step = 1.0
     #orig_beam_shape = checker.get_original_shape(disc=disc, draw_full_shape=False)
-    #beam_disp = checker.get_deformed_shape(exagg_ratio=exagg_ratio, disc=disc)
+    #beam_disp = checker.get_deformed_shape(exagg_ratio=1.0, disc=disc)
     return Deformation(is_stiff, displacements, fixities, reactions)
 
 
