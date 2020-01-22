@@ -4,15 +4,16 @@ import numpy as np
 
 from extrusion.equilibrium import compute_all_reactions, compute_node_reactions
 from extrusion.parsing import load_extrusion
-from extrusion.utils import get_extructed_ids, downselect_elements
-from extrusion.stiffness import create_stiffness_checker, force_from_reaction, torque_from_reaction
+from extrusion.utils import get_extructed_ids, downselect_elements, compute_z_distance
+from extrusion.stiffness import create_stiffness_checker, force_from_reaction, torque_from_reaction, plan_stiffness
 from pddlstream.utils import adjacent_from_edges
 from pybullet_tools.utils import get_distance, INF
 
 DISTANCE_HEURISTICS = [
     'z',
     'dijkstra',
-    #'online-dijkstra'
+    #'online-dijkstra',
+    'plan-stiffness',
 ]
 TOPOLOGICAL_HEURISTICS = [
     'length',
@@ -111,11 +112,6 @@ def score_stiffness(extrusion_path, element_from_id, elements, checker=None):
 
 ##################################################
 
-def compute_z_distance(node_points, element):
-    # Distance to a ground plane
-    # Opposing gravitational force
-    return np.average([node_points[n][2] for n in element])
-
 def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
     # TODO: penalize disconnected
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
@@ -123,6 +119,11 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
     distance_from_node = compute_distance_from_node(elements, node_points, ground_nodes)
     sign = +1 if forward else -1
     # TODO: round values for more tie-breaking opportunities
+    stiffness_order = None
+    stiffness_plan = plan_stiffness(checker, extrusion_path, element_from_id, node_points, ground_nodes, elements,
+                                    max_backtrack=INF)
+    if stiffness_plan is not None:
+        stiffness_order = dict(pair[::-1] for pair in enumerate(stiffness_plan))
 
     stiffness_cache = {}
     if heuristic in ('fixed-stiffness', 'relative-stiffness'):
@@ -160,7 +161,7 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
             n1, n2 = element
             return get_distance(node_points[n2], node_points[n1])
         elif heuristic == 'z':
-            return sign*compute_z_distance(node_points, element)
+            return sign * compute_z_distance(node_points, element)
         elif heuristic == 'dijkstra': # offline
             # TODO: sum of all element path distances
             return sign*np.average([distance_from_node[node] for node in element]) # min, max, average
@@ -168,6 +169,10 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
             if printed not in distance_cache:
                 distance_cache[printed] = compute_distance_from_node(printed, node_points, ground_nodes)
             return sign*min(distance_cache[printed].get(node, INF) for node in element)
+        elif heuristic == 'plan-stiffness':
+            if stiffness_order is None:
+                return None
+            return sign*stiffness_order[element]
         elif heuristic == 'load':
             nodal_loads = checker.get_nodal_loads(existing_ids=structure_ids, dof_flattened=False) # get_self_weight_loads
             return reduce_op(np.linalg.norm(force_from_reaction(reaction)) for reaction in nodal_loads.values())

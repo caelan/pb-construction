@@ -443,3 +443,8 @@ def get_extructed_ids(element_from_id, directed_elements):
         element = directed[::-1] if is_reverse else directed
         extruded_ids.append(id_from_element[element])
     return sorted(extruded_ids)
+
+def compute_z_distance(node_points, element):
+    # Distance to a ground plane
+    # Opposing gravitational force
+    return np.average([node_points[n][2] for n in element])
