@@ -118,7 +118,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
                                                        trajectories=sampled_trajectories, collisions=not args.cfree,
                                                        max_time=args.max_time, disable=args.disable, debug=False)
         elif args.algorithm == 'progression':
-            planned_trajectories, data = progression(robot, obstacles, element_bodies, problem_path, 
+            trajectories, data = progression(robot, obstacles, element_bodies, problem_path, 
                                                      partial_orders=partial_orders,
                                                      heuristic=args.bias, max_time=args.max_time,
                                                      backtrack_limit=backtrack_limit, collisions=not args.cfree,

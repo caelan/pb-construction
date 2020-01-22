@@ -58,12 +58,12 @@ def load_experiment(filename, overall=False, write_report=False):
             max_time = max(max_time, result['runtime'])
         data_from_problem.setdefault(problem, []).append((config, result))
 
-    column_names = ('config_id', 'shape','info','algorithm','bias',
-                    'success','runtime','num_evaluated','min_remaining','max_backtrack','max_translation','max_rotation', 'length', 'num_elements')
+    column_names = ('config_id','shape','info','algorithm','bias',
+                    'success','runtime','num_evaluated','min_remaining','max_backtrack','max_translation','max_rotation', 'length', 'num_elements', 'transit_failures', 'stiffness_failures', 'valid', 'safe', 'seed')
     df = pd.DataFrame(columns=column_names)
     if not overall:
         shown_column_names = ('algorithm','bias',
-                              'success','runtime','num_evaluated','min_remaining','max_backtrack','max_translation','max_rotation', 'length', 'num_elements')
+                              'success','runtime','num_evaluated','min_remaining','max_backtrack','max_translation','max_rotation', 'length', 'num_elements', 'safe', 'transit_failures', 'stiffness_failures', 'valid')
         col_name_df = {cn : cn for cn in shown_column_names}    
 
     for p_idx, problem in enumerate(sorted(data_from_problem)):
@@ -93,8 +93,8 @@ def load_experiment(filename, overall=False, write_report=False):
                 value_per_field.setdefault(field, set()).add(value)
             data_from_config.setdefault(new_config, []).append(result)
 
+        # * config print at each problem
         print('Attributes:', str_from_object(value_per_field))
-        print(type(str_from_object(value_per_field)))
         df = df.append([{ 'info' : str_from_object(
             {field : value_per_field[field] for field in value_per_field.keys() if field not in \
                 ['algorithm', 'bias', 'seed', 'problem']})
