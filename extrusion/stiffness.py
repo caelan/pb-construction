@@ -100,7 +100,6 @@ def test_stiffness(extrusion_path, element_from_id, elements, **kwargs):
 
 def plan_stiffness(checker, extrusion_path, element_from_id, node_points, ground_nodes, remaining_elements,
                    max_time=INF, max_backtrack=0):
-    # TODO: use the ordering as a heuristic as well
     start_time = time.time()
     min_remaining = len(remaining_elements)
     queue = [(None, frozenset(), [])]
@@ -123,6 +122,6 @@ def plan_stiffness(checker, extrusion_path, element_from_id, node_points, ground
             #bias = heuristic_fn(printed, element, conf=None) # TODO: experiment with other biases
             priority = (num_remaining, bias, random.random())
             heapq.heappush(queue, (priority, new_printed, sequence + [element]))
-    print('Failed to stiffness plan! Elements: {}, Min remaining {}, Time: {:.3f}'.format(
+    print('Failed to find stiffness plan! Elements: {}, Min remaining {}, Time: {:.3f}'.format(
         len(remaining_elements), min_remaining, elapsed_time(start_time)))
     return None

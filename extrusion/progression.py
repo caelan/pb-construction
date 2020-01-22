@@ -155,7 +155,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
 
     plan = None
     min_remaining = len(all_elements)
-    num_evaluated = max_backtrack = transit_failures = 0
+    num_evaluated = max_backtrack = stiffness_failures = transit_failures = 0
     while queue and (elapsed_time(start_time) < max_time):
         num_evaluated += 1
         visits, _, printed, element, current_conf = heapq.heappop(queue)
@@ -170,8 +170,9 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
         print('Iteration: {} | Best: {} | Printed: {} | Element: {} | Index: {} | Time: {:.3f}'.format(
             num_evaluated, min_remaining, len(printed), element, id_from_element[element], elapsed_time(start_time)))
         next_printed = printed | {element}
-        if (next_printed in visited) or not check_connected(ground_nodes, next_printed) or \
-                (stiffness and not test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker)):
+        assert check_connected(ground_nodes, next_printed)
+        if (next_printed in visited) or (stiffness and not test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker)):
+            stiffness_failures += 1
             continue
         command = sample_extrusion(print_gen_fn, ground_nodes, printed, element)
         if command is None:
@@ -214,6 +215,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
         'max_backtrack': max_backtrack,
         'max_translation': max_translation,
         'max_rotation': max_rotation,
+        'stiffness_failures': stiffness_failures,
         'transit_failures': transit_failures,
     }
     return plan, data

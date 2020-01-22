@@ -20,7 +20,7 @@ from pybullet_tools.utils import INF, get_movable_joints, get_joint_positions, r
 # https://developers.google.com/optimization/routing/tsp
 
 def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=[],
-               heuristic='z', max_time=INF, backtrack_limit=INF, stiffness_attempts=1,
+               heuristic='z', max_time=INF, backtrack_limit=INF, # stiffness_attempts=1,
                collisions=True, stiffness=True, motions=True, **kwargs):
     # Focused has the benefit of reusing prior work
     # Greedy has the benefit of conditioning on previous choices
