@@ -147,7 +147,8 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
             trajectories = compute_motions(robot, obstacles, element_bodies, node_points, initial_conf,
                                            trajectories, collisions=not args.cfree)
 
-    safe = validate_trajectories(element_bodies, obstacles, trajectories)
+    safe = validate_trajectories(element_bodies, obstacles, trajectories) # Can be quite slow
+    #safe = True
     data['safe'] = safe
     print('Safe:', safe)
     reset_simulation()
@@ -240,6 +241,10 @@ def main():
     parser.add_argument('-v', '--viewer', action='store_true',
                         help='Enables the viewer during planning')
     args = parser.parse_args()
+    if args.disable:
+        args.cfree = True
+        args.motions = False
+        args.max_time = 5*60 # 259 for duck
     print('Arguments:', args)
     np.set_printoptions(precision=3)
 

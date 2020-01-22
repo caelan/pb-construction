@@ -32,6 +32,7 @@ EXCLUDE = [
     'rotated_dented_cube', # Structure violates stiffness
     'robarch_tree', # Cannot print ground elements
     'DJMM_bridge', # Too large for pybullet
+    'klein_bottle_trail', # Structure violates stiffness
 ]
 
 EXPERIMENTS_DIR = 'experiments/'
@@ -56,7 +57,10 @@ def train_parallel(args):
     initial_time = time.time()
     problems = sorted(set(enumerate_problems()) - set(EXCLUDE))
     #problems = ['simple_frame']
-    algorithms = ALGORITHMS
+    #algorithms = ALGORITHMS
+    algorithms = list(GREEDY_ALGORITHMS)
+    if not args.disable:
+        algorithms.append('lookahead')
     #algorithms = ['regression']
     heuristics = HEURISTICS
     #heuristics = ['dijkstra']

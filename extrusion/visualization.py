@@ -62,7 +62,7 @@ def draw_reactions(node_points, reaction_from_node):
         print(list(map(np.array, reactions)))
         start = node_points[node]
         for reaction in reactions:
-           handles.append(draw_reaction(start, reaction, max_force=max_force, color=(0, 1, 0)))
+           handles.append(draw_reaction(start, reaction, max_force=max_force, color=GREEN))
         wait_for_user()
         for handle in handles:
             remove_debug(handle)
@@ -106,9 +106,9 @@ def visualize_stiffness(extrusion_path):
         start = node_points[node]
         handles.extend(draw_point(start, color=color))
         for reaction in reactions[:1]:
-            handles.append(draw_reaction(start, reaction, max_force=max_force, color=(1, 0, 0)))
+            handles.append(draw_reaction(start, reaction, max_force=max_force, color=RED))
         for reaction in reactions[1:]:
-            handles.append(draw_reaction(start, reaction, max_force=max_force, color=(0, 1, 0)))
+            handles.append(draw_reaction(start, reaction, max_force=max_force, color=GREEN))
         print('Node: {} | Ground: {} | Neighbors: {} | Reactions: {} | Magnitude: {:.3E}'.format(
             node, (node in ground_nodes), len(neighbors_from_node[node]), len(reactions), force_from_node[node]))
         print('Total:', np.sum(reactions, axis=0))
@@ -126,7 +126,7 @@ def visualize_stiffness(extrusion_path):
 
 ##################################################
 
-def draw_element(node_points, element, color=(1, 0, 0)):
+def draw_element(node_points, element, color=RED):
     n1, n2 = element
     p1 = node_points[n1]
     p2 = node_points[n2]
@@ -144,7 +144,7 @@ def draw_model(elements, node_points, ground_nodes):
     handles = []
     with LockRenderer():
         for element in elements:
-            color = (0, 0, 1) if is_ground(element, ground_nodes) else (1, 0, 0)
+            color = BLUE if is_ground(element, ground_nodes) else RED
             handles.append(draw_element(node_points, element, color=color))
     return handles
 
@@ -156,7 +156,8 @@ def sample_colors(num, lower=0.0, upper=0.75): # for now wrap around
     return [(t, 1-t, 1) for t in np.linspace(lower, upper, num, endpoint=True)]
 
 
-def draw_ordered(elements, node_points, values=None):
+def draw_ordered(elements, node_points):
+    # TODO: account for oriented elements
     #colors = spaced_colors(len(elements))
     colors = sample_colors(len(elements))
     handles = []

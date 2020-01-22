@@ -15,11 +15,12 @@ from pybullet_tools.utils import get_movable_joints, set_joint_positions, plan_j
     create_mesh, draw_mesh, apply_alpha, RED, remove_body, pairwise_collision, randomize, \
     get_sample_fn, get_distance_fn, get_extend_fn, get_collision_fn, \
     check_initial_end, birrt, INF, get_bodies_in_region, get_aabb, spaced_colors, vertices_from_data, \
-    BASE_LINK, vertices_from_link, apply_affine, get_pose, has_gui, set_color, remove_all_debug
+    BASE_LINK, vertices_from_link, apply_affine, get_pose, has_gui, set_color, remove_all_debug, \
+    VideoSaver, RED, BLUE
 
 from extrusion.utils import get_disabled_collisions, MotionTrajectory, load_world, PrintTrajectory, is_ground, \
     RESOLUTION, JOINT_WEIGHTS
-from extrusion.visualization import draw_ordered, set_extrusion_camera
+from extrusion.visualization import draw_ordered, set_extrusion_camera, draw_model
 from extrusion.stream import SELF_COLLISIONS, get_element_collision_fn
 
 MIN_ELEMENTS = INF # 2 | 3 | INF
@@ -181,7 +182,7 @@ def validate_trajectories(element_bodies, fixed_obstacles, trajectories):
 ##################################################
 
 
-def display_trajectories(node_points, ground_nodes, trajectories, animate=True, time_step=0.02):
+def display_trajectories(node_points, ground_nodes, trajectories, animate=True, time_step=0.02, video=False):
     if trajectories is None:
         return
     connect(use_gui=True)
@@ -194,6 +195,16 @@ def display_trajectories(node_points, ground_nodes, trajectories, animate=True, 
         wait_for_user()
         disconnect()
         return
+
+    video_saver = None
+    if video:
+        elements = {traj.element for traj in trajectories if isinstance(traj, PrintTrajectory)}
+        handles = draw_model(elements, node_points, ground_nodes) # Allows user to adjust the camera
+        wait_for_user()
+        remove_all_debug()
+        wait_for_user()
+        video_saver = VideoSaver('video.mp4') # has_gui()
+        time_step = 0.001
 
     wait_for_user()
     #element_bodies = dict(zip(elements, create_elements(node_points, elements)))
@@ -211,7 +222,7 @@ def display_trajectories(node_points, ground_nodes, trajectories, animate=True, 
             if isinstance(trajectory, PrintTrajectory):
                 current_point = point_from_pose(trajectory.end_effector.get_tool_pose())
                 if last_point is not None:
-                    color = (0, 0, 1) if is_ground(trajectory.element, ground_nodes) else (1, 0, 0)
+                    color = BLUE if is_ground(trajectory.element, ground_nodes) else RED
                     handles.append(add_line(last_point, current_point, color=color))
                 last_point = current_point
             if time_step is None:
@@ -227,6 +238,8 @@ def display_trajectories(node_points, ground_nodes, trajectories, animate=True, 
                 wait_for_user()
             connected_nodes.add(trajectory.n2)
 
+    if video_saver is not None:
+        video_saver.restore()
     wait_for_user()
     reset_simulation()
     disconnect()
