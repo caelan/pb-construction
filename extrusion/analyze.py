@@ -10,13 +10,13 @@ sys.path.extend([
     'ss-pybullet/',
 ])
 
-from collections import OrderedDict, Counter
+from collections import OrderedDict
 
-from extrusion.experiment import EXCLUDE, Configuration, EXPERIMENTS_DIR, HEURISTICS, ALGORITHMS
+from extrusion.experiment import EXCLUDE, Configuration, EXPERIMENTS_DIR
 from extrusion.parsing import get_extrusion_path, load_extrusion
-from extrusion.figure import bar_graph
+from extrusion.figure import bar_graph, SUCCESS, RUNTIME, SCORES
 from pddlstream.utils import INF, str_from_object, get_python_version
-from pybullet_tools.utils import read_pickle
+from pybullet_tools.utils import read_pickle, implies
 
 # Geometric: python3 -m extrusion.run -l experiments/19-08-09_01-58-34.pk3
 # CFree: python3 -m extrusion.run -l experiments/19-08-14_10-46-35.pk3
@@ -25,10 +25,6 @@ from pybullet_tools.utils import read_pickle
 # Motions: python3 -m extrusion.analyze experiments/20-01-07_17-39-48.pk3
 
 ALL = 'all'
-SUCCESS = 'success'
-RUNTIME = 'runtime'
-
-SCORES = [SUCCESS, RUNTIME]
 
 ATTRIBUTES = SCORES + ['valid', 'safe', 'num_evaluated', 'min_remaining',
               'max_backtrack', 'transit_fails', 'max_translation', 'max_rotation']
@@ -53,7 +49,13 @@ def is_number(value):
 
 ##################################################
 
-def load_experiment(filename, overall=False):
+# Runtime options:
+# 1) Failure is max_time
+# 2) Omit failed runtimes
+# 3) Average over problems all solved
+# 4) Average relative for each problem solved
+
+def load_experiment(filename, overall=False, failed_runtimes=True):
     # TODO: maybe just pass the random seed as a separate arg
     # TODO: aggregate over all problems and score using IPC rules
     # https://ipc2018-classical.bitbucket.io/
@@ -66,13 +68,15 @@ def load_experiment(filename, overall=False):
         problem = ALL if overall else config.problem
         plan = result.get('sequence', None)
         result[SUCCESS] = (plan is not None)
+        result[RUNTIME] = min(result[RUNTIME], config.max_time)
         result['length'] = len(plan) if result[SUCCESS] else INF
         #max_trans, max_rot = max_plan_deformation(config.problem, plan)
         #result['max_trans'] = max_trans
         #result['max_rot'] = max_rot
         result.pop('sequence', None)
-        if result[SUCCESS]:
-            max_time = max(max_time, result[RUNTIME])
+        max_time = max(max_time, result[RUNTIME])
+        if not result[SUCCESS] and not failed_runtimes:
+            result.pop(RUNTIME, None)
         data_from_problem.setdefault(problem, []).append((config, result))
 
     for p_idx, problem in enumerate(sorted(data_from_problem)):
@@ -113,9 +117,9 @@ def load_experiment(filename, overall=False):
             score = score_result(mean_result)
             print('{}) {} ({}): {}'.format(c_idx, str_from_object(key), len(results), str_from_object(score)))
 
-        print(all_results)
         if problem == ALL:
-            bar_graph(all_results)
+            for attribute in SCORES:
+                bar_graph(all_results, attribute)
 
     print('Max time: {:.3f} sec'.format(max_time))
 
