@@ -8,6 +8,7 @@ from multiprocessing.context import TimeoutError
 from collections import namedtuple
 
 from extrusion.progression import progression
+from extrusion.lookahead import lookahead
 from extrusion.heuristics import HEURISTICS
 from extrusion.parsing import enumerate_problems
 from extrusion.regression import regression
@@ -20,12 +21,10 @@ Configuration = namedtuple('Configuration', ['seed', 'problem', 'algorithm', 'bi
                                              'cfree', 'disable', 'stiffness', 'motions', 'ee_only'])
 #Score = namedtuple('Score', ['failure', 'runtime', 'max_trans', 'max_rot'])
 
-GREEDY_ALGORITHMS = [
-    progression.__name__,
-    regression.__name__,
-]
-ALGORITHMS = GREEDY_ALGORITHMS + ['lookahead'] #+ [STRIPSTREAM_ALGORITHM]
-#ALGORITHMS = ['lookahead']
+BLIND_ALGORITHMS = [alg.__name__ for alg in [progression, regression]]
+LOOKAHEAD_ALGORITHMS = [lookahead.__name__]
+
+ALGORITHMS = BLIND_ALGORITHMS + LOOKAHEAD_ALGORITHMS #+ [STRIPSTREAM_ALGORITHM]
 
 EXCLUDE = [
     #'dented_cube', # TODO: 3D_truss isn't supported error
@@ -58,9 +57,9 @@ def train_parallel(args):
     problems = sorted(set(enumerate_problems()) - set(EXCLUDE))
     #problems = ['simple_frame']
     #algorithms = ALGORITHMS
-    algorithms = list(GREEDY_ALGORITHMS)
+    algorithms = list(BLIND_ALGORITHMS)
     if not args.disable:
-        algorithms.append('lookahead')
+        algorithms.insert(1, LOOKAHEAD_ALGORITHMS[0])
     #algorithms = ['regression']
     heuristics = HEURISTICS
     #heuristics = ['dijkstra']
