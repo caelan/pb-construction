@@ -10,12 +10,13 @@ sys.path.extend([
     'ss-pybullet/',
 ])
 
-from collections import OrderedDict, Counter
+from collections import OrderedDict
 
 from extrusion.experiment import EXCLUDE, Configuration, EXPERIMENTS_DIR
 from extrusion.parsing import get_extrusion_path, load_extrusion
+from extrusion.figure import bar_graph, SUCCESS, RUNTIME, SCORES
 from pddlstream.utils import INF, str_from_object, get_python_version
-from pybullet_tools.utils import read_pickle
+from pybullet_tools.utils import read_pickle, implies
 
 # Geometric: python3 -m extrusion.run -l experiments/19-08-09_01-58-34.pk3
 # CFree: python3 -m extrusion.run -l experiments/19-08-14_10-46-35.pk3
@@ -25,17 +26,36 @@ from pybullet_tools.utils import read_pickle
 
 ALL = 'all'
 
+ATTRIBUTES = SCORES + ['valid', 'safe', 'num_evaluated', 'min_remaining',
+              'max_backtrack', 'transit_fails', 'max_translation', 'max_rotation']
+
 ##################################################
 
 def score_result(result):
     return '{{failure={:.3f}, runtime={:.0f}, valid={:.3f}, safe={:.3f}, evaluated={:.0f}, ' \
            'remaining={:.1f}, backtrack={:.1f}, transit_failures={:.1f}, max_trans={:.3E}, max_rot={:.3E}}}'.format(
-            (1. - result['success']), result.get('runtime', 0), result.get('valid', 0), result.get('safe', 0),
+            (1. - result[SUCCESS]), result.get(RUNTIME, 0), result.get('valid', 0), result.get('safe', 0),
             result.get('num_evaluated', 0), result.get('min_remaining', 0), result.get('max_backtrack', 0),
             result.get('transit_fails', 0), result.get('max_translation', 0), result.get('max_rotation', 0))
 
 
-def load_experiment(filename, overall=False):
+def is_number(value):
+    #return isinstance(value, bool) or isinstance(value, int) or isinstance(value, float)
+    try:
+        float(value)
+        return True
+    except TypeError:
+        return False
+
+##################################################
+
+# Runtime options:
+# 1) Failure is max_time
+# 2) Omit failed runtimes
+# 3) Average over problems all solved
+# 4) Average relative for each problem solved
+
+def load_experiment(filename, overall=False, failed_runtimes=True):
     # TODO: maybe just pass the random seed as a separate arg
     # TODO: aggregate over all problems and score using IPC rules
     # https://ipc2018-classical.bitbucket.io/
@@ -47,14 +67,16 @@ def load_experiment(filename, overall=False):
             continue
         problem = ALL if overall else config.problem
         plan = result.get('sequence', None)
-        result['success'] = (plan is not None)
-        result['length'] = len(plan) if result['success'] else INF
+        result[SUCCESS] = (plan is not None)
+        result[RUNTIME] = min(result[RUNTIME], config.max_time)
+        result['length'] = len(plan) if result[SUCCESS] else INF
         #max_trans, max_rot = max_plan_deformation(config.problem, plan)
         #result['max_trans'] = max_trans
         #result['max_rot'] = max_rot
         result.pop('sequence', None)
-        if result['success']:
-            max_time = max(max_time, result['runtime'])
+        max_time = max(max_time, result[RUNTIME])
+        if not result[SUCCESS] and not failed_runtimes:
+            result.pop(RUNTIME, None)
         data_from_problem.setdefault(problem, []).append((config, result))
 
     for p_idx, problem in enumerate(sorted(data_from_problem)):
@@ -78,19 +100,27 @@ def load_experiment(filename, overall=False):
 
         print('Attributes:', str_from_object(value_per_field))
         print('Configs:', len(data_from_config))
+
+        all_results = {}
         for c_idx, config in enumerate(sorted(data_from_config, key=str)):
             results = data_from_config[config]
             accumulated_result = {}
             for result in results:
                 for name, value in result.items():
-                    #if result['success'] or (name == 'success'):
-                    if isinstance(value, int) or isinstance(value, float):
+                    #if result[SUCCESS] or (name == SUCCESS):
+                    if is_number(value):
                         accumulated_result.setdefault(name, []).append(value)
             mean_result = {name: round(np.average(values), 3) for name, values in accumulated_result.items()}
             key = {field: value for field, value in config._asdict().items()
-                   if 2 <= len(value_per_field[field])}
+                   if (value is not None) and (2 <= len(value_per_field[field]))}
+            all_results[frozenset(key.items())] = {name: values for name, values in accumulated_result.items() if name in SCORES}
             score = score_result(mean_result)
             print('{}) {} ({}): {}'.format(c_idx, str_from_object(key), len(results), str_from_object(score)))
+
+        if problem == ALL:
+            for attribute in SCORES:
+                bar_graph(all_results, attribute)
+
     print('Max time: {:.3f} sec'.format(max_time))
 
 ##################################################
