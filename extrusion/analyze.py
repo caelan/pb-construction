@@ -32,9 +32,9 @@ ATTRIBUTES = SCORES + ['valid', 'safe', 'num_evaluated', 'min_remaining',
 ##################################################
 
 def score_result(result):
-    return '{{failure={:.3f}, runtime={:.0f}, valid={:.3f}, safe={:.3f}, evaluated={:.0f}, ' \
+    return '{{success={:.3f}, runtime={:.0f}, valid={:.3f}, safe={:.3f}, evaluated={:.0f}, ' \
            'remaining={:.1f}, backtrack={:.1f}, transit_failures={:.1f}, max_trans={:.3E}, max_rot={:.3E}}}'.format(
-            (1. - result[SUCCESS]), result.get(RUNTIME, 0), result.get('valid', 0), result.get('safe', 0),
+            result[SUCCESS], result.get(RUNTIME, 0), result.get('valid', 0), result.get('safe', 0),
             result.get('num_evaluated', 0), result.get('min_remaining', 0), result.get('max_backtrack', 0),
             result.get('transit_fails', 0), result.get('max_translation', 0), result.get('max_rotation', 0))
 
@@ -68,6 +68,7 @@ def load_experiment(filename, overall=False, failed_runtimes=True):
         problem = ALL if overall else config.problem
         plan = result.get('sequence', None)
         result[SUCCESS] = (plan is not None)
+        result[SUCCESS] *= 100
         result[RUNTIME] = min(result[RUNTIME], config.max_time)
         result['length'] = len(plan) if result[SUCCESS] else INF
         #max_trans, max_rot = max_plan_deformation(config.problem, plan)

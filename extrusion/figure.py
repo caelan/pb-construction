@@ -13,6 +13,8 @@ from collections import OrderedDict, defaultdict
 
 from extrusion.experiment import EXCLUDE, Configuration, EXPERIMENTS_DIR, HEURISTICS, ALGORITHMS
 
+DEFAULT_MAX_TIME = 1 * 60 * 60
+
 SUCCESS = 'success'
 RUNTIME = 'runtime'
 SCORES = [SUCCESS, RUNTIME]
@@ -28,7 +30,7 @@ RENAME_LABELS = {
     'z': 'task-distance',
     'dijkstra': 'truss-distance',
     'plan-stiffness': 'stiffness-plan',
-    'lookahead': 'progression+lookahead',
+    #'lookahead': 'progression+lookahead',
     SUCCESS: '% solved',
     RUNTIME: 'runtime (sec)',
 }
@@ -43,33 +45,35 @@ def bar_graph(data, attribute):
     #pltfig, ax = plt.subplots()
     hatch = '/' if attribute == RUNTIME else None
     ax = plt.subplot()
-    for h_idx, heuristic in enumerate(HEURISTICS): # Add everything with the same label at once
-        algorithms = []
+    algorithms = sorted({dict(key)['algorithm'] for key in data} & set(ALGORITHMS), key=ALGORITHMS.index)
+    print('Algorithms:', algorithms)
+    heuristics = sorted({dict(key)['bias'] for key in data} & set(HEURISTICS), key=HEURISTICS.index)
+    print('Heuristics:', heuristics)
+
+    indices = np.array(range(len(algorithms)))
+    for h_idx, heuristic in enumerate(heuristics): # Add everything with the same label at once
         values = []
-        for algorithm in ALGORITHMS:
+        for algorithm in algorithms:
             key = frozenset({'algorithm': algorithm, 'bias': heuristic}.items())
             if key in data:
-                algorithms.append(rename(algorithm))
                 values.append(data[key][attribute])
-        if not algorithms:
-            continue
-        indices = np.array(range(len(algorithms)))
         means = list(map(np.mean, values)) # 100
-        stds = list(map(np.std, values))
-        rects = plt.bar(h_idx*WIDTH + indices, means, WIDTH, alpha=ALPHA, hatch=hatch,
+        #alpha = 0.5
+        #stds = list(map(np.std, values)) if attribute == RUNTIME else None
+        stds = None
+        rects = plt.bar(h_idx*WIDTH + indices, means, WIDTH, alpha=ALPHA, hatch=hatch, yerr=stds,
                         label=rename(heuristic)) # align='center'
-        #for rect in rects:
-        #    h = rect.get_height()
-        #    ax.text(rect.get_x() + rect.get_width() / 2., 1.05 * h, '%d' % int(h), ha='center', va='bottom')
-        # TODO: confidence intervals for runtime
+    y_max = 100 if attribute == SUCCESS else DEFAULT_MAX_TIME
 
-    plt.title('Stiffness')
-    ticks = np.arange(len(ALGORITHMS)) + len(ALGORITHMS)/2.*WIDTH
-    plt.xticks(ticks, map(rename, ALGORITHMS))
+    #plt.title('Extrusion Planning: Stiffness Only')
+    plt.title('Extrusion Planning: All Constraints')
+    ticks = np.arange(len(algorithms)) + WIDTH*len(algorithms)/2.
+    plt.xticks(ticks, map(rename, algorithms))
     plt.xlabel('Algorithm')
     ax.autoscale(tight=True)
-    plt.legend(loc='upper left')
+    plt.legend(loc='best') # 'upper left'
     plt.ylabel(rename(attribute))
+    plt.ylim([0, y_max])
     #plt.savefig('test')
     plt.tight_layout()
     #plt.grid()
