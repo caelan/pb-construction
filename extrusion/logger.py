@@ -1,6 +1,17 @@
 import heapq
 from termcolor import cprint
 
+# log options
+RECORD_BT = True
+RECORD_CONSTRAINT_VIOLATION = True
+QUEUE_COUNT = 5 # number of candidates on the queue to be recorded at each iter
+RECORD_QUEUE = False
+OVERWRITE = True # add time tag if not overwrite
+
+# visual diagnosis options
+VISUALIZE_ACTION = False # visualize action step-by-step
+CHECK_BACKTRACK = False # visually check
+
 ##################################################    
 
 def export_log_data(extrusion_file_path, log_data, overwrite=True, indent=None):

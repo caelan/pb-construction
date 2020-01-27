@@ -12,9 +12,10 @@ from extrusion.utils import get_extructed_ids, compute_printable_elements, compu
 from pybullet_tools.utils import HideOutput, INF, elapsed_time, randomize 
 
 TRANS_TOL = 0.0015
-ROT_TOL = INF # 5 * np.pi / 180
+ROT_TOL = 1e8 # 5 * np.pi / 180
 
-Deformation = namedtuple('Deformation', ['success', 'displacements', 'fixities', 'reactions']) # TODO: get_max_nodal_deformation
+Deformation = namedtuple('Deformation', ['success', 'displacements', 'fixities', 'reactions', 'compliance']) 
+# TODO: get_max_nodal_deformation
 Displacement = namedtuple('Displacement', ['dx', 'dy', 'dz', 'theta_x', 'theta_y', 'theta_z'])
 Reaction = namedtuple('Reaction', ['fx', 'fy', 'fz', 'mx', 'my', 'mz'])
 
@@ -48,7 +49,7 @@ def torque_from_reaction(reaction):
 def evaluate_stiffness(extrusion_path, element_from_id, elements, checker=None, verbose=True):
     # TODO: check each connected component individually
     if not elements:
-        return Deformation(True, {}, {}, {})
+        return Deformation(True, {}, {}, {}, 0)
     if checker is None:
         checker = create_stiffness_checker(extrusion_path, verbose=False)
     # TODO: load element_from_id
@@ -76,8 +77,9 @@ def evaluate_stiffness(extrusion_path, element_from_id, elements, checker=None, 
     trans_tol, rot_tol = checker.get_nodal_deformation_tol()
     max_trans, max_rot, max_trans_vid, max_rot_vid = checker.get_max_nodal_deformation()
     # The inverse of stiffness is flexibility or compliance
+    # TODO: check when the compliance becomes 0, maybe floating/mechanism partial structure?
     compliance = checker.get_compliance()
-    assert compliance > 0
+    # assert compliance > 0
 
     translation = np.max(np.linalg.norm([d[:3] for d in displacements.values()], ord=2, axis=1))
     rotation = np.max(np.linalg.norm([d[3:] for d in displacements.values()], ord=2, axis=1))
@@ -95,7 +97,7 @@ def evaluate_stiffness(extrusion_path, element_from_id, elements, checker=None, 
     #time_step = 1.0
     #orig_beam_shape = checker.get_original_shape(disc=disc, draw_full_shape=False)
     #beam_disp = checker.get_deformed_shape(exagg_ratio=1.0, disc=disc)
-    return Deformation(is_stiff, displacements, fixities, reactions)
+    return Deformation(is_stiff, displacements, fixities, reactions, compliance)
 
 
 def test_stiffness(extrusion_path, element_from_id, elements, **kwargs):

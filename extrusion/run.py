@@ -186,10 +186,10 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     if not os.path.exists(result_file_dir):
         os.makedirs(result_file_dir) 
 
-    plan_path = os.path.join(result_file_dir, '{}_solution_{}-{}.json'.format(args.problem, args.algorithm, args.bias))
+    plan_path = os.path.join(result_file_dir, '{}_result_{}-{}.json'.format(args.problem, args.algorithm, args.bias))
     with open(plan_path, 'w') as f:
         json.dump(plan_data, f, indent=None)
-    cprint('Result saved to:{}'.format(plan_path), 'green')
+    cprint('Result saved to: {}'.format(plan_path), 'green')
 
     if watch:
         animate = not (args.disable or args.ee_only)
@@ -222,7 +222,7 @@ def main():
                         help='Disables trajectory planning')
     parser.add_argument('-e', '--ee_only', action='store_true',
                         help='Disables arm planning')
-    parser.add_argument('-m', '--motions', action='store_false',
+    parser.add_argument('-m', '--motions', action='store_true', # | store_false
                         help='Plans motions between each extrusion')
     parser.add_argument('-n', '--num', default=0, type=int,
                         help='Number of experiment trials')

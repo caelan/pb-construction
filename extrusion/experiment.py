@@ -26,11 +26,10 @@ LOOKAHEAD_ALGORITHMS = [lookahead.__name__]
 ALGORITHMS = [alg.__name__ for alg in [progression, lookahead, regression]] #+ [STRIPSTREAM_ALGORITHM]
 
 EXCLUDE = [
-    #'dented_cube', # TODO: 3D_truss isn't supported error
     'rotated_dented_cube', # Structure violates stiffness
     'robarch_tree', # Cannot print ground elements
     'DJMM_bridge', # Too large for pybullet
-    'klein_bottle_trail', # Structure violates stiffness
+    'klein_bottle_trail', # Structure violates stiffness, TODO: point coordinate floating tolerance
 ]
 
 EXPERIMENTS_DIR = 'experiments/'

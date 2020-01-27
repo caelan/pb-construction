@@ -23,7 +23,8 @@ from extrusion.visualization import draw_ordered, color_structure
 from pddlstream.utils import outgoing_from_edges
 from pybullet_tools.utils import INF, get_movable_joints, get_joint_positions, randomize, implies, has_gui, \
     remove_all_debug, wait_for_user, elapsed_time, LockRenderer
-from extrusion.logger import export_log_data
+from extrusion.logger import export_log_data, RECORD_BT, RECORD_CONSTRAINT_VIOLATION, RECORD_QUEUE, OVERWRITE, \
+    CHECK_BACKTRACK, QUEUE_COUNT
 
 # https://developers.google.com/optimization/routing/tsp
 
@@ -87,10 +88,6 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
     # TODO: immediately select if becomes more stable
     # TODO: focus branching factor on most stable regions
 
-    check_backtrack = False
-    record_bt = True
-    record_constraint_violation = False
-    record_queue = True
     locker = LockRenderer()
 
     # TODO: computed number of motion planning failures
@@ -147,7 +144,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         if data_list is not None:
             data_list.append(cur_data)
 
-        if check_backtrack:
+        if CHECK_BACKTRACK:
             draw_action(node_points, next_printed, element)
             # color_structure(element_bodies, next_printed, element)
 
@@ -179,7 +176,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
             if backtrack > max_backtrack:
                 max_backtrack = backtrack
                 # * (optional) visualization for diagnosis
-                if record_bt:
+                if RECORD_BT:
                     cprint('max backtrack increased to {}'.format(max_backtrack), 'cyan')
                     snapshot_state(bt_data, reason='Backtrack')
 
@@ -187,9 +184,9 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
                 cprint('backtrack {} exceeds limit {}, exit.'.format(backtrack, backtrack_limit), 'red')
                 break # continue
 
-            if record_queue:
+            if RECORD_QUEUE:
                 snapshot_state(
-                    queue_data, reason='queue_history', queue_log_cnt=10)
+                    queue_data, reason='queue_history', queue_log_cnt=QUEUE_COUNT)
             
             # * constraint checking
             # ! connectivity and avoid checking duplicate states
@@ -201,7 +198,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
                 cprint('&&& stiffness not passed.', 'red')
                 stiffness_failures += 1
                 # * (optional) visualization for diagnosis
-                if record_constraint_violation:
+                if RECORD_CONSTRAINT_VIOLATION:
                     snapshot_state(cons_data, reason='stiffness_violation')
                 continue
             
@@ -225,7 +222,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
                 if motion_traj is None:
                     transit_failures += 1
                     cprint('>>> transition motion not passed.', 'red')
-                    if record_constraint_violation:
+                    if RECORD_CONSTRAINT_VIOLATION:
                         snapshot_state(cons_data, reason='transit_failure')
                     continue
                 command.trajectories.append(motion_traj)
@@ -267,7 +264,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         else:
             plan.insert(0, motion_traj)
 
-    if record_queue:
+    if RECORD_QUEUE:
         # log data
         cur_data = {}
         cur_data['search_method'] = 'progression'

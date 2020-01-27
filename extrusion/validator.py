@@ -1,3 +1,4 @@
+import numpy as np
 from extrusion.parsing import load_extrusion, extrusion_name_from_path, get_extrusion_path
 from extrusion.visualization import draw_element
 from extrusion.utils import check_connected, get_connected_structures, load_world
@@ -68,12 +69,18 @@ def compute_plan_deformation(problem, plan):
     printed = []
     translations = []
     rotations = []
+    compliances = []
     for element in plan:
         printed.append(element)
         deformation = evaluate_stiffness(problem, element_from_id, printed,
                                          checker=checker, verbose=False)
-        trans, rot, _, _ = checker.get_max_nodal_deformation()
+        displacements = deformation.displacements 
+        trans = np.max(np.linalg.norm([d[:3] for d in displacements.values()], ord=2, axis=1))
+        rot = np.max(np.linalg.norm([d[3:] for d in displacements.values()], ord=2, axis=1))
+        # trans, rot, _, _ = checker.get_max_nodal_deformation()
         translations.append(trans)
         rotations.append(rot)
+        compliances.append(deformation.compliance)
     # TODO: could return full history
-    return max(translations), max(rotations)
+    return (max(translations), int(np.argmax(translations))), (max(rotations), int(np.argmax(rotations))), \
+           (max(compliances), int(np.argmax(compliances))) # larger compliance means more flexible
