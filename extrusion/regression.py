@@ -88,7 +88,8 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
     # TODO: focus branching factor on most stable regions
 
     check_backtrack = False
-    record_snapshots = True
+    record_bt = True
+    record_constraint_violation = False
     record_queue = True
     locker = LockRenderer()
 
@@ -178,7 +179,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
             if backtrack > max_backtrack:
                 max_backtrack = backtrack
                 # * (optional) visualization for diagnosis
-                if record_snapshots:
+                if record_bt:
                     cprint('max backtrack increased to {}'.format(max_backtrack), 'cyan')
                     snapshot_state(bt_data, reason='Backtrack')
 
@@ -200,7 +201,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
                 cprint('&&& stiffness not passed.', 'red')
                 stiffness_failures += 1
                 # * (optional) visualization for diagnosis
-                if record_snapshots:
+                if record_constraint_violation:
                     snapshot_state(cons_data, reason='stiffness_violation')
                 continue
             
@@ -224,7 +225,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
                 if motion_traj is None:
                     transit_failures += 1
                     cprint('>>> transition motion not passed.', 'red')
-                    if record_snapshots:
+                    if record_constraint_violation:
                         snapshot_state(cons_data, reason='transit_failure')
                     continue
                 command.trajectories.append(motion_traj)

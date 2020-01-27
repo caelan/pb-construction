@@ -166,7 +166,8 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
     # ! step-by-step diagnosis
     visualize_action = False
     check_backtrack = False
-    record_snapshots = True
+    record_bt = True
+    record_constraint_violation = False
     record_queue = True
 
     initial_printed = frozenset()
@@ -265,10 +266,11 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
             if backtrack > max_backtrack:
                 max_backtrack = backtrack
                 # * (optional) visualization for diagnosis
-                if record_snapshots:
+                if record_bt:
                     cprint('max backtrack increased to {}'.format(
                         max_backtrack), 'cyan')
                     snapshot_state(bt_data, reason='Backtrack')
+                    wait_for_user()
 
             if backtrack_limit < backtrack:
                 cprint('backtrack {} exceeds limit {}, exit.'.format(
@@ -289,7 +291,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
                 cprint('&&& stiffness not passed.', 'red')
                 stiffness_failures += 1
                 # * (optional) visualization for diagnosis
-                if record_snapshots:
+                if record_constraint_violation:
                     snapshot_state(cons_data, reason='stiffness_violation')
                 continue
             # ! manipulation constraint
@@ -305,7 +307,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
                 if motion_traj is None:
                     cprint('>>> transition motion not passed.', 'red')
                     transit_failures += 1
-                    if record_snapshots:
+                    if record_constraint_violation:
                         snapshot_state(cons_data, reason='transit_failure')
                     continue
                 command.trajectories.insert(0, motion_traj)

@@ -12,7 +12,8 @@ from extrusion.utils import get_extructed_ids, compute_printable_elements, compu
 from pybullet_tools.utils import HideOutput, INF, elapsed_time, randomize 
 
 TRANS_TOL = 0.0015
-ROT_TOL = 5 * np.pi / 180
+# ROT_TOL = 5 * np.pi / 180
+ROT_TOL = INF
 
 Deformation = namedtuple('Deformation', ['success', 'displacements', 'fixities', 'reactions']) # TODO: get_max_nodal_deformation
 Displacement = namedtuple('Displacement', ['dx', 'dy', 'dz', 'theta_x', 'theta_y', 'theta_z'])
@@ -70,8 +71,10 @@ def evaluate_stiffness(extrusion_path, element_from_id, elements, checker=None, 
     fixities = {i: Reaction(*d) for i, d in fixities_reaction.items()}
     reactions = {i: (Reaction(*d[0]), Reaction(*d[1])) for i, d in element_reaction.items()}
 
-    #translation = np.max(np.linalg.norm([d[:3] for d in displacements.values()], axis=1))
-    #rotation = np.max(np.linalg.norm([d[3:] for d in displacements.values()], axis=1))
+    translation = np.max(np.linalg.norm([d[:3] for d in displacements.values()], axis=1))
+    if is_stiff and translation > TRANS_TOL:
+        is_stiff = False
+    # rotation = np.max(np.linalg.norm([d[3:] for d in displacements.values()], axis=1))
 
     #print("nodal displacement (m/rad):\n{0}".format(nodal_displacement)) # nodes x 7
     # TODO: investigate if nodal displacement can be used to select an ordering
@@ -79,6 +82,7 @@ def evaluate_stiffness(extrusion_path, element_from_id, elements, checker=None, 
     #print("element reaction (kN, kN-m):\n{0}".format(element_reaction)) # elements x 13
     trans_tol, rot_tol = checker.get_nodal_deformation_tol()
     max_trans, max_rot, max_trans_vid, max_rot_vid = checker.get_max_nodal_deformation()
+    max_trans = translation
     # The inverse of stiffness is flexibility or compliance
     compliance = checker.get_compliance()
     assert compliance > 0
