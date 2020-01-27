@@ -8,6 +8,7 @@ from multiprocessing.context import TimeoutError
 from collections import namedtuple
 
 from extrusion.progression import progression
+from extrusion.lookahead import lookahead
 from extrusion.heuristics import HEURISTICS
 from extrusion.parsing import enumerate_problems
 from extrusion.regression import regression
@@ -20,12 +21,9 @@ Configuration = namedtuple('Configuration', ['seed', 'problem', 'algorithm', 'bi
                                              'cfree', 'disable', 'stiffness', 'motions', 'ee_only'])
 #Score = namedtuple('Score', ['failure', 'runtime', 'max_trans', 'max_rot'])
 
-GREEDY_ALGORITHMS = [
-    progression.__name__,
-    regression.__name__,
-]
-ALGORITHMS = GREEDY_ALGORITHMS + ['lookahead'] #+ [STRIPSTREAM_ALGORITHM]
-#ALGORITHMS = ['lookahead']
+LOOKAHEAD_ALGORITHMS = [lookahead.__name__]
+
+ALGORITHMS = [alg.__name__ for alg in [progression, lookahead, regression]] #+ [STRIPSTREAM_ALGORITHM]
 
 EXCLUDE = [
     #'dented_cube', # TODO: 3D_truss isn't supported error
@@ -58,9 +56,11 @@ def train_parallel(args):
     problems = sorted(set(enumerate_problems()) - set(EXCLUDE))
     #problems = ['simple_frame']
     #algorithms = ALGORITHMS
-    algorithms = list(GREEDY_ALGORITHMS)
+    algorithms = list(ALGORITHMS)
     if not args.disable:
-        algorithms.append('lookahead')
+        for algorithm in LOOKAHEAD_ALGORITHMS:
+            if algorithm in algorithms:
+                algorithms.remove(algorithm)
     #algorithms = ['regression']
     heuristics = HEURISTICS
     #heuristics = ['dijkstra']
@@ -93,7 +93,8 @@ def train_parallel(args):
         start_time = time.time()
         try:
             configuration, data = generator.next(timeout=2 * args.max_time)
-            print(len(results), configuration, data)
+            print('{}/{} | {:.3f}'.format(len(results), len(configurations), elapsed_time(start_time)))
+            print(configuration, data)
             results.append((configuration, data))
             if results:
                 write_pickle(path, results)

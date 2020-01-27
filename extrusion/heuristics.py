@@ -13,7 +13,7 @@ DISTANCE_HEURISTICS = [
     'z',
     'dijkstra',
     #'online-dijkstra',
-    'plan-stiffness',
+    'plan-stiffness', # TODO: recategorize
 ]
 TOPOLOGICAL_HEURISTICS = [
     'length',

@@ -181,7 +181,7 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
 
     plan = None
     min_remaining = INF
-    num_evaluated = worst_backtrack = num_deadends = transit_failures = 0
+    num_evaluated = worst_backtrack = num_deadends = stiffness_failures = transit_failures = 0
     while queue and (elapsed_time(start_time) < max_time):
         num_evaluated += 1
         visits, priority, printed, element, current_conf = heapq.heappop(queue)
@@ -206,6 +206,7 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
         if stiffness and not test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker, verbose=False):
             # Hard dead-end
             #num_deadends += 1
+            stiffness_failures += 1
             print('Partial structure is not stiff!')
             continue
 
@@ -276,6 +277,7 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
         'max_backtrack': worst_backtrack,
         'max_translation': max_translation,
         'max_rotation': max_rotation,
+        'stiffness_failures': stiffness_failures,
         'transit_failures': transit_failures,
     }
     return plan, data

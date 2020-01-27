@@ -6,7 +6,6 @@ import argparse
 import cProfile
 import pstats
 import numpy as np
-import random
 import time
 import datetime
 import os
@@ -18,17 +17,18 @@ sys.path.extend([
     'ss-pybullet/',
 ])
 
+from extrusion.figure import DEFAULT_MAX_TIME
 from extrusion.visualization import label_element, set_extrusion_camera, label_nodes
 from extrusion.experiment import train_parallel
 from extrusion.motion import compute_motions, display_trajectories, validate_trajectories
 from extrusion.stripstream import plan_sequence
-from extrusion.utils import load_world, PrintTrajectory 
+from extrusion.utils import load_world
 from extrusion.parsing import load_extrusion, create_elements_bodies, \
     enumerate_problems, get_extrusion_path, affine_extrusion
 from extrusion.stream import get_print_gen_fn
 from extrusion.progression import progression, recover_directed_sequence, get_global_parameters
 from extrusion.regression import regression
-from extrusion.heuristics import HEURISTICS, downsample_structure
+from extrusion.heuristics import HEURISTICS
 from extrusion.validator import verify_plan
 from extrusion.lookahead import lookahead
 from extrusion.visualization import visualize_stiffness
@@ -236,7 +236,7 @@ def main():
                         help='The name of the problem to solve')
     parser.add_argument('-s', '--stiffness',  action='store_false',
                         help='Disables stiffness checking')
-    parser.add_argument('-t', '--max_time', default=4*60*60, type=int,
+    parser.add_argument('-t', '--max_time', default=DEFAULT_MAX_TIME, type=int,
                         help='The max time')
     parser.add_argument('-v', '--viewer', action='store_true',
                         help='Enables the viewer during planning')

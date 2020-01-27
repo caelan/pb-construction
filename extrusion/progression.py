@@ -376,6 +376,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
         'max_backtrack': max_backtrack,
         'max_translation': max_translation,
         'max_rotation': max_rotation,
+        'stiffness_failures': stiffness_failures,
         'transit_failures': transit_failures,
         'stiffness_failures': stiffness_failures,
         'backtrack_history': bt_data,
