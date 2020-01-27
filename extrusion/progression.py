@@ -164,10 +164,11 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
         extrusion_path, heuristic, checker=checker, forward=True)
 
     # ! step-by-step diagnosis
-    visualize_action = False
-    check_backtrack = False
+    visualize_action = False # visualize action step-by-step
+    check_backtrack = False # visually check
+
     record_bt = True
-    record_constraint_violation = False
+    record_constraint_violation = True
     record_queue = True
 
     initial_printed = frozenset()

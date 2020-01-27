@@ -152,9 +152,9 @@ def load_experiment(filename, overall=False, failed_runtimes=True, write_report=
             # print(df_data)
             df = df.append(df_data, ignore_index=True)
 
-        if problem == ALL:
-            for attribute in SCORES:
-                bar_graph(all_results, attribute)
+        # if problem == ALL:
+        #     for attribute in SCORES:
+        #         bar_graph(all_results, attribute)
 
     print('Max time: {:.3f} sec'.format(max_time))
     return df

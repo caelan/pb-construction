@@ -62,3 +62,6 @@ pip-delete-this-directory.txt
 
 # Visual Studio Code
 .vscode/
+
+# excel temp files
+~*.xlsx

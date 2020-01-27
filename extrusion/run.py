@@ -10,6 +10,7 @@ import time
 import datetime
 import os
 import json
+from termcolor import cprint
 from collections import OrderedDict
 
 sys.path.extend([
@@ -138,7 +139,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
             raise ValueError(args.algorithm)
         pr.disable()
         pstats.Stats(pr).sort_stats('tottime').print_stats(10) # tottime | cumtime
-        print(data)
+        # print(data)
         if trajectories is None:
             if not verbose:
                 sys.stdout.close()
@@ -159,29 +160,25 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     sequence = recover_directed_sequence(trajectories)
     valid = verify_plan(problem_path, sequence) #, use_gui=not animate)
     data.update({
-        'safe': safe,
-        'valid': valid,
+        'safe': bool(safe),
+        'valid': bool(valid),
         'parameters': get_global_parameters(),
     })
 
     plan_data = OrderedDict({
         'problem':  args.problem,
+        'write_time' : str(datetime.datetime.now()),
         'algorithm': args.algorithm,
         'heuristic': args.bias,
         'plan_extrusions': not args.disable,
         'use_collisions': not args.cfree,
         'use_stiffness': args.stiffness,
         'plan': sequence,
-        'write_time' : str(datetime.datetime.now()),
-        'safe': safe,
+        'safe': bool(safe),
     })
  
     plan_data.update(data)
     del plan_data['sequence']
-
-    #plan_path = '{}_solution.json'.format(args.problem)
-    #with open(plan_path, 'w') as f:
-    #    json.dump(plan_data, f, indent=2, sort_keys=True)
 
     # result_file_dir = "C:/Users/yijiangh/Documents/pb_ws/pychoreo/tests/test_data"
     here = os.path.abspath(os.path.dirname(__file__))
@@ -189,13 +186,10 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     if not os.path.exists(result_file_dir):
         os.makedirs(result_file_dir) 
 
-    print('result dir: ', result_file_dir)
-    if not os.path.exists(result_file_dir):
-        os.makedirs(result_file_dir) 
-
     plan_path = os.path.join(result_file_dir, '{}_solution_{}-{}.json'.format(args.problem, args.algorithm, args.bias))
     with open(plan_path, 'w') as f:
         json.dump(plan_data, f, indent=None)
+    cprint('Result saved to:{}'.format(plan_path), 'green')
 
     if watch:
         animate = not (args.disable or args.ee_only)
@@ -258,7 +252,7 @@ def main():
             args.problem = problem
             plan_extrusion(args, verbose=True, watch=False)
     else:
-        plan_extrusion(args, viewer=args.viewer, verbose=True, watch=True)
+        plan_extrusion(args, viewer=args.viewer, verbose=True, watch=False)
 
     # TODO: check that both the start and end satisfy
     # python -m extrusion.run -n 10 2>&1 | tee log.txt
