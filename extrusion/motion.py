@@ -19,7 +19,7 @@ from pybullet_tools.utils import get_movable_joints, set_joint_positions, plan_j
 
 from extrusion.utils import get_disabled_collisions, MotionTrajectory, load_world, PrintTrajectory, is_ground, \
     RESOLUTION, JOINT_WEIGHTS
-from extrusion.visualization import draw_ordered, set_extrusion_camera, draw_model
+from extrusion.visualization import draw_ordered, set_extrusion_camera, draw_model, sample_colors, draw_element
 from extrusion.stream import SELF_COLLISIONS, get_element_collision_fn
 
 MIN_ELEMENTS = INF # 2 | 3 | INF
@@ -193,17 +193,17 @@ def display_trajectories(node_points, ground_nodes, trajectories, animate=True, 
     set_extrusion_camera(node_points)
     obstacles, robot = load_world()
     movable_joints = get_movable_joints(robot)
-    if not animate:
-        planned_elements = [traj.element for traj in trajectories]
-        draw_ordered(planned_elements, node_points)
-        wait_for_user()
-        disconnect()
-        return
+    planned_elements = [traj.element for traj in trajectories if isinstance(traj, PrintTrajectory)]
+    colors = sample_colors(len(planned_elements))
+    # if not animate:
+    #     draw_ordered(planned_elements, node_points)
+    #     wait_for_user()
+    #     disconnect()
+    #     return
 
     video_saver = None
     if video:
-        elements = {traj.element for traj in trajectories if isinstance(traj, PrintTrajectory)}
-        handles = draw_model(elements, node_points, ground_nodes) # Allows user to adjust the camera
+        handles = draw_model(planned_elements, node_points, ground_nodes) # Allows user to adjust the camera
         wait_for_user()
         remove_all_debug()
         wait_for_user()
@@ -211,22 +211,25 @@ def display_trajectories(node_points, ground_nodes, trajectories, animate=True, 
         time_step = 0.001
 
     wait_for_user()
-    #element_bodies = dict(zip(elements, create_elements(node_points, elements)))
+    #element_bodies = dict(zip(planned_elements, create_elements(node_points, planned_elements)))
     #for body in element_bodies.values():
     #    set_color(body, (1, 0, 0, 0))
     connected_nodes = set(ground_nodes)
+    printed_elements = []
     print('Trajectories:', len(trajectories))
     for i, trajectory in enumerate(trajectories):
         #wait_for_user()
         #set_color(element_bodies[element], (1, 0, 0, 1))
         last_point = None
         handles = []
+
+        color = colors[len(printed_elements)]
         for conf in trajectory.path:
             set_joint_positions(robot, movable_joints, conf)
             if isinstance(trajectory, PrintTrajectory):
                 current_point = point_from_pose(trajectory.end_effector.get_tool_pose())
                 if last_point is not None:
-                    color = BLUE if is_ground(trajectory.element, ground_nodes) else RED
+                    # color = BLUE if is_ground(trajectory.element, ground_nodes) else RED
                     handles.append(add_line(last_point, current_point, color=color))
                 last_point = current_point
             if time_step is None:
@@ -235,12 +238,16 @@ def display_trajectories(node_points, ground_nodes, trajectories, animate=True, 
                 wait_for_duration(time_step)
 
         if isinstance(trajectory, PrintTrajectory):
+            if not trajectory.path:
+                handles.append(draw_element(node_points, trajectory.element, color=color))
+                #wait_for_user()
             is_connected = (trajectory.n1 in connected_nodes) # and (trajectory.n2 in connected_nodes)
             print('{}) {:9} | Connected: {} | Ground: {} | Length: {}'.format(
                 i, str(trajectory), is_connected, is_ground(trajectory.element, ground_nodes), len(trajectory.path)))
             if not is_connected:
                 wait_for_user()
             connected_nodes.add(trajectory.n2)
+            printed_elements.append(trajectory.element)
 
     if video_saver is not None:
         video_saver.restore()

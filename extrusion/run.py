@@ -196,7 +196,7 @@ def main():
     # djmm_test_block | Nodes: 76 | Ground: 13 | Elements: 253
     parser.add_argument('-a', '--algorithm', default='regression',
                         help='Which algorithm to use')
-    parser.add_argument('-b', '--bias', default='dijkstra', choices=HEURISTICS,
+    parser.add_argument('-b', '--bias', default='plan-stiffness', choices=HEURISTICS,
                         help='Which heuristic to use')
     parser.add_argument('-c', '--cfree', action='store_true',
                         help='Disables collisions with obstacles')

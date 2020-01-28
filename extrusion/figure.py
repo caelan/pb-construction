@@ -87,28 +87,41 @@ def bar_graph(data, attribute):
 EDGES = ['face', 'face', 'C2', 'C3']
 #COLORS = ['C0', 'C1', 'none', 'none']
 MARKERS = ['x', '+', 's', 'o']
-ALGORITHM = 'regression'
 
 def scatter_plot(data):
-    max_size = 0
-    for a_idx, heuristic in enumerate(HEURISTICS):
-        sizes = []
-        runtimes = []
-        for config, result in data:
-            if (config.algorithm == ALGORITHM) and (config.bias == heuristic):
-                # TODO: could hash instead
-                max_size = max(max_size, result['num_elements'])
-                if result['success']:
-                    sizes.append(result['num_elements'])
-                    runtimes.append(result['runtime'])
-        plt.scatter(sizes, runtimes, marker=MARKERS[a_idx], alpha=0.5,
-                    label=rename(heuristic), edgecolors=EDGES[a_idx])
+    all_sizes = sorted({result['num_elements'] for _, result in data})
+    print('Sizes:', all_sizes)
+    plt.scatter(all_sizes, np.zeros(len(all_sizes)), marker='x',
+                label='problem', edgecolors='b')
+    #algorithms = ALGORITHMS
+    algorithms = ['regression']
+    heuristics = HEURISTICS
+    #heuristics = ['plan-stiffness']
+
+    for a_idx, algorithm in enumerate(algorithms):
+        for h_idx, heuristic in enumerate(heuristics):
+            sizes = []
+            runtimes = []
+            for config, result in data:
+                if (config.algorithm == algorithm) and (config.bias == heuristic):
+                    # TODO: could hash instead
+                    if result['success']:
+                        sizes.append(result['num_elements'])
+                        runtimes.append(result['runtime'])
+            components = []
+            if len(algorithms) != 1:
+                components.append(rename(algorithm))
+            if len(heuristics) != 1:
+                components.append(rename(heuristic))
+            label = '-'.join(components)
+            plt.scatter(sizes, runtimes, #marker=MARKERS[h_idx], edgecolors=EDGES[h_idx]
+                        alpha=0.5, label=label)
 
     plt.title('Scaling: All Constraints')
     #plt.xticks(range(1, max_size+1)) #, [get_index(problem) for problem in problems])
-    plt.xlim([1, max_size])
+    plt.xlim([1, 1000]) #max(all_sizes)])
     plt.xlabel('# elements')
     plt.ylabel('runtime (sec)')
-    plt.legend()  # loc='upper left')
+    plt.legend(loc='upper left')
     #plt.savefig('test')
     plt.show()
