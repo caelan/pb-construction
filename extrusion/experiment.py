@@ -34,6 +34,7 @@ EXCLUDE = [
 ]
 
 EXPERIMENTS_DIR = 'experiments/'
+DATE_FORMAT = '%y-%m-%d_%H-%M-%S'
 
 # Failed instances
 # fertility, duck, dented_cube, compas_fea_beam_tree_M, compas_fea_beam_tree, bunny_full_tri_dense, bunny_full_quad, C_shape
@@ -80,7 +81,7 @@ def train_parallel(args):
     print('Max Cores:', available_cores)
     print('Serial:', serial)
     print('Using Cores:', num_cores)
-    date = datetime.datetime.now().strftime('%y-%m-%d_%H-%M-%S')
+    date = datetime.datetime.now().strftime(DATE_FORMAT)
     filename = '{}.pk{}'.format(date, get_python_version())
     path = os.path.join(EXPERIMENTS_DIR, filename)
     print('Data path:', path)
@@ -95,8 +96,9 @@ def train_parallel(args):
         try:
             configuration, data = generator.next(timeout=2 * args.max_time)
             results.append((configuration, data))
-            print('{}/{} completed | {:.3f} seconds'.format(
-                len(results), len(configurations), elapsed_time(start_time)))
+            print('{}/{} completed | {:.3f} seconds | {}'.format(
+                len(results), len(configurations), elapsed_time(start_time),
+                datetime.datetime.now().strftime(DATE_FORMAT)))
             print(configuration, data)
             if results:
                 write_pickle(path, results)
