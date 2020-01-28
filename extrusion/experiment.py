@@ -106,6 +106,7 @@ def train_parallel(args):
         except StopIteration:
             break
         except TimeoutError:
+            # TODO: record this as a failure?
             print('Error! Timed out after {:.3f} seconds'.format(elapsed_time(last_time)))
             break
     print('Total time:', elapsed_time(initial_time))

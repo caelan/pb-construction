@@ -63,7 +63,7 @@ def rotate_problem(problem_path, roll=np.pi):
 
 ##################################################
 
-def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=False):
+def plan_extrusion(args, viewer=False, precompute=False, verify=False, verbose=False, watch=False):
     # TODO: setCollisionFilterGroupMask
     if not verbose:
         sys.stdout = open(os.devnull, 'w')
@@ -140,8 +140,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
             trajectories = compute_motions(robot, obstacles, element_bodies, initial_conf,
                                            trajectories, collisions=not args.cfree)
 
-    safe = validate_trajectories(element_bodies, obstacles, trajectories) # Can be quite slow
-    #safe = True
+    safe = validate_trajectories(element_bodies, obstacles, trajectories) if verify else True
     data['safe'] = safe
     print('Safe:', safe)
     reset_simulation()
@@ -150,7 +149,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     #id_from_element = get_id_from_element(element_from_id)
     #planned_ids = [id_from_element[traj.element] for traj in trajectories]
     sequence = recover_directed_sequence(trajectories)
-    valid = verify_plan(problem_path, sequence) #, use_gui=not animate)
+    valid = verify_plan(problem_path, sequence) if verify else True #, use_gui=not animate)
     data.update({
         'safe': safe,
         'valid': valid,

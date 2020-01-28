@@ -78,3 +78,37 @@ def bar_graph(data, attribute):
     plt.tight_layout()
     #plt.grid()
     plt.show()
+
+##################################################
+
+#ALPHA = None
+#EDGES = ['face', 'face', 'g', 'b']
+#COLORS = ['r', 'y', 'none', 'none']
+EDGES = ['face', 'face', 'C2', 'C3']
+#COLORS = ['C0', 'C1', 'none', 'none']
+MARKERS = ['x', '+', 's', 'o']
+ALGORITHM = 'regression'
+
+def scatter_plot(data):
+    max_size = 0
+    for a_idx, heuristic in enumerate(HEURISTICS):
+        sizes = []
+        runtimes = []
+        for config, result in data:
+            if (config.algorithm == ALGORITHM) and (config.bias == heuristic):
+                # TODO: could hash instead
+                max_size = max(max_size, result['num_elements'])
+                if result['success']:
+                    sizes.append(result['num_elements'])
+                    runtimes.append(result['runtime'])
+        plt.scatter(sizes, runtimes, marker=MARKERS[a_idx], alpha=0.5,
+                    label=rename(heuristic), edgecolors=EDGES[a_idx])
+
+    plt.title('Scaling: All Constraints')
+    #plt.xticks(range(1, max_size+1)) #, [get_index(problem) for problem in problems])
+    plt.xlim([1, max_size])
+    plt.xlabel('# elements')
+    plt.ylabel('runtime (sec)')
+    plt.legend()  # loc='upper left')
+    #plt.savefig('test')
+    plt.show()
