@@ -16,9 +16,9 @@ sys.path.extend([
 ])
 
 from extrusion.figure import DEFAULT_MAX_TIME
-from extrusion.visualization import label_element, set_extrusion_camera, label_nodes
+from extrusion.visualization import label_element, set_extrusion_camera, label_nodes, display_trajectories
 from extrusion.experiment import train_parallel
-from extrusion.motion import compute_motions, display_trajectories, validate_trajectories
+from extrusion.motion import compute_motions, validate_trajectories
 from extrusion.stripstream import plan_sequence
 from extrusion.utils import load_world
 from extrusion.parsing import load_extrusion, create_elements_bodies, \

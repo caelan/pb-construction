@@ -92,7 +92,7 @@ def scatter_plot(data):
     all_sizes = sorted({result['num_elements'] for _, result in data})
     print('Sizes:', all_sizes)
     plt.scatter(all_sizes, np.zeros(len(all_sizes)), marker='x',
-                label='problem', edgecolors='b')
+                label='problem size', edgecolors='b')
     #algorithms = ALGORITHMS
     algorithms = ['regression']
     heuristics = HEURISTICS
@@ -125,3 +125,4 @@ def scatter_plot(data):
     plt.legend(loc='upper left')
     #plt.savefig('test')
     plt.show()
+    # logarithmic scale
