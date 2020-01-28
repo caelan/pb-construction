@@ -54,7 +54,7 @@ def train_parallel(args):
     from extrusion.run import plan_extrusion
     initial_time = time.time()
     problems = sorted(set(enumerate_problems()) - set(EXCLUDE))
-    #problems = ['simple_frame']
+    #problems = ['simple_frame', 'topopt-101_tiny', 'topopt-100_S1_03-14-2019_w_layer']
     #algorithms = ALGORITHMS
     algorithms = list(ALGORITHMS)
     if not args.disable:
@@ -63,7 +63,7 @@ def train_parallel(args):
                 algorithms.remove(algorithm)
     #algorithms = ['regression']
     heuristics = HEURISTICS
-    #heuristics = ['dijkstra']
+    #heuristics = ['z']
 
     print('Problems ({}): {}'.format(len(problems), problems))
     #problems = [path for path in problems if 'simple_frame' in path]
@@ -76,7 +76,7 @@ def train_parallel(args):
 
     serial = is_darwin()
     available_cores = cpu_count()
-    num_cores = max(1, min(1 if serial else available_cores - 3, len(configurations)))
+    num_cores = max(1, min(1 if serial else available_cores - 8, len(configurations)))
     print('Max Cores:', available_cores)
     print('Serial:', serial)
     print('Using Cores:', num_cores)
@@ -86,23 +86,25 @@ def train_parallel(args):
     print('Data path:', path)
 
     user_input('Begin?')
+    start_time = time.time()
     pool = Pool(processes=num_cores)  # , initializer=mute)
     generator = pool.imap_unordered(plan_extrusion, configurations, chunksize=1)
     results = []
     while True:
-        start_time = time.time()
+        last_time = time.time()
         try:
             configuration, data = generator.next(timeout=2 * args.max_time)
-            print('{}/{} | {:.3f}'.format(len(results), len(configurations), elapsed_time(start_time)))
-            print(configuration, data)
             results.append((configuration, data))
+            print('{}/{} completed | {:.3f} seconds'.format(
+                len(results), len(configurations), elapsed_time(start_time)))
+            print(configuration, data)
             if results:
                 write_pickle(path, results)
                 print('Saved', path)
         except StopIteration:
             break
         except TimeoutError:
-            print('Error! Timed out after {:.3f} seconds'.format(elapsed_time(start_time)))
+            print('Error! Timed out after {:.3f} seconds'.format(elapsed_time(last_time)))
             break
     print('Total time:', elapsed_time(initial_time))
     return results

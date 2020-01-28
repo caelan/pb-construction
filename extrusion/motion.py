@@ -45,7 +45,7 @@ def create_bounding_mesh(element_bodies, node_points, printed_elements):
         raise e
         #return None
 
-def compute_motion(robot, fixed_obstacles, element_bodies, node_points,
+def compute_motion(robot, fixed_obstacles, element_bodies,
                    printed_elements, start_conf, end_conf,
                    collisions=True, max_time=INF):
     # TODO: can also just plan to initial conf and then shortcut
@@ -126,31 +126,36 @@ def compute_motion(robot, fixed_obstacles, element_bodies, node_points,
         return None
     return MotionTrajectory(robot, joints, path)
 
-def compute_motions(robot, fixed_obstacles, element_bodies, node_points, initial_conf, print_trajectories, **kwargs):
+def compute_motions(robot, fixed_obstacles, element_bodies, initial_conf, print_trajectories, **kwargs):
     # TODO: reoptimize for the sequence that have the smallest movements given this
     # TODO: sample trajectories
     # TODO: more appropriate distance based on displacement/volume
     if print_trajectories is None:
         return None
-    if any(isinstance(traj, MotionTrajectory) for traj in print_trajectories):
-        return print_trajectories
+    #if any(isinstance(print_traj, MotionTrajectory) for print_traj in print_trajectories):
+    #    return print_trajectories
     start_time = time.time()
     printed_elements = []
     all_trajectories = []
-    start_confs = [initial_conf] + [traj.path[-1] for traj in print_trajectories]
-    end_confs = [traj.path[0] for traj in print_trajectories] + [initial_conf]
-    for i, (start_conf, end_conf) in enumerate(zip(start_confs, end_confs)):
-        motion_traj = compute_motion(robot, fixed_obstacles, element_bodies, node_points,
-                                     printed_elements, start_conf, end_conf, **kwargs)
-        if motion_traj is None:
-            return None
-        print('{}) {} | Time: {:.3f}'.format(i, motion_traj, elapsed_time(start_time)))
-        all_trajectories.append(motion_traj)
-        if i < len(print_trajectories):
-            print_traj = print_trajectories[i]
+    current_conf = initial_conf
+    for i, print_traj in enumerate(print_trajectories):
+        if not np.allclose(current_conf, print_traj.start_conf, rtol=0, atol=1e-8):
+            motion_traj = compute_motion(robot, fixed_obstacles, element_bodies,
+                                         printed_elements, current_conf, print_traj.start_conf, **kwargs)
+            if motion_traj is None:
+                return None
+            print('{}) {} | Time: {:.3f}'.format(i, motion_traj, elapsed_time(start_time)))
+            all_trajectories.append(motion_traj)
+        if isinstance(print_traj, PrintTrajectory):
             printed_elements.append(print_traj.element)
-            all_trajectories.append(print_traj)
-    return all_trajectories
+        all_trajectories.append(print_traj)
+        current_conf = print_traj.end_conf
+
+    motion_traj = compute_motion(robot, fixed_obstacles, element_bodies,
+                                 printed_elements, current_conf, initial_conf, **kwargs)
+    if motion_traj is None:
+        return None
+    return all_trajectories + [motion_traj]
 
 ##################################################
 

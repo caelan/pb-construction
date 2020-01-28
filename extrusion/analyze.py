@@ -131,10 +131,14 @@ def enumerate_experiments():
         path = os.path.join(EXPERIMENTS_DIR, filename)
         try:
             data = read_pickle(path)
-            configs, _ = zip(*data)
+            configs, results = zip(*data)
+            #print(results[0]['sequence'])
             #problems = {config.problem for config in configs}
             algorithms = {config.algorithm for config in configs}
-            print(path, sorted(algorithms))
+            heuristics = {config.bias for config in configs}
+            print()
+            print(path, len(data), sorted(algorithms), sorted(heuristics))
+            print(configs[0])
         except TypeError:
             print('Unable to load', path)
             continue
@@ -147,9 +151,12 @@ def main():
     parser.add_argument('path', help='Analyze an experiment')
     parser.add_argument('-a', '--all', action='store_true',
                         help='Enables the viewer during planning')
+    parser.add_argument('-d', '--dump', action='store_true',
+                        help='Dumps the configuration for each ')
     args = parser.parse_args()
     np.set_printoptions(precision=3)
-    #enumerate_experiments()
+    if args.dump:
+        enumerate_experiments()
     load_experiment(args.path, overall=args.all)
 
 if __name__ == '__main__':

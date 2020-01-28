@@ -79,6 +79,10 @@ def load_extrusion(extrusion_path, verbose=False):
             json_data['assembly_type'], json_data['model_type'], json_data['unit'])) # extrusion, spatial_frame, millimeter
         print('Nodes: {} | Ground: {} | Elements: {}'.format(
             len(node_points), len(ground_nodes), len(element_from_id)))
+        lower = np.min(node_points, axis=0)
+        upper = np.max(node_points, axis=0)
+        extent = upper - lower
+        print('Width: {:.3f} meters | Length: {:.3f} meters | Height: {:.3f} meters'.format(*extent))
     # TODO: named tuple
     return element_from_id, node_points, ground_nodes
 

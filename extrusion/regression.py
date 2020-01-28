@@ -5,7 +5,7 @@ import time
 from extrusion.progression import Node, sample_extrusion, retrace_trajectories, recover_sequence, \
     recover_directed_sequence
 from extrusion.heuristics import get_heuristic_fn
-from extrusion.motion import compute_motion
+from extrusion.motion import compute_motion, compute_motions
 from extrusion.parsing import load_extrusion
 from extrusion.stream import get_print_gen_fn, MAX_DIRECTIONS, MAX_ATTEMPTS
 from extrusion.utils import get_id_from_element, get_ground_elements, is_ground, \
@@ -21,11 +21,17 @@ from pybullet_tools.utils import INF, get_movable_joints, get_joint_positions, r
 
 def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=[],
                heuristic='z', max_time=INF, backtrack_limit=INF, # stiffness_attempts=1,
-               collisions=True, stiffness=True, motions=True, **kwargs):
+               collisions=True, stiffness=True, motions=True, lazy=False, **kwargs):
     # Focused has the benefit of reusing prior work
     # Greedy has the benefit of conditioning on previous choices
     # TODO: persistent search
     # TODO: max branching factor
+    # TODO: be more careful when near the end
+    # TODO: max time spent evaluating successors (less expensive when few left)
+    # TODO: tree rollouts
+    # TODO: best-first search with a minimizing path distance cost
+    # TODO: immediately select if becomes more stable
+    # TODO: focus branching factor on most stable regions
 
     start_time = time.time()
     joints = get_movable_joints(robot)
@@ -64,24 +70,15 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
             test_stiffness(extrusion_path, element_from_id, final_printed, checker=checker):
         add_successors(final_printed, final_conf)
 
-    # TODO: lazy hill climbing using the true stiffness heuristic
-    # Choose the first move that improves the score
     if has_gui():
         sequence = sorted(final_printed, key=lambda e: heuristic_fn(final_printed, e, conf=None), reverse=True)
         remove_all_debug()
         draw_ordered(sequence, node_points)
         wait_for_user()
-    # TODO: fixed branching factor
-    # TODO: be more careful when near the end
-    # TODO: max time spent evaluating successors (less expensive when few left)
-    # TODO: tree rollouts
-    # TODO: best-first search with a minimizing path distance cost
-    # TODO: immediately select if becomes more stable
-    # TODO: focus branching factor on most stable regions
 
     plan = None
     min_remaining = len(all_elements)
-    num_evaluated = max_backtrack = transit_failures = stiffness_failures = 0
+    num_evaluated = max_backtrack = extrusion_failures = transit_failures = stiffness_failures = 0
     while queue and (elapsed_time(start_time) < max_time):
         priority, printed, element, current_conf = heapq.heappop(queue)
         num_remaining = len(printed)
@@ -113,12 +110,12 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         # else:
         #     continue
 
-        # TODO: could do this eagerly to inspect the full branching factor
         command = sample_extrusion(print_gen_fn, ground_nodes, next_printed, element)
         if command is None:
+            extrusion_failures += 1
             continue
-        if motions:
-            motion_traj = compute_motion(robot, obstacles, element_bodies, node_points, printed,
+        if motions and not lazy:
+            motion_traj = compute_motion(robot, obstacles, element_bodies, printed,
                                          command.end_conf, current_conf, collisions=collisions,
                                          max_time=max_time - elapsed_time(start_time))
             if motion_traj is None:
@@ -139,18 +136,22 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         if not next_printed:
             min_remaining = 0
             plan = retrace_trajectories(visited, next_printed, reverse=True)
-            break
+            if motions and not lazy:
+                motion_traj = compute_motion(robot, obstacles, element_bodies, frozenset(),
+                                             initial_conf, plan[0].start_conf, collisions=collisions,
+                                             max_time=max_time - elapsed_time(start_time))
+                if motion_traj is None:
+                    plan = None
+                else:
+                    plan.insert(0, motion_traj)
+            if motions and lazy:
+                plan = compute_motions(robot, obstacles, element_bodies, initial_conf, plan,
+                                       collisions=collisions, max_time=max_time - elapsed_time(start_time))
+            if plan is not None:
+                break
+            else:
+                transit_failures += 1
         add_successors(next_printed, command.start_conf)
-
-    if plan is not None and motions:
-        motion_traj = compute_motion(robot, obstacles, element_bodies, node_points, frozenset(),
-                                     initial_conf, plan[0].start_conf, collisions=collisions,
-                                     max_time=max_time - elapsed_time(start_time))
-        if motion_traj is None:
-            transit_failures += 1
-            plan = None
-        else:
-            plan.insert(0, motion_traj)
 
     max_translation, max_rotation = compute_plan_deformation(extrusion_path, recover_sequence(plan))
     data = {
@@ -163,6 +164,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         'max_translation': max_translation,
         'max_rotation': max_rotation,
         'stiffness_failures': stiffness_failures,
+        'extrusion_failures': extrusion_failures,
         'transit_failures': transit_failures,
     }
     return plan, data

@@ -137,7 +137,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
                 sys.stdout.close()
             return args, data
         if args.motions:
-            trajectories = compute_motions(robot, obstacles, element_bodies, node_points, initial_conf,
+            trajectories = compute_motions(robot, obstacles, element_bodies, initial_conf,
                                            trajectories, collisions=not args.cfree)
 
     safe = validate_trajectories(element_bodies, obstacles, trajectories) # Can be quite slow

@@ -16,7 +16,7 @@ from extrusion.stream import get_print_gen_fn, STEP_SIZE, APPROACH_DISTANCE, MAX
 from extrusion.utils import check_connected, get_id_from_element, load_world, PrintTrajectory, \
     compute_printed_nodes, compute_printable_elements, RESOLUTION
 from extrusion.stiffness import TRANS_TOL, ROT_TOL, create_stiffness_checker, test_stiffness
-from extrusion.motion import compute_motion
+from extrusion.motion import compute_motion, compute_motions
 
 # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
 from pybullet_tools.utils import connect, ClientSaver, wait_for_user, INF, has_gui, remove_all_debug, \
@@ -129,7 +129,7 @@ def add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn,
 
 def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders=[],
                 heuristic='z', max_time=INF, backtrack_limit=INF,
-                stiffness=True, motions=True, collisions=True, **kwargs):
+                stiffness=True, motions=True, collisions=True, lazy=True, **kwargs):
 
     start_time = time.time()
     joints = get_movable_joints(robot)
@@ -155,7 +155,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
 
     plan = None
     min_remaining = len(all_elements)
-    num_evaluated = max_backtrack = stiffness_failures = transit_failures = 0
+    num_evaluated = max_backtrack = stiffness_failures = extrusion_failures = transit_failures = 0
     while queue and (elapsed_time(start_time) < max_time):
         num_evaluated += 1
         visits, _, printed, element, current_conf = heapq.heappop(queue)
@@ -176,10 +176,11 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
             continue
         command = sample_extrusion(print_gen_fn, ground_nodes, printed, element)
         if command is None:
+            extrusion_failures += 1
             continue
-        if motions:
+        if motions and not lazy:
             # TODO: test reachability from initial_conf
-            motion_traj = compute_motion(robot, obstacles, element_bodies, node_points, printed,
+            motion_traj = compute_motion(robot, obstacles, element_bodies, printed,
                                          current_conf, command.start_conf, collisions=collisions,
                                          max_time=max_time - elapsed_time(start_time))
             if motion_traj is None:
@@ -191,19 +192,23 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
         if all_elements <= next_printed:
             min_remaining = 0
             plan = retrace_trajectories(visited, next_printed)
-            break
+            if motions and not lazy:
+                motion_traj = compute_motion(robot, obstacles, element_bodies, frozenset(),
+                                             initial_conf, plan[0].start_conf, collisions=collisions,
+                                             max_time=max_time - elapsed_time(start_time))
+                if motion_traj is None:
+                    plan = None
+                else:
+                    plan.append(motion_traj)
+            if motions and lazy:
+                plan = compute_motions(robot, obstacles, element_bodies, initial_conf, plan,
+                                       collisions=collisions, max_time=max_time - elapsed_time(start_time))
+            if plan is not None:
+                break
+            else:
+                transit_failures += 1
         add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn, next_printed, command.end_conf,
                        partial_orders=partial_orders)
-
-    if plan is not None and motions:
-        motion_traj = compute_motion(robot, obstacles, element_bodies, node_points, all_elements,
-                                     plan[-1].end_conf, initial_conf, collisions=collisions,
-                                     max_time=max_time - elapsed_time(start_time))
-        if motion_traj is None:
-            transit_failures += 1
-            plan = None
-        else:
-            plan.append(motion_traj)
 
     max_translation, max_rotation = compute_plan_deformation(extrusion_path, recover_sequence(plan))
     data = {
@@ -216,6 +221,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
         'max_translation': max_translation,
         'max_rotation': max_rotation,
         'stiffness_failures': stiffness_failures,
+        'extrusion_failures': extrusion_failures,
         'transit_failures': transit_failures,
     }
     return plan, data
