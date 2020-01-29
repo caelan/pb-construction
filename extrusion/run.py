@@ -175,7 +175,8 @@ def plan_extrusion(args, viewer=False, precompute=False, verify=False, verbose=F
 
     if watch:
         animate = not (args.disable or args.ee_only)
-        display_trajectories(node_points, ground_nodes, trajectories, animate=animate)
+        display_trajectories(node_points, ground_nodes, trajectories, #time_step=None, video=True,
+                             animate=animate)
     if not verbose:
         sys.stdout.close()
     return args, data

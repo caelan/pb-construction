@@ -337,7 +337,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
         start_time = time.time()
         idle_time = 0
         reverse = is_reversed(node1, element)
-        if disable or len(extruded) < 0.9*len(element_bodies):
+        if disable or len(extruded) < 0.0*len(element_bodies): # For quick visualization
             path, tool_path = [], []
             traj = PrintTrajectory(end_effector, get_movable_joints(robot), path, tool_path, element, reverse)
             command = Command([traj])

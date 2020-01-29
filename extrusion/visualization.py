@@ -184,11 +184,12 @@ def display_trajectories(node_points, ground_nodes, trajectories, animate=True, 
         handles = draw_model(planned_elements, node_points, ground_nodes) # Allows user to adjust the camera
         wait_for_user()
         remove_all_debug()
-        wait_for_user()
+        wait_for_duration(0.1)
         video_saver = VideoSaver('video.mp4') # has_gui()
         time_step = 0.001
+    else:
+        wait_for_user()
 
-    wait_for_user()
     #element_bodies = dict(zip(planned_elements, create_elements(node_points, planned_elements)))
     #for body in element_bodies.values():
     #    set_color(body, (1, 0, 0, 0))

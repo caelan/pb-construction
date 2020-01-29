@@ -93,10 +93,8 @@ def scatter_plot(data):
     print('Sizes:', all_sizes)
     plt.scatter(all_sizes, np.zeros(len(all_sizes)), marker='x',
                 label='problem size', edgecolors='b')
-    #algorithms = ALGORITHMS
-    algorithms = ['regression']
-    heuristics = HEURISTICS
-    #heuristics = ['plan-stiffness']
+    algorithms, heuristics = ALGORITHMS, ['plan-stiffness']
+    #algorithms, heuristics = ['regression'], HEURISTICS
 
     for a_idx, algorithm in enumerate(algorithms):
         for h_idx, heuristic in enumerate(heuristics):
