@@ -331,7 +331,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
     except (KeyboardInterrupt, TimeoutError):
         # log data
         cur_data = {}
-        cur_data['search_method'] = 'progression'
+        cur_data['algorithm'] = 'progression'
         cur_data['heuristic'] = heuristic
         when_stop_data = snapshot_state(reason='external stop')
 
@@ -352,7 +352,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
     if RECORD_QUEUE | RECORD_CONSTRAINT_VIOLATION | RECORD_BT:
         # log data even if a plan has been found
         cur_data = {}
-        cur_data['search_method'] = 'progression'
+        cur_data['algorithm'] = 'progression'
         cur_data['heuristic'] = heuristic
         when_stop_data = snapshot_state(reason='plan found')
 
@@ -367,7 +367,6 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
     data = {
         'sequence': recover_directed_sequence(plan),
         'runtime': elapsed_time(start_time),
-        'num_elements': len(all_elements),
         'num_evaluated': num_evaluated,
         'min_remaining': min_remaining,
         'max_backtrack': max_backtrack,
@@ -382,6 +381,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
         #
         'backtrack_history': bt_data,
         'constraint_violation_history': cons_data,
+        'queue_history': queue_data,
     }
 
     if not data['sequence'] and has_gui():

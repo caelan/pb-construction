@@ -16,6 +16,7 @@ src/pb_construction/extrusion/extrusion_log
 
 extrusion/extrusion_results
 extrusion/extrusion_log
+extrusion/extrusion_videos
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

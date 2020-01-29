@@ -15,7 +15,6 @@ from extrusion.utils import check_connected, get_id_from_element, PrintTrajector
 from extrusion.stiffness import create_stiffness_checker, test_stiffness
 from extrusion.visualization import color_structure
 from extrusion.motion import compute_motion, compute_motions
-# https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
 from pybullet_tools.utils import INF, has_gui, elapsed_time, LockRenderer, randomize, \
     get_movable_joints, get_joint_positions, get_distance_fn
 

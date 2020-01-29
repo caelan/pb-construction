@@ -1,7 +1,7 @@
 import os
 import datetime
 import json
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 import heapq
 from termcolor import cprint
 from pybullet_tools.utils import INF
@@ -25,6 +25,9 @@ OVERWRITE = True # add time tag if not overwrite
 VISUALIZE_ACTION = False # visualize action step-by-step
 CHECK_BACKTRACK = False # visually check
 
+# video recording
+RECORD_VIDEO = True
+
 
 def get_global_parameters():
     return {
@@ -37,18 +40,20 @@ def get_global_parameters():
         'max_attempts': MAX_ATTEMPTS,
     }
 
+def config_specific_file_name(config, overwrite, tag=None, interfix='', suffix='.json'):
+    date_time = datetime.datetime.now().strftime('%y-%m-%d_%H-%M-%S')
+    file_name = '{}_{}_{}-{}{}{}{}'.format(config.problem, interfix,
+        config.algorithm, config.bias, 
+        '_'+tag if tag else '',
+        '_'+date_time if not overwrite else '',
+        suffix)
+    return file_name
+
 ##################################################    
 
 def export_log_data(extrusion_file_path, log_data, overwrite=True, indent=None, tag=None, \
     collisions=True, disable=False, stiffness=True, motions=True, lazy=False, **kwargs):
-
-    with open(extrusion_file_path, 'r') as f:
-        shape_data = json.loads(f.read())
-    
-    if 'model_name' in shape_data:
-        file_name = shape_data['model_name']
-    else:
-        file_name = extrusion_file_path.split('.json')[-2].split(os.sep)[-1]
+    file_name = extrusion_file_path.split('.json')[-2].split(os.sep)[-1]
 
     # result_file_dir = r'C:\Users\yijiangh\Documents\pb_ws\pychoreo\tests\test_data'
     here = os.path.abspath(os.path.dirname(__file__))
@@ -74,10 +79,13 @@ def export_log_data(extrusion_file_path, log_data, overwrite=True, indent=None, 
     if stiffness and disable:
         tag = 'stiffness_only'
 
-    file_name_tag = log_data['search_method'] + '-' + log_data['heuristic']
-    plan_path = os.path.join(result_file_dir, '{}_log_{}{}{}.json'.format(file_name, file_name_tag,
-        '_'+tag if tag else '',
-        '_'+data['write_time'] if not overwrite else ''))
+    Config = namedtuple('Config', ['problem', 'algorithm', 'bias'])
+    config = Config(file_name, data['algorithm'], data['heuristic'])
+    plan_path = os.path.join(result_file_dir, config_specific_file_name(config, 
+        overwrite=overwrite, tag=tag, interfix='log'))
+    # plan_path = os.path.join(result_file_dir, '{}_log_{}{}{}.json'.format(file_name, file_name_tag,
+    #     '_'+tag if tag else '',
+    #     '_'+data['write_time'] if not overwrite else ''))
     with open(plan_path, 'w') as f:
         json.dump(data, f, indent=indent)
     print('------')
@@ -92,11 +100,12 @@ def export_result_data(config, plan_data, overwrite=True, indent=None, tag=None)
     if not os.path.exists(result_file_dir):
         os.makedirs(result_file_dir) 
 
-    date_time = datetime.datetime.now().strftime('%y-%m-%d_%H-%M-%S')
-    plan_path = os.path.join(result_file_dir, '{}_result_{}-{}{}{}.json'.format(config.problem, \
-        config.algorithm, config.bias, 
-        '_'+tag if tag else '',
-        '_'+date_time if not overwrite else ''))
+    plan_path = os.path.join(result_file_dir, config_specific_file_name(config, 
+        overwrite=overwrite, tag=tag, interfix='result'))
+    # plan_path = os.path.join(result_file_dir, '{}_result_{}-{}{}{}.json'.format(config.problem, \
+    #     config.algorithm, config.bias, 
+    #     '_'+tag if tag else '',
+    #     '_'+date_time if not overwrite else ''))
 
     if 'safe' in plan_data:
         plan_data['safe'] = bool(plan_data['safe'])
@@ -107,3 +116,15 @@ def export_result_data(config, plan_data, overwrite=True, indent=None, tag=None)
         json.dump(plan_data, f, indent=None)
     print('------')
     cprint('Result saved to: {}'.format(plan_path), 'green')
+
+##################################################    
+
+def export_video_path(config, tag=None):
+    here = os.path.abspath(os.path.dirname(__file__))
+    result_file_dir = os.path.join(here, 'extrusion_videos')
+    if not os.path.exists(result_file_dir):
+        os.makedirs(result_file_dir) 
+
+    file_name = 'video.mp4' if config is None else config_specific_file_name(config, overwrite=OVERWRITE, interfix='video', suffix='.mp4')
+    plan_path = os.path.join(result_file_dir, file_name)
+    return plan_path

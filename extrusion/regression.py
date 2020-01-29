@@ -257,7 +257,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
     except (KeyboardInterrupt, TimeoutError):
         # log data
         cur_data = {}
-        cur_data['search_method'] = 'regression'
+        cur_data['algorithm'] = 'regression'
         cur_data['heuristic'] = heuristic
         when_stop_data = snapshot_state(reason='external stop')
 
@@ -266,7 +266,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         cur_data['constraint_violation_history'] = cons_data
         cur_data['queue_history'] = queue_data
 
-        export_log_data(extrusion_path, cur_data, overwrite=False)
+        export_log_data(extrusion_path, cur_data, overwrite=OVERWRITE)
 
         cprint('search terminated by user interruption or timeout.', 'red')
         if has_gui():
@@ -278,7 +278,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
     if RECORD_QUEUE | RECORD_CONSTRAINT_VIOLATION | RECORD_BT:
         # log data
         cur_data = {}
-        cur_data['search_method'] = 'regression'
+        cur_data['algorithm'] = 'regression'
         cur_data['heuristic'] = heuristic
         when_stop_data = snapshot_state(reason='plan found')
 
@@ -287,13 +287,12 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         cur_data['constraint_violation_history'] = cons_data
         cur_data['queue_history'] = queue_data
 
-        export_log_data(extrusion_path, cur_data, overwrite=False)
+        export_log_data(extrusion_path, cur_data, overwrite=OVERWRITE)
 
     max_translation, max_rotation, max_compliance = compute_plan_deformation(extrusion_path, recover_sequence(plan))
     data = {
         'sequence': recover_directed_sequence(plan),
         'runtime': elapsed_time(start_time),
-        'num_elements': len(all_elements),
         'num_evaluated': num_evaluated,
         'min_remaining': min_remaining,
         'max_backtrack': max_backtrack,
@@ -308,6 +307,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         #
         'backtrack_history': bt_data,
         'constraint_violation_history': cons_data,
+        'queue_history': queue_data,
     }
 
     if not data['sequence'] and has_gui():

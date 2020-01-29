@@ -137,6 +137,7 @@ def compute_motions(robot, fixed_obstacles, element_bodies, initial_conf, print_
             motion_traj = compute_motion(robot, fixed_obstacles, element_bodies,
                                          printed_elements, current_conf, print_traj.start_conf, **kwargs)
             if motion_traj is None:
+                cprint('Lazy transition #{}: Failed to find a transition motion plan!'.format(i), 'red')
                 return None
             print('{}) {} | Time: {:.3f}'.format(i, motion_traj, elapsed_time(start_time)))
             all_trajectories.append(motion_traj)
@@ -154,6 +155,9 @@ def compute_motions(robot, fixed_obstacles, element_bodies, initial_conf, print_
 ##################################################
 
 def validate_trajectories(element_bodies, fixed_obstacles, trajectories):
+    """check if the trajectories are indeed collision-free
+
+    """
     if trajectories is None:
         return False
     # TODO: combine all validation procedures

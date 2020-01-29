@@ -33,7 +33,8 @@ from extrusion.heuristics import HEURISTICS
 from extrusion.validator import verify_plan
 from extrusion.lookahead import lookahead
 from extrusion.visualization import visualize_stiffness
-from extrusion.logger import OVERWRITE, MAX_BACKTACK, get_global_parameters, export_result_data
+from extrusion.logger import OVERWRITE, MAX_BACKTACK, RECORD_VIDEO
+from extrusion.logger import get_global_parameters, export_result_data
 
 from pybullet_tools.utils import connect, disconnect, get_movable_joints, get_joint_positions, LockRenderer, \
     unit_pose, reset_simulation, draw_pose, apply_alpha, BLACK, Pose, Euler, set_numpy_seed, set_random_seed, set_joint_positions, \
@@ -186,8 +187,8 @@ def plan_extrusion(args, viewer=False, precompute=False, verify=False, verbose=F
 
     if watch:
         animate = not (args.disable or args.ee_only)
-        display_trajectories(node_points, ground_nodes, trajectories, #time_step=None, video=True,
-                             animate=animate)
+        display_trajectories(node_points, ground_nodes, trajectories, video=RECORD_VIDEO, # time_step=None, 
+                             animate=animate, config=args)
     if not verbose:
         sys.stdout.close()
     return args, data
@@ -228,6 +229,8 @@ def main():
                         help='The max time')
     parser.add_argument('-v', '--viewer', action='store_true',
                         help='Enables the viewer during planning')
+    parser.add_argument('-w', '--watch', action='store_true',
+                        help='Watch the planned result.')
     args = parser.parse_args()
     if args.disable:
         args.cfree = True
@@ -244,9 +247,9 @@ def main():
     if args.problem == 'all':
         for problem in enumerate_problems():
             args.problem = problem
-            plan_extrusion(args, verbose=True, watch=False)
+            plan_extrusion(args, verbose=True, watch=args.watch)
     else:
-        plan_extrusion(args, viewer=args.viewer, verbose=True, watch=False)
+        plan_extrusion(args, viewer=args.viewer, verbose=True, watch=args.watch)
 
     # TODO: check that both the start and end satisfy
     # python -m extrusion.run -n 10 2>&1 | tee log.txt

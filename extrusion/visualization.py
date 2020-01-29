@@ -1,11 +1,13 @@
 import colorsys
-
+from termcolor import cprint
 import numpy as np
 
 from extrusion.equilibrium import compute_node_reactions
 from extrusion.parsing import load_extrusion
 from extrusion.utils import get_node_neighbors, is_ground, load_world, PrintTrajectory
 from extrusion.stiffness import force_from_reaction
+from extrusion.logger import export_video_path
+
 from pybullet_tools.utils import add_text, draw_pose, get_pose, wait_for_user, add_line, remove_debug, has_gui, \
     draw_point, LockRenderer, set_camera_pose, set_color, apply_alpha, RED, BLUE, GREEN, get_visual_data, connect, \
     get_movable_joints, remove_all_debug, VideoSaver, set_joint_positions, point_from_pose, wait_for_duration, \
@@ -179,7 +181,7 @@ def set_extrusion_camera(node_points):
 
 ##################################################
 
-def display_trajectories(node_points, ground_nodes, trajectories, animate=True, time_step=0.02, video=False):
+def display_trajectories(node_points, ground_nodes, trajectories, animate=True, time_step=0.02, video=False, plan_data=None, config=None):
     if trajectories is None:
         return
     connect(use_gui=True)
@@ -193,15 +195,18 @@ def display_trajectories(node_points, ground_nodes, trajectories, animate=True, 
     #     wait_for_user()
     #     disconnect()
     #     return
-    print(len(planned_elements), len(colors))
+    # print(len(planned_elements), len(colors))
 
     video_saver = None
     if video:
         handles = draw_model(planned_elements, node_points, ground_nodes) # Allows user to adjust the camera
+        print('------')
+        cprint('Ready to record a video: please adjust camera now.', 'yellow')
         wait_for_user()
         remove_all_debug()
         wait_for_duration(0.1)
-        video_saver = VideoSaver('video.mp4') # has_gui()
+        file_path = 'video.mp4' if config is None else export_video_path(config)
+        video_saver = VideoSaver(file_path) # has_gui()
         time_step = 0.001
     else:
         wait_for_user()
@@ -247,6 +252,8 @@ def display_trajectories(node_points, ground_nodes, trajectories, animate=True, 
 
     if video_saver is not None:
         video_saver.restore()
+        cprint('Video file saved to {}'.format(file_path), 'green')
+
     wait_for_user()
     reset_simulation()
     disconnect()
