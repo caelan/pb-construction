@@ -57,7 +57,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
     def add_successors(printed, conf):
         ground_remaining = printed <= ground_elements
         num_remaining = len(printed) - 1
-        assert 0 <= num_remaining
+        #assert 0 <= num_remaining
         for element in randomize(printed):
             if outgoing_from_element[element] & printed:
                 continue
@@ -142,15 +142,15 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
                                              max_time=max_time - elapsed_time(start_time))
                 if motion_traj is None:
                     plan = None
+                    transit_failures += 1
                 else:
                     plan.insert(0, motion_traj)
             if motions and lazy:
                 plan = compute_motions(robot, obstacles, element_bodies, initial_conf, plan,
                                        collisions=collisions, max_time=max_time - elapsed_time(start_time))
-            if plan is not None:
-                break
-            else:
-                transit_failures += 1
+            break
+            # if plan is not None:
+            #     break
         add_successors(next_printed, command.start_conf)
 
     max_translation, max_rotation = compute_plan_deformation(extrusion_path, recover_sequence(plan))

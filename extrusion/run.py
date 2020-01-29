@@ -82,7 +82,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verify=False, verbose=F
     # plan = plan_sequence_test(node_points, elements, ground_nodes)
 
     partial_orders = [] # TODO: could treat ground as partial orders
-    backtrack_limit = INF # 0 | INF
+    backtrack_limit = 0 # 0 | INF
 
     connect(use_gui=viewer) # TODO: avoid reconnecting
     with LockRenderer(True):

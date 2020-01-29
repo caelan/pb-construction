@@ -257,15 +257,15 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
                                              max_time=max_time - elapsed_time(start_time))
                 if motion_traj is None:
                     plan = None
+                    transit_failures += 1
                 else:
                     plan.append(motion_traj)
             if motions and lazy:
                 plan = compute_motions(robot, obstacles, element_bodies, initial_conf, plan,
                                        collisions=collisions, max_time=max_time - elapsed_time(start_time))
-            if plan is not None:
-                break
-            else:
-                transit_failures += 1
+            break
+            # if plan is not None:
+            #     break
         add_successors(queue, all_elements, node_points, ground_nodes, priority_fn, next_printed, end_conf,
                        partial_orders=partial_orders)
         if revisit:
