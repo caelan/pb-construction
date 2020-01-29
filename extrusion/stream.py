@@ -13,7 +13,6 @@ from extrusion.utils import TOOL_LINK, get_disabled_collisions, get_node_neighbo
     PrintTrajectory, retrace_supporters, get_supported_orders, prune_dominated, Command, MotionTrajectory, RESOLUTION, \
     JOINT_WEIGHTS, EE_LINK, EndEffector, is_ground, is_reversed
 #from extrusion.run import USE_IKFAST, get_supported_orders, retrace_supporters, SELF_COLLISIONS, USE_CONMECH
-from pddlstream.language.stream import WildOutput
 from pddlstream.utils import neighbors_from_orders, irange
 
 try:
@@ -338,7 +337,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
         start_time = time.time()
         idle_time = 0
         reverse = is_reversed(node1, element)
-        if disable:
+        if disable or len(extruded) < 0.0*len(element_bodies): # For quick visualization
             path, tool_path = [], []
             traj = PrintTrajectory(end_effector, get_movable_joints(robot), path, tool_path, element, reverse)
             command = Command([traj])
@@ -429,26 +428,3 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                 return
                 #yield None
     return gen_fn
-
-##################################################
-
-def get_wild_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
-                          collisions=True, **kwargs):
-    gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes, **kwargs)
-    def wild_gen_fn(node1, element):
-        for t, in gen_fn(node1, element):
-            outputs = [(t,)]
-            facts = [('Collision', t, e2) for e2 in t.colliding] if collisions else []
-            yield WildOutput(outputs, facts)
-    return wild_gen_fn
-
-
-def test_stiffness(fluents=[]):
-    assert all(fact[0] == 'printed' for fact in fluents)
-    if not USE_CONMECH:
-       return True
-    # https://github.com/yijiangh/conmech
-    # TODO: to use the non-skeleton focused algorithm, need to remove the negative axiom upon success
-    elements = {fact[1] for fact in fluents}
-    #print(elements)
-    return True

@@ -215,9 +215,8 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
         condition = next_printed
 
         if not sample_remaining(condition, next_printed, ee_sample_traj, num=num_ee):
-            # Soft dead-end
             num_deadends += 1
-            #wait_for_user()
+            print('An end-effector successor could not be sampled!')
             continue
 
         print('Sampling transition')
@@ -225,14 +224,12 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
         command = next(iter(full_sample_traj(printed, printed, element, connected=True)), None)
         if command is None:
             # Soft dead-end
-            #num_deadends += 1
             print('The transition could not be sampled!')
             extrusion_failures += 1
             continue
 
         print('Sampling successors')
         if not sample_remaining(condition, next_printed, full_sample_traj, num=num_arm):
-            # Soft dead-end
             num_deadends += 1
             print('A successor could not be sampled!')
             continue
@@ -287,5 +284,6 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
         'stiffness_failures': stiffness_failures,
         'extrusion_failures': extrusion_failures,
         'transit_failures': transit_failures,
+        'num_deadends': num_deadends,
     }
     return plan, data

@@ -2,11 +2,11 @@ import cProfile
 import pstats
 
 from extrusion.utils import element_supports, is_start_node
-from extrusion.stream import get_wild_print_gen_fn, test_stiffness
+from extrusion.stream import get_print_gen_fn, USE_CONMECH
 from pddlstream.algorithms.focused import solve_focused
 from pddlstream.language.constants import And, PDDLProblem, print_solution
 from pddlstream.language.generator import from_test
-from pddlstream.language.stream import StreamInfo, PartialInputs
+from pddlstream.language.stream import StreamInfo, PartialInputs, WildOutput
 from pddlstream.utils import read, get_file_path
 
 
@@ -132,3 +132,26 @@ def plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
     trajectories = [t for _, (n1, e, c) in reversed(plan)
             for t in c.trajectories]
     return trajectories, data
+
+##################################################
+
+def get_wild_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
+                          collisions=True, **kwargs):
+    gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes, **kwargs)
+    def wild_gen_fn(node1, element):
+        for t, in gen_fn(node1, element):
+            outputs = [(t,)]
+            facts = [('Collision', t, e2) for e2 in t.colliding] if collisions else []
+            yield WildOutput(outputs, facts)
+    return wild_gen_fn
+
+
+def test_stiffness(fluents=[]):
+    assert all(fact[0] == 'printed' for fact in fluents)
+    if not USE_CONMECH:
+       return True
+    # https://github.com/yijiangh/conmech
+    # TODO: to use the non-skeleton focused algorithm, need to remove the negative axiom upon success
+    elements = {fact[1] for fact in fluents}
+    #print(elements)
+    return True
