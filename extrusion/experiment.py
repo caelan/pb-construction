@@ -58,7 +58,7 @@ def train_parallel(args):
     #problems = ['simple_frame', 'topopt-101_tiny', 'topopt-100_S1_03-14-2019_w_layer']
     #algorithms = ALGORITHMS
     algorithms = list(ALGORITHMS)
-    if not args.disable:
+    if args.disable:
         for algorithm in LOOKAHEAD_ALGORITHMS:
             if algorithm in algorithms:
                 algorithms.remove(algorithm)
