@@ -40,7 +40,7 @@ def get_global_parameters():
 ##################################################    
 
 def export_log_data(extrusion_file_path, log_data, overwrite=True, indent=None, tag=None, \
-    disable=False, stiffness=True, motions=True, **kwargs):
+    collisions=True, disable=False, stiffness=True, motions=True, lazy=False, **kwargs):
 
     with open(extrusion_file_path, 'r') as f:
         shape_data = json.loads(f.read())
@@ -58,10 +58,17 @@ def export_log_data(extrusion_file_path, log_data, overwrite=True, indent=None, 
         os.makedirs(result_file_dir) 
     
     data = OrderedDict()
-    data['file_name'] = file_name
+    data['problem'] = file_name
     date = datetime.datetime.now().strftime('%y-%m-%d_%H-%M-%S')
     data['write_time'] = date
     data['parameters'] = get_global_parameters()
+
+    # configs
+    data['plan_extrusions'] = not disable
+    data['use_collisions'] = collisions
+    data['use_stiffness'] = stiffness
+    data['lazy'] = lazy
+
     data.update(log_data)
 
     if stiffness and disable:
@@ -73,7 +80,7 @@ def export_log_data(extrusion_file_path, log_data, overwrite=True, indent=None, 
         '_'+data['write_time'] if not overwrite else ''))
     with open(plan_path, 'w') as f:
         json.dump(data, f, indent=indent)
-
+    print('------')
     cprint('Log file saved to: {}'.format(plan_path), 'green')
 
 ##################################################    

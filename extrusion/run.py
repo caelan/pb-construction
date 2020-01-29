@@ -145,7 +145,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
                 sys.stdout.close()
             return args, data
         if args.motions:
-            trajectories = compute_motions(robot, obstacles, element_bodies, node_points, initial_conf,
+            trajectories = compute_motions(robot, obstacles, element_bodies, initial_conf,
                                            trajectories, collisions=not args.cfree)
 
     safe = validate_trajectories(element_bodies, obstacles, trajectories) # Can be quite slow
@@ -168,11 +168,14 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     plan_data = OrderedDict({
         'problem':  args.problem,
         'write_time' : datetime.datetime.now().strftime('%y-%m-%d_%H-%M-%S'),
+        # alg config
         'algorithm': args.algorithm,
         'heuristic': args.bias,
+        # options
         'plan_extrusions': not args.disable,
         'use_collisions': not args.cfree,
         'use_stiffness': args.stiffness,
+        # results
         'plan': sequence,
         'safe': bool(safe),
     })

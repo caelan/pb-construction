@@ -5,7 +5,7 @@ from pybullet_tools.utils import connect, ClientSaver, wait_for_user, INF, has_g
     get_movable_joints, get_joint_positions
 from extrusion.logger import export_log_data, RECORD_BT, RECORD_CONSTRAINT_VIOLATION, RECORD_QUEUE, OVERWRITE, \
     VISUALIZE_ACTION, CHECK_BACKTRACK, QUEUE_COUNT
-from extrusion.motion import compute_motion
+from extrusion.motion import compute_motion, compute_motions
 from extrusion.stiffness import TRANS_TOL, ROT_TOL, create_stiffness_checker, test_stiffness
 from extrusion.utils import check_connected, get_id_from_element, load_world, PrintTrajectory, \
     compute_printed_nodes, compute_printable_elements, RESOLUTION
@@ -136,7 +136,7 @@ def add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn,
 
 def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders=[],
                 heuristic='z', max_time=INF, backtrack_limit=INF,
-                stiffness=True, motions=True, collisions=True, **kwargs):
+                stiffness=True, motions=True, collisions=True, lazy=True, **kwargs):
 
     start_time = time.time()
     joints = get_movable_joints(robot)
@@ -171,20 +171,24 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
     cons_data = []  # constraint violation history
     queue_data = []  # queue candidates history
 
+    #############################################
     def snapshot_state(data_list=None, reason='', queue_log_cnt=0):
         """a lot of global parameters are used
 
         """
         cur_data = {}
-        cur_data['iter'] = num_evaluated - 1
+        cur_data['num_evaluated'] = num_evaluated # iter
         cur_data['reason'] = reason
         cur_data['elapsed_time'] = elapsed_time(start_time)
-        cur_data['min_remain'] = min_remaining
+        cur_data['min_remaining'] = min_remaining
         cur_data['max_backtrack'] = max_backtrack
+
+        cur_data['extrusion_failures'] = extrusion_failures
+        cur_data['stiffness_failures'] = stiffness_failures
+        cur_data['transit_failures'] = transit_failures
+
         cur_data['backtrack'] = backtrack
         cur_data['total_q_len'] = len(queue)
-        cur_data['num_stiffness_violation'] = stiffness_failures
-        cur_data['num_transit_violation'] = transit_failures
 
         cur_data['chosen_element'] = element
         record_plan = retrace_trajectories(visited, printed)
@@ -228,6 +232,8 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
             wait_for_user()
             locker = LockRenderer()
         return cur_data
+    # end snapshot
+    #############################################
 
     try:
         while queue:
@@ -283,9 +289,10 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
             command = sample_extrusion(
                 print_gen_fn, ground_nodes, printed, element)
             if command is None:
+                extrusion_failures += 1
                 continue
             # ! transition motion constraint
-            if motions:
+            if motions and not lazy:
                 motion_traj = compute_motion(robot, obstacles, element_bodies, node_points, printed,
                                              command.end_conf, current_conf, collisions=collisions,
                                              max_time=max_time - elapsed_time(start_time))
@@ -301,7 +308,24 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
             if all_elements <= next_printed:
                 min_remaining = 0
                 plan = retrace_trajectories(visited, next_printed)
-                break
+                if motions and not lazy:
+                    # transit back to the initial conf
+                    motion_traj = compute_motion(robot, obstacles, element_bodies, frozenset(),
+                                                 initial_conf, plan[0].start_conf, collisions=collisions,
+                                                 max_time=max_time - elapsed_time(start_time))
+                    if motion_traj is None:
+                        plan = None
+                    else:
+                        plan.append(motion_traj)
+                if motions and lazy:
+                    # laziness: try to find all transition plan after a plan has been found
+                    plan = compute_motions(robot, obstacles, element_bodies, initial_conf, plan,
+                                           collisions=collisions, max_time=max_time - elapsed_time(start_time))
+                if plan is not None:
+                    break
+                else:
+                    # backtrack
+                    transit_failures += 1
             add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn, next_printed, command.end_conf, partial_orders=partial_orders, visualize=VISUALIZE_ACTION)
 
     except (KeyboardInterrupt, TimeoutError):
@@ -325,18 +349,8 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
             wait_for_user()
         assert False, 'search terminated.'
 
-    if plan is not None and motions:
-        motion_traj = compute_motion(robot, obstacles, element_bodies, node_points, all_elements,
-                                     plan[-1].end_conf, initial_conf, collisions=collisions,
-                                     max_time=max_time - elapsed_time(start_time))
-        if motion_traj is None:
-            transit_failures += 1
-            plan = None
-        else:
-            plan.append(motion_traj)
-
     if RECORD_QUEUE | RECORD_CONSTRAINT_VIOLATION | RECORD_BT:
-        # log data
+        # log data even if a plan has been found
         cur_data = {}
         cur_data['search_method'] = 'progression'
         cur_data['heuristic'] = heuristic
@@ -357,11 +371,15 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
         'num_evaluated': num_evaluated,
         'min_remaining': min_remaining,
         'max_backtrack': max_backtrack,
+        #
         'max_translation': max_translation,
         'max_rotation': max_rotation,
         'max_compliance': max_compliance,
-        'transit_failures': transit_failures,
+        #
         'stiffness_failures': stiffness_failures,
+        'extrusion_failures': extrusion_failures,
+        'transit_failures': transit_failures,
+        #
         'backtrack_history': bt_data,
         'constraint_violation_history': cons_data,
     }

@@ -14,7 +14,7 @@ from extrusion.utils import check_connected, get_id_from_element, PrintTrajector
     compute_printable_elements, roundrobin
 from extrusion.stiffness import create_stiffness_checker, test_stiffness
 from extrusion.visualization import color_structure
-from extrusion.motion import compute_motion
+from extrusion.motion import compute_motion, compute_motions
 # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
 from pybullet_tools.utils import INF, has_gui, elapsed_time, LockRenderer, randomize, \
     get_movable_joints, get_joint_positions, get_distance_fn
@@ -87,7 +87,7 @@ def topological_sort(robot, obstacles, element_bodies, extrusion_path):
 
 def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[], num_ee=0, num_arm=1,
               plan_all=False, use_conflicts=False, use_replan=False, heuristic='z', max_time=INF, backtrack_limit=INF,
-              revisit=False, ee_only=False, collisions=True, stiffness=True, motions=True, **kwargs):
+              revisit=False, ee_only=False, collisions=True, stiffness=True, motions=True, lazy=True, **kwargs):
     if not use_conflicts:
         num_ee, num_arm = min(num_ee, 1),  min(num_arm, 1)
     if ee_only:
@@ -181,7 +181,7 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
 
     plan = None
     min_remaining = INF
-    num_evaluated = worst_backtrack = num_deadends = stiffness_failures = transit_failures = 0
+    num_evaluated = worst_backtrack = num_deadends = stiffness_failures = extrusion_failures= transit_failures = 0
     while queue and (elapsed_time(start_time) < max_time):
         num_evaluated += 1
         visits, priority, printed, element, current_conf = heapq.heappop(queue)
@@ -227,6 +227,8 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
         if command is None:
             # Soft dead-end
             #num_deadends += 1
+            print('The transition could not be sampled!')
+            extrusion_failures += 1
             continue
 
         if not sample_remaining(condition, next_printed, full_sample_traj, num=num_arm):
@@ -238,7 +240,7 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
         if not ee_only:
             start_conf, end_conf = command.start_conf, command.end_conf
         if (start_conf is not None) and motions:
-            motion_traj = compute_motion(robot, obstacles, element_bodies, node_points,
+            motion_traj = compute_motion(robot, obstacles, element_bodies,
                                          printed, current_conf, start_conf, collisions=collisions,
                                          max_time=max_time - elapsed_time(start_time))
             if motion_traj is None:
@@ -251,21 +253,25 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
             # TODO: anytime mode
             min_remaining = 0
             plan = retrace_trajectories(visited, next_printed)
-            break
+            if motions and not lazy:
+                motion_traj = compute_motion(robot, obstacles, element_bodies, frozenset(),
+                                             initial_conf, plan[0].start_conf, collisions=collisions,
+                                             max_time=max_time - elapsed_time(start_time))
+                if motion_traj is None:
+                    plan = None
+                else:
+                    plan.append(motion_traj)
+            if motions and lazy:
+                plan = compute_motions(robot, obstacles, element_bodies, initial_conf, plan,
+                                       collisions=collisions, max_time=max_time - elapsed_time(start_time))
+            if plan is not None:
+                break
+            else:
+                transit_failures += 1
         add_successors(queue, all_elements, node_points, ground_nodes, priority_fn, next_printed, end_conf,
                        partial_orders=partial_orders)
         if revisit:
             heapq.heappush(queue, (visits + 1, priority, printed, element, current_conf))
-
-    if plan is not None and motions:
-        motion_traj = compute_motion(robot, obstacles, element_bodies, node_points, all_elements,
-                                     plan[-1].end_conf, initial_conf, collisions=collisions,
-                                     max_time=max_time - elapsed_time(start_time))
-        if motion_traj is None:
-            transit_failures += 1
-            plan = None
-        else:
-            plan.append(motion_traj)
 
     max_translation, max_rotation = compute_plan_deformation(extrusion_path, recover_sequence(plan))
     data = {
@@ -278,6 +284,7 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
         'max_translation': max_translation,
         'max_rotation': max_rotation,
         'stiffness_failures': stiffness_failures,
+        'extrusion_failures': extrusion_failures,
         'transit_failures': transit_failures,
     }
     return plan, data
