@@ -37,17 +37,6 @@ Node = namedtuple('Node', ['action', 'state'])
 
 ##################################################
 
-def get_global_parameters():
-    return {
-        'translation_tolerance': TRANS_TOL,
-        'rotation_tolerance': ROT_TOL,
-        'joint_resolution': RESOLUTION,
-        'step_size': STEP_SIZE,
-        'approach_distance': APPROACH_DISTANCE,
-        'max_directions': MAX_DIRECTIONS,
-        'max_attempts': MAX_ATTEMPTS,
-    }
-
 
 def retrace_trajectories(visited, current_state, horizon=INF, reverse=False):
     command, prev_state = visited[current_state]
@@ -169,8 +158,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
     visited = {initial_printed: Node(None, None)}
     if check_connected(ground_nodes, all_elements) and \
             test_stiffness(extrusion_path, element_from_id, all_elements):
-        add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn, initial_printed, initial_conf,
-                       partial_orders=partial_orders)
+        add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn, initial_printed, initial_conf, partial_orders=partial_orders)
     else:
         cprint('Grounded nodes are not connected to any of the elements or the whole structure is not stiff!', 'red')
 
@@ -196,6 +184,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
         cur_data['backtrack'] = backtrack
         cur_data['total_q_len'] = len(queue)
         cur_data['num_stiffness_violation'] = stiffness_failures
+        cur_data['num_transit_violation'] = transit_failures
 
         cur_data['chosen_element'] = element
         record_plan = retrace_trajectories(visited, printed)
@@ -229,7 +218,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
         if data_list is not None:
             data_list.append(cur_data)
 
-        if check_backtrack:
+        if CHECK_BACKTRACK:
             draw_action(node_points, next_printed, element)
             # color_structure(element_bodies, next_printed, element)
 
@@ -270,7 +259,8 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
             if backtrack_limit < backtrack:
                 cprint('backtrack {} exceeds limit {}, exit.'.format(
                     backtrack, backtrack_limit), 'red')
-                break  # continue
+                raise KeyboardInterrupt
+                # break  # continue
 
             if RECORD_QUEUE:
                 snapshot_state(
@@ -312,8 +302,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
                 min_remaining = 0
                 plan = retrace_trajectories(visited, next_printed)
                 break
-            add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn, next_printed, command.end_conf,
-                           partial_orders=partial_orders, visualize=VISUALIZE_ACTION)
+            add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn, next_printed, command.end_conf, partial_orders=partial_orders, visualize=VISUALIZE_ACTION)
 
     except (KeyboardInterrupt, TimeoutError):
         # log data
@@ -327,7 +316,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
         cur_data['constraint_violation_history'] = cons_data
         cur_data['queue_history'] = queue_data
 
-        export_log_data(extrusion_path, cur_data, overwrite=OVERWRITE)
+        export_log_data(extrusion_path, cur_data, overwrite=OVERWRITE, **kwargs)
 
         cprint('search terminated by user interruption or timeout.', 'red')
         if has_gui():
@@ -346,19 +335,19 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
         else:
             plan.append(motion_traj)
 
-    if RECORD_QUEUE:
+    if RECORD_QUEUE | RECORD_CONSTRAINT_VIOLATION | RECORD_BT:
         # log data
         cur_data = {}
         cur_data['search_method'] = 'progression'
         cur_data['heuristic'] = heuristic
-        when_stop_data = snapshot_state(reason='external stop')
+        when_stop_data = snapshot_state(reason='plan found')
 
         cur_data['when_stopped'] = when_stop_data
         cur_data['backtrack_history'] = bt_data
         cur_data['constraint_violation_history'] = cons_data
         cur_data['queue_history'] = queue_data
 
-        export_log_data(extrusion_path, cur_data, overwrite=overwrite)
+        export_log_data(extrusion_path, cur_data, overwrite=OVERWRITE)
 
     max_translation, max_rotation, max_compliance = compute_plan_deformation(extrusion_path, recover_sequence(plan))
     data = {
@@ -371,7 +360,6 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
         'max_translation': max_translation,
         'max_rotation': max_rotation,
         'max_compliance': max_compliance,
-        'stiffness_failures': stiffness_failures,
         'transit_failures': transit_failures,
         'stiffness_failures': stiffness_failures,
         'backtrack_history': bt_data,

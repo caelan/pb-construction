@@ -27,12 +27,13 @@ from extrusion.utils import load_world
 from extrusion.parsing import load_extrusion, create_elements_bodies, \
     enumerate_problems, get_extrusion_path, affine_extrusion
 from extrusion.stream import get_print_gen_fn
-from extrusion.progression import progression, recover_directed_sequence, get_global_parameters
+from extrusion.progression import progression, recover_directed_sequence
 from extrusion.regression import regression
 from extrusion.heuristics import HEURISTICS
 from extrusion.validator import verify_plan
 from extrusion.lookahead import lookahead
 from extrusion.visualization import visualize_stiffness
+from extrusion.logger import OVERWRITE, MAX_BACKTACK, get_global_parameters, export_result_data
 
 from pybullet_tools.utils import connect, disconnect, get_movable_joints, get_joint_positions, LockRenderer, \
     unit_pose, reset_simulation, draw_pose, apply_alpha, BLACK, Pose, Euler, set_numpy_seed, set_random_seed, set_joint_positions, \
@@ -86,7 +87,6 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     # plan = plan_sequence_test(node_points, elements, ground_nodes)
 
     partial_orders = [] # TODO: could treat ground as partial orders
-    backtrack_limit = INF # 0 | INF
 
     connect(use_gui=viewer) # TODO: avoid reconnecting
     with LockRenderer(True):
@@ -110,7 +110,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     with LockRenderer(True):
         pr = cProfile.Profile()
         pr.enable()
-        backtrack_limit = INF
+        backtrack_limit = MAX_BACKTACK # | INF
         if args.algorithm == 'stripstream':
             sampled_trajectories = []
             if precompute:
@@ -167,7 +167,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
 
     plan_data = OrderedDict({
         'problem':  args.problem,
-        'write_time' : str(datetime.datetime.now()),
+        'write_time' : datetime.datetime.now().strftime('%y-%m-%d_%H-%M-%S'),
         'algorithm': args.algorithm,
         'heuristic': args.bias,
         'plan_extrusions': not args.disable,
@@ -180,16 +180,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     plan_data.update(data)
     del plan_data['sequence']
 
-    # result_file_dir = "C:/Users/yijiangh/Documents/pb_ws/pychoreo/tests/test_data"
-    here = os.path.abspath(os.path.dirname(__file__))
-    result_file_dir = os.path.join(here, 'extrusion_results')
-    if not os.path.exists(result_file_dir):
-        os.makedirs(result_file_dir) 
-
-    plan_path = os.path.join(result_file_dir, '{}_result_{}-{}.json'.format(args.problem, args.algorithm, args.bias))
-    with open(plan_path, 'w') as f:
-        json.dump(plan_data, f, indent=None)
-    cprint('Result saved to: {}'.format(plan_path), 'green')
+    export_result_data(args, plan_data, overwrite=OVERWRITE)
 
     if watch:
         animate = not (args.disable or args.ee_only)
@@ -222,7 +213,7 @@ def main():
                         help='Disables trajectory planning')
     parser.add_argument('-e', '--ee_only', action='store_true',
                         help='Disables arm planning')
-    parser.add_argument('-m', '--motions', action='store_true', # | store_false
+    parser.add_argument('-m', '--motions', action='store_false',
                         help='Plans motions between each extrusion')
     parser.add_argument('-n', '--num', default=0, type=int,
                         help='Number of experiment trials')

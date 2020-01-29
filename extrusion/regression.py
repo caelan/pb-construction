@@ -9,8 +9,6 @@ os.environ['FOR_DISABLE_CONSOLE_CTRL_HANDLER'] = 'T'
 
 from extrusion.progression import Node, sample_extrusion, retrace_trajectories, recover_sequence, \
     recover_directed_sequence, draw_action
-from extrusion.progression import Node, sample_extrusion, retrace_trajectories, recover_sequence, \
-    recover_directed_sequence
 from extrusion.heuristics import get_heuristic_fn, score_stiffness
 from extrusion.motion import compute_motion
 from extrusion.parsing import load_extrusion
@@ -182,7 +180,8 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
 
             if backtrack_limit < backtrack:
                 cprint('backtrack {} exceeds limit {}, exit.'.format(backtrack, backtrack_limit), 'red')
-                break # continue
+                raise KeyboardInterrupt
+                # break # continue
 
             if RECORD_QUEUE:
                 snapshot_state(
@@ -264,12 +263,12 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         else:
             plan.insert(0, motion_traj)
 
-    if RECORD_QUEUE:
+    if RECORD_QUEUE | RECORD_CONSTRAINT_VIOLATION | RECORD_BT:
         # log data
         cur_data = {}
-        cur_data['search_method'] = 'progression'
+        cur_data['search_method'] = 'regression'
         cur_data['heuristic'] = heuristic
-        when_stop_data = snapshot_state(reason='external stop')
+        when_stop_data = snapshot_state(reason='plan found')
 
         cur_data['when_stopped'] = when_stop_data
         cur_data['backtrack_history'] = bt_data

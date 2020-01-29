@@ -15,6 +15,8 @@ from collections import OrderedDict
 from extrusion.experiment import EXCLUDE, Configuration, EXPERIMENTS_DIR
 from extrusion.parsing import get_extrusion_path, load_extrusion
 from extrusion.figure import bar_graph, SUCCESS, RUNTIME, SCORES
+from extrusion.logger import export_result_data
+
 from pddlstream.utils import INF, str_from_object, get_python_version
 from pybullet_tools.utils import read_pickle, implies
 
@@ -57,7 +59,7 @@ def is_number(value):
 # 3) Average over problems all solved
 # 4) Average relative for each problem solved
 
-def load_experiment(filename, overall=False, failed_runtimes=True, write_report=False):
+def load_experiment(filename, overall=False, failed_runtimes=True, write_result=False):
     # TODO: maybe just pass the random seed as a separate arg
     # TODO: aggregate over all problems and score using IPC rules
     # https://ipc2018-classical.bitbucket.io/
@@ -81,7 +83,10 @@ def load_experiment(filename, overall=False, failed_runtimes=True, write_report=
         if not result[SUCCESS] and not failed_runtimes:
             result.pop(RUNTIME, None)
         data_from_problem.setdefault(problem, []).append((config, result))
+        if write_result:
+            export_result_data(config, result, overwrite=True, tag='server')
 
+    # column names for panda to generate excel sheets
     column_names = ('config_id','shape','info','algorithm','bias',
                     'success','runtime','num_evaluated','min_remaining','max_backtrack','max_translation','max_rotation', 'length', 'num_elements', 'transit_failures', 'stiffness_failures', 'valid', 'safe', 'seed')
     df = pd.DataFrame(columns=column_names)
@@ -184,10 +189,12 @@ def main():
                         help='Print out summary report for all problems')
     parser.add_argument('-w', '--write_report', action='store_true',
                         help='Write a spreadsheet report for the experiment.')
+    parser.add_argument('-r', '--write_result', action='store_true',
+                        help='Save all the plan results into separate jsons.')
     args = parser.parse_args()
     np.set_printoptions(precision=3)
     #enumerate_experiments()
-    df = load_experiment(args.path, overall=args.all)
+    df = load_experiment(args.path, overall=args.all, write_result=args.write_result)
 
     if args.write_report:
         exp_dir = os.path.dirname(args.path)
