@@ -78,3 +78,49 @@ def bar_graph(data, attribute):
     plt.tight_layout()
     #plt.grid()
     plt.show()
+
+##################################################
+
+#ALPHA = None
+#EDGES = ['face', 'face', 'g', 'b']
+#COLORS = ['r', 'y', 'none', 'none']
+EDGES = ['face', 'face', 'C2', 'C3']
+#COLORS = ['C0', 'C1', 'none', 'none']
+MARKERS = ['x', '+', 's', 'o']
+
+def scatter_plot(data):
+    all_sizes = sorted({result['num_elements'] for _, result in data})
+    print('Sizes:', all_sizes)
+    plt.scatter(all_sizes, np.zeros(len(all_sizes)), marker='x',
+                label='problem size', edgecolors='b')
+    algorithms, heuristics = ALGORITHMS, ['plan-stiffness']
+    #algorithms, heuristics = ['regression'], HEURISTICS
+
+    for a_idx, algorithm in enumerate(algorithms):
+        for h_idx, heuristic in enumerate(heuristics):
+            sizes = []
+            runtimes = []
+            for config, result in data:
+                if (config.algorithm == algorithm) and (config.bias == heuristic):
+                    # TODO: could hash instead
+                    if result['success']:
+                        sizes.append(result['num_elements'])
+                        runtimes.append(result['runtime'])
+            components = []
+            if len(algorithms) != 1:
+                components.append(rename(algorithm))
+            if len(heuristics) != 1:
+                components.append(rename(heuristic))
+            label = '-'.join(components)
+            plt.scatter(sizes, runtimes, #marker=MARKERS[h_idx], edgecolors=EDGES[h_idx]
+                        alpha=0.5, label=label)
+
+    plt.title('Scaling: All Constraints')
+    #plt.xticks(range(1, max_size+1)) #, [get_index(problem) for problem in problems])
+    plt.xlim([1, 1000]) #max(all_sizes)])
+    plt.xlabel('# elements')
+    plt.ylabel('runtime (sec)')
+    plt.legend(loc='upper left')
+    #plt.savefig('test')
+    plt.show()
+    # logarithmic scale

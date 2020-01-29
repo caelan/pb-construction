@@ -64,7 +64,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
     def add_successors(printed, conf):
         ground_remaining = printed <= ground_elements
         num_remaining = len(printed) - 1
-        assert 0 <= num_remaining
+        #assert 0 <= num_remaining
         for element in randomize(printed):
             if outgoing_from_element[element] & printed:
                 continue

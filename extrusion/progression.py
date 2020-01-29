@@ -111,7 +111,7 @@ def add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn,
     incoming_from_element = incoming_from_edges(partial_orders)
     remaining = all_elements - printed
     num_remaining = len(remaining) - 1
-    assert 0 <= num_remaining
+    #assert 0 <= num_remaining
     bias_from_element = {}
     for element in randomize(compute_printable_elements(all_elements, ground_nodes, printed)):
         if not (incoming_from_element[element] <= printed):
@@ -293,7 +293,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
                 continue
             # ! transition motion constraint
             if motions and not lazy:
-                motion_traj = compute_motion(robot, obstacles, element_bodies, node_points, printed,
+                motion_traj = compute_motion(robot, obstacles, element_bodies, printed,
                                              command.end_conf, current_conf, collisions=collisions,
                                              max_time=max_time - elapsed_time(start_time))
                 if motion_traj is None:

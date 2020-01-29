@@ -217,22 +217,19 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
 
         # * soft deadend checking
         if not sample_remaining(condition, next_printed, ee_sample_traj, num=num_ee):
-            # Soft dead-end
             num_deadends += 1
-            #wait_for_user()
+            print('An end-effector successor could not be sampled!')
             continue
 
         #command = sample_extrusion(print_gen_fn, ground_nodes, printed, element)
         command = next(iter(full_sample_traj(printed, printed, element, connected=True)), None)
         if command is None:
             # Soft dead-end
-            #num_deadends += 1
             print('The transition could not be sampled!')
             extrusion_failures += 1
             continue
 
         if not sample_remaining(condition, next_printed, full_sample_traj, num=num_arm):
-            # Soft dead-end
             num_deadends += 1
             continue
 
@@ -259,15 +256,15 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
                                              max_time=max_time - elapsed_time(start_time))
                 if motion_traj is None:
                     plan = None
+                    transit_failures += 1
                 else:
                     plan.append(motion_traj)
             if motions and lazy:
                 plan = compute_motions(robot, obstacles, element_bodies, initial_conf, plan,
                                        collisions=collisions, max_time=max_time - elapsed_time(start_time))
-            if plan is not None:
-                break
-            else:
-                transit_failures += 1
+            break
+            # if plan is not None:
+            #     break
         add_successors(queue, all_elements, node_points, ground_nodes, priority_fn, next_printed, end_conf,
                        partial_orders=partial_orders)
         if revisit:
@@ -286,5 +283,6 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
         'stiffness_failures': stiffness_failures,
         'extrusion_failures': extrusion_failures,
         'transit_failures': transit_failures,
+        'num_deadends': num_deadends,
     }
     return plan, data

@@ -19,9 +19,9 @@ sys.path.extend([
 ])
 
 from extrusion.figure import DEFAULT_MAX_TIME
-from extrusion.visualization import label_element, set_extrusion_camera, label_nodes
+from extrusion.visualization import label_element, set_extrusion_camera, label_nodes, display_trajectories
 from extrusion.experiment import train_parallel
-from extrusion.motion import compute_motions, display_trajectories, validate_trajectories
+from extrusion.motion import compute_motions, validate_trajectories
 from extrusion.stripstream import plan_sequence
 from extrusion.utils import load_world
 from extrusion.parsing import load_extrusion, create_elements_bodies, \
@@ -68,7 +68,7 @@ def rotate_problem(problem_path, roll=np.pi):
 
 ##################################################
 
-def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=False):
+def plan_extrusion(args, viewer=False, precompute=False, verify=False, verbose=False, watch=False):
     # TODO: setCollisionFilterGroupMask
     if not verbose:
         sys.stdout = open(os.devnull, 'w')
@@ -148,8 +148,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
             trajectories = compute_motions(robot, obstacles, element_bodies, initial_conf,
                                            trajectories, collisions=not args.cfree)
 
-    safe = validate_trajectories(element_bodies, obstacles, trajectories) # Can be quite slow
-    #safe = True
+    safe = validate_trajectories(element_bodies, obstacles, trajectories) if verify else True
     data['safe'] = safe
     print('Safe:', safe)
     reset_simulation()
@@ -158,7 +157,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
     #id_from_element = get_id_from_element(element_from_id)
     #planned_ids = [id_from_element[traj.element] for traj in trajectories]
     sequence = recover_directed_sequence(trajectories)
-    valid = verify_plan(problem_path, sequence) #, use_gui=not animate)
+    valid = verify_plan(problem_path, sequence) if verify else True #, use_gui=not animate)
     data.update({
         'safe': bool(safe),
         'valid': bool(valid),
@@ -187,7 +186,8 @@ def plan_extrusion(args, viewer=False, precompute=False, verbose=False, watch=Fa
 
     if watch:
         animate = not (args.disable or args.ee_only)
-        display_trajectories(node_points, ground_nodes, trajectories, animate=animate)
+        display_trajectories(node_points, ground_nodes, trajectories, #time_step=None, video=True,
+                             animate=animate)
     if not verbose:
         sys.stdout.close()
     return args, data
@@ -208,7 +208,7 @@ def main():
     # djmm_test_block | Nodes: 76 | Ground: 13 | Elements: 253
     parser.add_argument('-a', '--algorithm', default='regression',
                         help='Which algorithm to use')
-    parser.add_argument('-b', '--bias', default='dijkstra', choices=HEURISTICS,
+    parser.add_argument('-b', '--bias', default='plan-stiffness', choices=HEURISTICS,
                         help='Which heuristic to use')
     parser.add_argument('-c', '--cfree', action='store_true',
                         help='Disables collisions with obstacles')

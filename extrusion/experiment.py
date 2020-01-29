@@ -57,7 +57,7 @@ def train_parallel(args):
     #problems = ['simple_frame', 'topopt-101_tiny', 'topopt-100_S1_03-14-2019_w_layer']
     #algorithms = ALGORITHMS
     algorithms = list(ALGORITHMS)
-    if not args.disable:
+    if args.disable:
         for algorithm in LOOKAHEAD_ALGORITHMS:
             if algorithm in algorithms:
                 algorithms.remove(algorithm)
@@ -87,6 +87,7 @@ def train_parallel(args):
 
     user_input('Begin?')
     start_time = time.time()
+    timeouts = 0
     pool = Pool(processes=num_cores)  # , initializer=mute)
     generator = pool.imap_unordered(plan_extrusion, configurations, chunksize=1)
     results = []
@@ -95,8 +96,8 @@ def train_parallel(args):
         try:
             configuration, data = generator.next(timeout=2 * args.max_time)
             results.append((configuration, data))
-            print('{}/{} completed | {:.3f} seconds | {}'.format(
-                len(results), len(configurations), elapsed_time(start_time),
+            print('{}/{} completed | {:.3f} seconds | timeouts: {} | {}'.format(
+                len(results), len(configurations), elapsed_time(start_time), timeouts,
                 datetime.datetime.now().strftime(DATE_FORMAT)))
             print(configuration, data)
             if results:
@@ -105,6 +106,8 @@ def train_parallel(args):
         except StopIteration:
             break
         except TimeoutError:
+            # TODO: record this as a failure?
+            timeouts += 1
             print('Error! Timed out after {:.3f} seconds'.format(elapsed_time(last_time)))
             break
     print('Total time:', elapsed_time(initial_time))

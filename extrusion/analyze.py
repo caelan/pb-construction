@@ -14,9 +14,9 @@ from collections import OrderedDict
 
 from extrusion.experiment import EXCLUDE, Configuration, EXPERIMENTS_DIR
 from extrusion.parsing import get_extrusion_path, load_extrusion
-from extrusion.figure import bar_graph, SUCCESS, RUNTIME, SCORES
 from extrusion.logger import export_result_data
 
+from extrusion.figure import bar_graph, SUCCESS, RUNTIME, SCORES, scatter_plot
 from pddlstream.utils import INF, str_from_object, get_python_version
 from pybullet_tools.utils import read_pickle, implies
 
@@ -65,7 +65,8 @@ def load_experiment(filename, overall=False, failed_runtimes=True, write_result=
     # https://ipc2018-classical.bitbucket.io/
     max_time = 0
     data_from_problem = OrderedDict()
-    for config, result in read_pickle(filename):
+    data = read_pickle(filename)
+    for config, result in data:
         #config.problem = extrusion_name_from_path(config.problem)
         if config.problem in EXCLUDE:
             continue
@@ -154,7 +155,6 @@ def load_experiment(filename, overall=False, failed_runtimes=True, write_result=
             df_data.update({'config_id' : c_idx})
             df_data.update(key)
             df_data.update(mean_result)
-            # print(df_data)
             df = df.append(df_data, ignore_index=True)
 
         # if problem == ALL:
