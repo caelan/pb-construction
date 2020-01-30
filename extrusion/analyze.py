@@ -89,11 +89,11 @@ def load_experiment(filename, overall=False, failed_runtimes=True, write_result=
 
     # column names for panda to generate excel sheets
     column_names = ('config_id','shape','info','algorithm','bias',
-                    'success','runtime','num_evaluated','min_remaining','max_backtrack','max_translation','max_rotation', 'length', 'num_elements', 'transit_failures', 'stiffness_failures', 'valid', 'safe', 'seed')
+                    'success','runtime','num_evaluated','min_remaining','max_backtrack','max_translation','max_rotation', 'length', 'num_elements', 'extrusion_failures', 'transit_failures', 'stiffness_failures', 'valid', 'safe', 'seed', 'memory')
     df = pd.DataFrame(columns=column_names)
     if not overall:
         shown_column_names = ('algorithm','bias',
-                              'success','runtime','num_evaluated','min_remaining','max_backtrack','max_translation','max_rotation', 'length', 'num_elements', 'safe', 'transit_failures', 'stiffness_failures', 'valid')
+                              'success','runtime','num_evaluated','min_remaining','max_backtrack','max_translation','max_rotation', 'length', 'num_elements', 'safe', 'extrusion_failures', 'transit_failures', 'stiffness_failures', 'valid', 'memory')
         col_name_df = {cn : cn for cn in shown_column_names}    
 
     for p_idx, problem in enumerate(sorted(data_from_problem)):

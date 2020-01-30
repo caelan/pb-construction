@@ -217,8 +217,8 @@ def display_trajectories(node_points, ground_nodes, trajectories, animate=True, 
         wait_for_duration(0.1)
         file_path = 'video.mp4' if config is None else export_video_path(config)
         video_saver = VideoSaver(file_path) # has_gui()
-        # time_step = 0.001
-        time_step = 0.0005
+        time_step = 0.001
+        # time_step = 0.0005
     else:
         wait_for_user()
 

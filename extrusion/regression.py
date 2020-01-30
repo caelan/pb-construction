@@ -162,6 +162,8 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
     try:
         while queue:
             if elapsed_time(start_time) > max_time and check_memory(): #max_memory):
+                if elapsed_time(start_time) < max_time:
+                    cprint('memory leak: {} | {} '.format(check_memory(), get_memory_in_kb()))
                 raise TimeoutError
             priority, printed, element, current_conf = heapq.heappop(queue)
             num_remaining = len(printed)
@@ -172,8 +174,8 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
                 min_remaining = num_remaining
                 cprint('New best: {}/{}'.format(num_remaining, len(all_elements)), 'green')
 
-            cprint('Eval Iter: {} | Best: {}/{} | Printed: {} | Element: {} | E-Id: {} | Time: {:.3f}'.format(
-                num_evaluated, min_remaining, len(all_elements), len(printed), element, id_from_element[element], elapsed_time(start_time)))
+            cprint('Eval Iter: {} | Best: {}/{} | Backtrack: {} | Printed: {} | Element: {} | E-Id: {} | Time: {:.3f}'.format(
+                num_evaluated, min_remaining, len(all_elements), max_backtrack, len(printed), element, id_from_element[element], elapsed_time(start_time)))
             next_printed = printed - {element}
 
             backtrack = num_remaining - min_remaining
@@ -267,14 +269,14 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         cur_data['constraint_violation_history'] = cons_data
         cur_data['queue_history'] = queue_data
 
-        export_log_data(extrusion_path, cur_data, overwrite=OVERWRITE)
+        export_log_data(extrusion_path, cur_data, overwrite=OVERWRITE, **kwargs)
 
         cprint('search terminated by user interruption or timeout.', 'red')
         if has_gui():
             color_structure(element_bodies, printed, element)
             locker.restore()
             wait_for_user()
-        assert False, 'search terminated.'
+        # assert False, 'search terminated.'
 
     if RECORD_QUEUE | RECORD_CONSTRAINT_VIOLATION | RECORD_BT:
         # log data
@@ -288,7 +290,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         cur_data['constraint_violation_history'] = cons_data
         cur_data['queue_history'] = queue_data
 
-        export_log_data(extrusion_path, cur_data, overwrite=OVERWRITE)
+        export_log_data(extrusion_path, cur_data, overwrite=OVERWRITE, **kwargs)
 
     max_translation, max_rotation, max_compliance = compute_plan_deformation(extrusion_path, recover_sequence(plan))
     data = {

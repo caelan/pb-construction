@@ -63,7 +63,7 @@ def compute_plan_deformation(problem, plan):
     checker = create_stiffness_checker(problem_path, verbose=False)
     trans_tol, rot_tol = checker.get_nodal_deformation_tol()
     if plan is None:
-        return trans_tol, rot_tol
+        return (-1, -1), (-1, -1), (-1, -1)
 
     element_from_id, _, _ = load_extrusion(problem_path)
     printed = []

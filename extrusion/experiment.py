@@ -25,7 +25,8 @@ Configuration = namedtuple('Configuration', ['seed', 'problem', 'algorithm', 'bi
 
 LOOKAHEAD_ALGORITHMS = [lookahead.__name__]
 
-ALGORITHMS = [alg.__name__ for alg in [progression, lookahead, regression]] #+ [STRIPSTREAM_ALGORITHM]
+# ALGORITHMS = [alg.__name__ for alg in [progression, lookahead, regression]] #+ [STRIPSTREAM_ALGORITHM]
+ALGORITHMS = [alg.__name__ for alg in [progression]]
 
 EXCLUDE = [
     'rotated_dented_cube', # Structure violates stiffness
@@ -46,7 +47,7 @@ def train_parallel(args):
         problems = sorted(set(enumerate_problems()) - set(EXCLUDE))
     else:
         problems = [args.problem]
-    #problems = ['simple_frame', 'topopt-101_tiny', 'topopt-100_S1_03-14-2019_w_layer']
+        # problems = ['bunny_full_tri', 'bunny_full_quad']
     #algorithms = ALGORITHMS
     algorithms = list(ALGORITHMS)
     if args.disable:

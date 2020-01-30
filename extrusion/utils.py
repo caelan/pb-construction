@@ -490,7 +490,7 @@ def check_memory(max_memory=MAX_MEMORY):
     if max_memory == INF:
         return True
     memory_kb = get_memory_in_kb()
-    #print('Peak memory: {} | Max memory: {}'.format(peak_memory, max_memory))
+    cprint('Peak memory: {} | Max memory: {}'.format(peak_memory, max_memory))
     if memory_kb <= max_memory:
         return True
     cprint('Memory of {:.0f} KB exceeds memory limit of {:.0f} KB'.format(memory_kb, max_memory), 'red')

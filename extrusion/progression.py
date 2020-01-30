@@ -7,7 +7,7 @@ from extrusion.logger import export_log_data, RECORD_BT, RECORD_CONSTRAINT_VIOLA
 from extrusion.motion import compute_motion, compute_motions
 from extrusion.stiffness import TRANS_TOL, ROT_TOL, create_stiffness_checker, test_stiffness
 from extrusion.utils import check_connected, get_id_from_element, load_world, PrintTrajectory, \
-    compute_printed_nodes, compute_printable_elements, RESOLUTION
+    compute_printed_nodes, compute_printable_elements, get_memory_in_kb, check_memory
 from extrusion.stream import get_print_gen_fn, STEP_SIZE, APPROACH_DISTANCE, MAX_DIRECTIONS, MAX_ATTEMPTS
 from extrusion.visualization import draw_element, color_structure
 from extrusion.parsing import load_extrusion
@@ -27,8 +27,6 @@ import os
 env = 'FOR_DISABLE_CONSOLE_CTRL_HANDLER'
 if env not in os.environ:
     os.environ[env] = '1'
-
-# https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
 
 #State = namedtuple('State', ['element', 'printed', 'plan'])
 Node = namedtuple('Node', ['action', 'state'])
@@ -161,16 +159,16 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
     else:
         cprint('Grounded nodes are not connected to any of the elements or the whole structure is not stiff!', 'red')
 
-    locker = LockRenderer()
     plan = None
     min_remaining = len(all_elements)
-    num_evaluated = max_backtrack = 0
-    extrusion_failures = stiffness_failures = transit_failures = 0
+    num_evaluated = max_backtrack = num_deadends = stiffness_failures = extrusion_failures= transit_failures = 0
+
+    #############################################
+    locker = LockRenderer()
     bt_data = []  # backtrack history
     cons_data = []  # constraint violation history
     queue_data = []  # queue candidates history
 
-    #############################################
     def snapshot_state(data_list=None, reason='', queue_log_cnt=0):
         """a lot of global parameters are used
 
@@ -236,7 +234,9 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
 
     try:
         while queue:
-            if elapsed_time(start_time) > max_time:
+            if elapsed_time(start_time) > max_time and check_memory(): #max_memory):
+                if elapsed_time(start_time) < max_time:
+                    cprint('memory leak: {} | {} '.format(check_memory(), get_memory_in_kb()))
                 raise TimeoutError
             visits, priority, printed, element, current_conf = heapq.heappop(queue)
             num_remaining = len(all_elements) - len(printed)
@@ -247,8 +247,8 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
                 cprint('New best: {}/{}'.format(num_remaining,
                                                 len(all_elements)), 'green')
 
-            cprint('Eval Iter: {} | Best: {}/{} | Printed: {} | Element: {} | E-Id: {} | Time: {:.3f}'.format(
-                num_evaluated, min_remaining, len(all_elements), len(printed), element, id_from_element[element], elapsed_time(start_time)))
+            cprint('Eval Iter: {} | Best: {}/{} | Backtrack: {} | Printed: {} | Element: {} | E-Id: {} | Time: {:.3f}'.format(
+                num_evaluated, min_remaining, len(all_elements), max_backtrack, len(printed), element, id_from_element[element], elapsed_time(start_time)))
             next_printed = printed | {element}
 
             backtrack = num_remaining - min_remaining
@@ -284,6 +284,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
                 if RECORD_CONSTRAINT_VIOLATION:
                     snapshot_state(cons_data, reason='stiffness_violation')
                 continue
+
             # ! manipulation constraint
             command = sample_extrusion(
                 print_gen_fn, ground_nodes, printed, element)
@@ -346,7 +347,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
             color_structure(element_bodies, printed, element)
             locker.restore()
             wait_for_user()
-        assert False, 'search terminated.'
+        # assert False, 'search terminated.'
 
     if RECORD_QUEUE | RECORD_CONSTRAINT_VIOLATION | RECORD_BT:
         # log data even if a plan has been found
@@ -360,12 +361,13 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
         cur_data['constraint_violation_history'] = cons_data
         cur_data['queue_history'] = queue_data
 
-        export_log_data(extrusion_path, cur_data, overwrite=OVERWRITE)
+        export_log_data(extrusion_path, cur_data, overwrite=OVERWRITE, **kwargs)
 
     max_translation, max_rotation, max_compliance = compute_plan_deformation(extrusion_path, recover_sequence(plan))
     data = {
         'sequence': recover_directed_sequence(plan),
         'runtime': elapsed_time(start_time),
+        'memory': get_memory_in_kb(), # May need to update instead
         'num_evaluated': num_evaluated,
         'min_remaining': min_remaining,
         'max_backtrack': max_backtrack,

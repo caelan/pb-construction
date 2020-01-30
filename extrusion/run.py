@@ -165,6 +165,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verify=False, verbose=F
         'valid': bool(valid),
         'parameters': get_global_parameters(),
     })
+    # TODO: save trajectories if requested
 
     plan_data = OrderedDict({
         'problem':  args.problem,
@@ -248,7 +249,7 @@ def main():
             args.problem = problem
             plan_extrusion(args, verbose=True, watch=False)
     else:
-        plan_extrusion(args, viewer=args.viewer, verbose=True, watch=True)
+        plan_extrusion(args, viewer=args.viewer, verbose=True, watch=RECORD_VIDEO)
 
     # python -m extrusion.run -n 10 2>&1 | tee log.txt
 
