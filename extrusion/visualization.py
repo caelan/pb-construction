@@ -11,6 +11,10 @@ from pybullet_tools.utils import add_text, draw_pose, get_pose, wait_for_user, a
     get_movable_joints, remove_all_debug, VideoSaver, set_joint_positions, point_from_pose, wait_for_duration, \
     reset_simulation, disconnect
 
+#BACKGROUND_COLOR = 1*np.ones(3)
+BACKGROUND_COLOR = None
+
+##################################################
 
 def label_element(element_bodies, element):
     element_body = element_bodies[element]
@@ -166,7 +170,7 @@ def set_extrusion_camera(node_points):
 def display_trajectories(node_points, ground_nodes, trajectories, animate=True, time_step=0.02, video=False):
     if trajectories is None:
         return
-    connect(use_gui=True)
+    connect(use_gui=True, color=BACKGROUND_COLOR)
     set_extrusion_camera(node_points)
     obstacles, robot = load_world()
     movable_joints = get_movable_joints(robot)

@@ -16,7 +16,8 @@ sys.path.extend([
 ])
 
 from extrusion.figure import DEFAULT_MAX_TIME
-from extrusion.visualization import label_element, set_extrusion_camera, label_nodes, display_trajectories
+from extrusion.visualization import label_element, set_extrusion_camera, label_nodes, display_trajectories, \
+    BACKGROUND_COLOR
 from extrusion.experiment import train_parallel
 from extrusion.motion import compute_motions, validate_trajectories
 from extrusion.stripstream import plan_sequence
@@ -30,7 +31,7 @@ from extrusion.heuristics import HEURISTICS
 from extrusion.validator import verify_plan
 from extrusion.lookahead import lookahead
 
-from pybullet_tools.utils import connect, disconnect, get_movable_joints, get_joint_positions, INF, LockRenderer, \
+from pybullet_tools.utils import connect, disconnect, get_movable_joints, get_joint_positions, LockRenderer, \
     unit_pose, reset_simulation, draw_pose, apply_alpha, BLACK, Pose, Euler, set_numpy_seed, set_random_seed
 
 
@@ -84,7 +85,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verify=False, verbose=F
     partial_orders = [] # TODO: could treat ground as partial orders
     backtrack_limit = 0 # 0 | INF
 
-    connect(use_gui=viewer) # TODO: avoid reconnecting
+    connect(use_gui=viewer, color=BACKGROUND_COLOR) # TODO: avoid reconnecting
     with LockRenderer(True):
         draw_pose(unit_pose(), length=1.)
         obstacles, robot = load_world()
@@ -175,7 +176,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verify=False, verbose=F
 
     if watch:
         animate = not (args.disable or args.ee_only)
-        display_trajectories(node_points, ground_nodes, trajectories, #time_step=None, video=True,
+        display_trajectories(node_points, ground_nodes, trajectories, time_step=None, video=True,
                              animate=animate)
     if not verbose:
         sys.stdout.close()

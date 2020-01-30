@@ -2,14 +2,15 @@ from __future__ import print_function
 
 import os
 import numpy as np
+import math
 
 from collections import defaultdict, deque
 from itertools import islice, cycle
 
 from pybullet_tools.utils import get_link_pose, BodySaver, set_point, multiply, set_pose, set_joint_positions, \
-    Point, load_model, HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, get_aabb, \
+    Point, HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, get_aabb, \
     get_distance, get_relative_pose, get_link_subtree, clone_body, randomize, get_movable_joints, get_all_links, get_bodies_in_region, pairwise_link_collision, \
-    set_static, BASE_LINK
+    set_static, BASE_LINK, add_data_path, INF, load_model
 from pddlstream.utils import get_connected_components
 
 KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
@@ -66,6 +67,8 @@ def load_world(use_floor=USE_FLOOR):
         lower, _ = get_aabb(robot)
         if use_floor:
             floor = load_model('models/short_floor.urdf', fixed_base=True)
+            #add_data_path()
+            #floor = load_pybullet('plane.urdf', fixed_base=True)
             obstacles.append(floor)
             #set_point(floor, Point(z=lower[2]))
             set_point(floor, Point(x=1.2, z=0.023-0.025))
@@ -428,3 +431,48 @@ def compute_z_distance(node_points, element):
     # Distance to a ground plane
     # Opposing gravitational force
     return np.average([node_points[n][2] for n in element])
+
+##################################################
+
+BYTES_PER_KILOBYTE = math.pow(2, 10)
+BYTES_PER_GIGABYTE = math.pow(2, 30)
+KILOBYTES_PER_GIGABYTE = BYTES_PER_GIGABYTE / BYTES_PER_KILOBYTE
+
+def get_memory_in_kb():
+    # https://pypi.org/project/psutil/
+    # https://psutil.readthedocs.io/en/latest/
+    import psutil
+    #rss: aka "Resident Set Size", this is the non-swapped physical memory a process has used. (bytes)
+    #vms: aka "Virtual Memory Size", this is the total amount of virtual memory used by the process. (bytes)
+    #shared: (Linux) memory that could be potentially shared with other processes.
+    #text (Linux, BSD): aka TRS (text resident set) the amount of memory devoted to executable code.
+    #data (Linux, BSD): aka DRS (data resident set) the amount of physical memory devoted to other than executable code.
+    #lib (Linux): the memory used by shared libraries.
+    #dirty (Linux): the number of dirty pages.
+    #pfaults (macOS): number of page faults.
+    #pageins (macOS): number of actual pageins.
+    process = psutil.Process(os.getpid())
+    #process.pid()
+    #process.ppid()
+    pmem = process.memory_info() # this seems to actually get the current memory!
+    return pmem.vms / BYTES_PER_KILOBYTE
+    #print(process.memory_full_info())
+    #print(process.memory_percent())
+    # process.rlimit(psutil.RLIMIT_NOFILE)  # set resource limits (Linux only)
+    #print(psutil.virtual_memory())
+    #print(psutil.swap_memory())
+    #print(psutil.pids())
+
+
+MAX_MEMORY = 1.5 * KILOBYTES_PER_GIGABYTE
+
+
+def check_memory(max_memory=MAX_MEMORY):
+    if max_memory == INF:
+        return True
+    memory_kb = get_memory_in_kb()
+    #print('Peak memory: {} | Max memory: {}'.format(peak_memory, max_memory))
+    if memory_kb <= max_memory:
+        return True
+    print('Memory of {:.0f} KB exceeds memory limit of {:.0f} KB'.format(memory_kb, max_memory))
+    return False

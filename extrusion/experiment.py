@@ -36,19 +36,6 @@ EXCLUDE = [
 EXPERIMENTS_DIR = 'experiments/'
 DATE_FORMAT = '%y-%m-%d_%H-%M-%S'
 
-# Failed instances
-# fertility, duck, dented_cube, compas_fea_beam_tree_M, compas_fea_beam_tree, bunny_full_tri_dense, bunny_full_quad, C_shape
-
-
-# Can greedily print
-# four-frame, simple_frame, voronoi
-
-# Cannot greedily print
-# topopt-100
-# mars_bubble
-# djmm_bridge
-# djmm_test_block
-
 ##################################################
 
 def train_parallel(args):
