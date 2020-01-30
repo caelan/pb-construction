@@ -119,6 +119,11 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
     distance_from_node = compute_distance_from_node(elements, node_points, ground_nodes)
     sign = +1 if forward else -1
     # TODO: round values for more tie-breaking opportunities
+    stiffness_order = None
+    stiffness_plan = plan_stiffness(checker, extrusion_path, element_from_id, node_points, ground_nodes, elements,
+                                    max_backtrack=INF)
+    if stiffness_plan is not None:
+        stiffness_order = dict(pair[::-1] for pair in enumerate(stiffness_plan))
 
     stiffness_cache = {}
     if heuristic in ('fixed-stiffness', 'relative-stiffness'):
@@ -165,12 +170,6 @@ def get_heuristic_fn(extrusion_path, heuristic, forward, checker=None):
                 distance_cache[printed] = compute_distance_from_node(printed, node_points, ground_nodes)
             return sign*min(distance_cache[printed].get(node, INF) for node in element)
         elif heuristic == 'plan-stiffness':
-            stiffness_order = None
-            stiffness_plan = plan_stiffness(checker, extrusion_path, element_from_id, node_points, ground_nodes, elements,
-                                            max_backtrack=INF)
-            if stiffness_plan is not None:
-                stiffness_order = dict(pair[::-1] for pair in enumerate(stiffness_plan))
-
             if stiffness_order is None:
                 return None
             return sign*stiffness_order[element]

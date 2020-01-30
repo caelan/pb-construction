@@ -22,7 +22,7 @@ from pddlstream.utils import outgoing_from_edges
 from pybullet_tools.utils import INF, get_movable_joints, get_joint_positions, randomize, implies, has_gui, \
     remove_all_debug, wait_for_user, elapsed_time, LockRenderer
 from extrusion.logger import export_log_data, RECORD_BT, RECORD_CONSTRAINT_VIOLATION, RECORD_QUEUE, OVERWRITE, \
-    CHECK_BACKTRACK, QUEUE_COUNT
+    CHECK_BACKTRACK, QUEUE_COUNT, MAX_STATES_STORED, PAUSE_UPON_BT
 
 # https://developers.google.com/optimization/routing/tsp
 
@@ -143,7 +143,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
                     (list(temporal_chosen_element), stiffness_score, extrusion_feasible, temp_visits, temp_priority))
         print('++++++++++++')
 
-        if data_list is not None:
+        if data_list is not None and len(data_list) < MAX_STATES_STORED:
             data_list.append(cur_data)
 
         if CHECK_BACKTRACK:
@@ -183,6 +183,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
                 if RECORD_BT:
                     cprint('max backtrack increased to {}'.format(max_backtrack), 'cyan')
                     snapshot_state(bt_data, reason='Backtrack')
+                    if PAUSE_UPON_BT: wait_for_user()
 
             if backtrack_limit < backtrack:
                 cprint('backtrack {} exceeds limit {}, exit.'.format(backtrack, backtrack_limit), 'red')

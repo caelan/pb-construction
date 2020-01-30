@@ -154,10 +154,7 @@ def draw_model(elements, node_points, ground_nodes):
 
 
 def sample_colors(num, lower=0.0, upper=0.75): # for now wrap around
-    # YJ: Hue gradient is not that informative
-    # return [colorsys.hsv_to_rgb(h, s=1, v=1) for h in np.linspace(lower, upper, num, endpoint=True)]
-    # hue_color_base = 192.0/360
-    return [(t, 1-t, 1) for t in np.linspace(lower, upper, num, endpoint=True)]
+    return [colorsys.hsv_to_rgb(h, s=1, v=1) for h in np.linspace(lower, upper, num, endpoint=True)]
 
 
 def draw_ordered(elements, node_points):
@@ -165,14 +162,23 @@ def draw_ordered(elements, node_points):
     #colors = spaced_colors(len(elements))
     colors = sample_colors(len(elements))
     handles = []
-    draw_value = values and len(values) == len(colors)
-    for i in range(len(elements)):
-        element = elements[i]
-        color = colors[i]
+    for element, color in zip(elements, colors):
         handles.append(draw_element(node_points, element, color=color))
-        if draw_value:
-            handles.append(draw_element_tag(node_points, element, values[i]))
     return handles
+
+# def draw_ordered(elements, node_points):
+#     # TODO: account for oriented elements
+#     #colors = spaced_colors(len(elements))
+#     colors = sample_colors(len(elements))
+#     handles = []
+#     draw_value = values and len(values) == len(colors)
+#     for i in range(len(elements)):
+#         element = elements[i]
+#         color = colors[i]
+#         handles.append(draw_element(node_points, element, color=color))
+#         if draw_value:
+#             handles.append(draw_element_tag(node_points, element, values[i]))
+#     return handles
 
 def set_extrusion_camera(node_points):
     centroid = np.average(node_points, axis=0)
@@ -201,13 +207,14 @@ def display_trajectories(node_points, ground_nodes, trajectories, animate=True, 
     if video:
         handles = draw_model(planned_elements, node_points, ground_nodes) # Allows user to adjust the camera
         print('------')
-        cprint('Ready to record a video: please adjust camera now.', 'yellow')
+        cprint('Ready to record a video: please adjust camera now (but you can still rotate even when recording)', 'yellow')
         wait_for_user()
         remove_all_debug()
         wait_for_duration(0.1)
         file_path = 'video.mp4' if config is None else export_video_path(config)
         video_saver = VideoSaver(file_path) # has_gui()
-        time_step = 0.001
+        # time_step = 0.001
+        time_step = 0.0005
     else:
         wait_for_user()
 

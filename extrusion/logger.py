@@ -14,7 +14,10 @@ MAX_BACKTACK = INF
 
 # log options
 RECORD_BT = True
+PAUSE_UPON_BT = False
+
 RECORD_CONSTRAINT_VIOLATION = True
+MAX_STATES_STORED = 400
 
 QUEUE_COUNT = 5 # number of candidates on the queue to be recorded at each iter
 RECORD_QUEUE = False
@@ -27,6 +30,7 @@ CHECK_BACKTRACK = False # visually check
 
 # video recording
 RECORD_VIDEO = True
+DISPLAY_TIME_STEP = None
 
 
 def get_global_parameters():

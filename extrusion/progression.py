@@ -3,8 +3,7 @@ from __future__ import print_function
 from pddlstream.utils import incoming_from_edges
 from pybullet_tools.utils import connect, ClientSaver, wait_for_user, INF, has_gui, remove_all_debug, \
     get_movable_joints, get_joint_positions
-from extrusion.logger import export_log_data, RECORD_BT, RECORD_CONSTRAINT_VIOLATION, RECORD_QUEUE, OVERWRITE, \
-    VISUALIZE_ACTION, CHECK_BACKTRACK, QUEUE_COUNT
+from extrusion.logger import export_log_data, RECORD_BT, RECORD_CONSTRAINT_VIOLATION, RECORD_QUEUE, OVERWRITE, VISUALIZE_ACTION, CHECK_BACKTRACK, QUEUE_COUNT, PAUSE_UPON_BT, MAX_STATES_STORED
 from extrusion.motion import compute_motion, compute_motions
 from extrusion.stiffness import TRANS_TOL, ROT_TOL, create_stiffness_checker, test_stiffness
 from extrusion.utils import check_connected, get_id_from_element, load_world, PrintTrajectory, \
@@ -166,7 +165,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
     plan = None
     min_remaining = len(all_elements)
     num_evaluated = max_backtrack = 0
-    stiffness_failures = transit_failures = 0
+    extrusion_failures = stiffness_failures = transit_failures = 0
     bt_data = []  # backtrack history
     cons_data = []  # constraint violation history
     queue_data = []  # queue candidates history
@@ -219,7 +218,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
                     (list(temporal_chosen_element), stiffness_score, extrusion_feasible, temp_visits, temp_priority))
         print('++++++++++++')
 
-        if data_list is not None:
+        if data_list is not None and len(data_list) < MAX_STATES_STORED:
             data_list.append(cur_data)
 
         if CHECK_BACKTRACK:
@@ -260,7 +259,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
                     cprint('max backtrack increased to {}'.format(
                         max_backtrack), 'cyan')
                     snapshot_state(bt_data, reason='Backtrack')
-                    # wait_for_user()
+                    if PAUSE_UPON_BT: wait_for_user()
 
             if backtrack_limit < backtrack:
                 cprint('backtrack {} exceeds limit {}, exit.'.format(

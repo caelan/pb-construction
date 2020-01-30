@@ -107,6 +107,7 @@ def test_stiffness(extrusion_path, element_from_id, elements, **kwargs):
 
 def plan_stiffness(checker, extrusion_path, element_from_id, node_points, ground_nodes, remaining_elements,
                    max_time=INF, max_backtrack=0):
+    # TODO: optimize sequence to minimize maximal displacement
     start_time = time.time()
     min_remaining = len(remaining_elements)
     queue = [(None, frozenset(), [])]
@@ -119,6 +120,7 @@ def plan_stiffness(checker, extrusion_path, element_from_id, node_points, ground
         if not test_stiffness(extrusion_path, element_from_id, printed, checker=checker, verbose=False):
             continue
         if printed == remaining_elements:
+            cprint('plan-stiffness bias precomputed.', 'green')
             return sequence
         for element in randomize(compute_printable_elements(remaining_elements, ground_nodes, printed)):
             new_printed = printed | {element}

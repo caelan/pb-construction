@@ -133,6 +133,7 @@ def compute_motions(robot, fixed_obstacles, element_bodies, initial_conf, print_
     all_trajectories = []
     current_conf = initial_conf
     for i, print_traj in enumerate(print_trajectories):
+        # return to initial conf each transit
         if not np.allclose(current_conf, print_traj.start_conf, rtol=0, atol=1e-8):
             motion_traj = compute_motion(robot, fixed_obstacles, element_bodies,
                                          printed_elements, current_conf, print_traj.start_conf, **kwargs)
