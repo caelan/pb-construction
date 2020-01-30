@@ -438,6 +438,9 @@ BYTES_PER_KILOBYTE = math.pow(2, 10)
 BYTES_PER_GIGABYTE = math.pow(2, 30)
 KILOBYTES_PER_GIGABYTE = BYTES_PER_GIGABYTE / BYTES_PER_KILOBYTE
 
+MAX_MEMORY = INF
+#MAX_MEMORY = 1.5 * KILOBYTES_PER_GIGABYTE # 1.5 GB
+
 def get_memory_in_kb():
     # https://pypi.org/project/psutil/
     # https://psutil.readthedocs.io/en/latest/
@@ -462,10 +465,6 @@ def get_memory_in_kb():
     #print(psutil.virtual_memory())
     #print(psutil.swap_memory())
     #print(psutil.pids())
-
-
-MAX_MEMORY = 1.5 * KILOBYTES_PER_GIGABYTE
-
 
 def check_memory(max_memory=MAX_MEMORY):
     if max_memory == INF:
