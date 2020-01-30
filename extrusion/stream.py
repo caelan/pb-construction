@@ -316,6 +316,8 @@ def get_element_collision_fn(robot, obstacles):
 
 ##################################################
 
+SKIP_PERCENTAGE = 0.0 # 0.0
+
 def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground_nodes,
                      precompute_collisions=False, supports=False, # bidirectional=False,
                      collisions=True, disable=False, ee_only=False, allow_failures=False,
@@ -337,7 +339,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
         start_time = time.time()
         idle_time = 0
         reverse = is_reversed(node1, element)
-        if disable or len(extruded) < 0.0*len(element_bodies): # For quick visualization
+        if disable or len(extruded) < SKIP_PERCENTAGE*len(element_bodies): # For quick visualization
             path, tool_path = [], []
             traj = PrintTrajectory(end_effector, get_movable_joints(robot), path, tool_path, element, reverse)
             command = Command([traj])

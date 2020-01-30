@@ -14,7 +14,7 @@ from extrusion.motion import compute_motion, compute_motions
 from extrusion.parsing import load_extrusion
 from extrusion.stream import get_print_gen_fn, MAX_DIRECTIONS, MAX_ATTEMPTS
 from extrusion.utils import get_id_from_element, get_ground_elements, is_ground, \
-    check_connected
+    check_connected, get_memory_in_kb, check_memory
 from extrusion.stiffness import create_stiffness_checker, test_stiffness
 from extrusion.validator import compute_plan_deformation
 from extrusion.visualization import draw_ordered, color_structure
@@ -27,8 +27,8 @@ from extrusion.logger import export_log_data, RECORD_BT, RECORD_CONSTRAINT_VIOLA
 # https://developers.google.com/optimization/routing/tsp
 
 def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=[],
-               heuristic='z', max_time=INF, backtrack_limit=INF, # stiffness_attempts=1,
-               collisions=True, stiffness=True, motions=True, lazy=False, **kwargs):
+               heuristic='z', max_time=INF, max_memory=INF, backtrack_limit=INF, # stiffness_attempts=1,
+               collisions=True, stiffness=True, motions=True, lazy=False, checker=None, **kwargs):
     # Focused has the benefit of reusing prior work
     # Greedy has the benefit of conditioning on previous choices
     # TODO: persistent search
@@ -47,8 +47,8 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
     id_from_element = get_id_from_element(element_from_id)
     all_elements = frozenset(element_bodies)
     ground_elements = get_ground_elements(all_elements, ground_nodes)
-    checker = create_stiffness_checker(extrusion_path, verbose=False)
-    #checker = None
+    if checker is None:
+        checker = create_stiffness_checker(extrusion_path, verbose=False) # if stiffness else None
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                     supports=False, precompute_collisions=False,
                                     max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS,
@@ -74,7 +74,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
                 heapq.heappush(queue, (priority, printed, element, conf))
 
     if check_connected(ground_nodes, final_printed) and \
-            test_stiffness(extrusion_path, element_from_id, final_printed, checker=checker):
+            (not stiffness or test_stiffness(extrusion_path, element_from_id, final_printed, checker=checker)):
         add_successors(final_printed, final_conf)
 
     if has_gui():
@@ -161,7 +161,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
 
     try:
         while queue:
-            if elapsed_time(start_time) > max_time:
+            if elapsed_time(start_time) > max_time and check_memory(): #max_memory):
                 raise TimeoutError
             priority, printed, element, current_conf = heapq.heappop(queue)
             num_remaining = len(printed)
@@ -294,6 +294,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
     data = {
         'sequence': recover_directed_sequence(plan),
         'runtime': elapsed_time(start_time),
+        'memory': get_memory_in_kb(), # May need to update instead
         'num_evaluated': num_evaluated,
         'min_remaining': min_remaining,
         'max_backtrack': max_backtrack,

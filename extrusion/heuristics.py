@@ -27,7 +27,7 @@ STIFFNESS_HEURISTICS = [
     'forces',
     'fixed-forces',
 ]
-HEURISTICS = ['none'] + DISTANCE_HEURISTICS + STIFFNESS_HEURISTICS
+HEURISTICS = ['none'] + DISTANCE_HEURISTICS#  + STIFFNESS_HEURISTICS
 
 ##################################################
 

@@ -19,7 +19,8 @@ sys.path.extend([
 ])
 
 from extrusion.figure import DEFAULT_MAX_TIME
-from extrusion.visualization import label_element, set_extrusion_camera, label_nodes, display_trajectories
+from extrusion.visualization import label_element, set_extrusion_camera, label_nodes, display_trajectories, \
+    BACKGROUND_COLOR
 from extrusion.experiment import train_parallel
 from extrusion.motion import compute_motions, validate_trajectories
 from extrusion.stripstream import plan_sequence
@@ -89,7 +90,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verify=False, verbose=F
 
     partial_orders = [] # TODO: could treat ground as partial orders
 
-    connect(use_gui=viewer) # TODO: avoid reconnecting
+    connect(use_gui=viewer, color=BACKGROUND_COLOR) # TODO: avoid reconnecting
     with LockRenderer(True):
         draw_pose(unit_pose(), length=1.)
         obstacles, robot = load_world()
@@ -249,7 +250,6 @@ def main():
     else:
         plan_extrusion(args, viewer=args.viewer, verbose=True, watch=True)
 
-    # TODO: check that both the start and end satisfy
     # python -m extrusion.run -n 10 2>&1 | tee log.txt
 
 

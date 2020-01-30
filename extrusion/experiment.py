@@ -1,6 +1,8 @@
 import datetime
 import os
 import time
+import traceback
+
 from itertools import product
 from multiprocessing import cpu_count, Pool
 from multiprocessing.context import TimeoutError
@@ -35,25 +37,15 @@ EXCLUDE = [
 EXPERIMENTS_DIR = 'experiments/'
 DATE_FORMAT = '%y-%m-%d_%H-%M-%S'
 
-# Failed instances
-# fertility, duck, dented_cube, compas_fea_beam_tree_M, compas_fea_beam_tree, bunny_full_tri_dense, bunny_full_quad, C_shape
-
-
-# Can greedily print
-# four-frame, simple_frame, voronoi
-
-# Cannot greedily print
-# topopt-100
-# mars_bubble
-# djmm_bridge
-# djmm_test_block
-
 ##################################################
 
 def train_parallel(args):
     from extrusion.run import plan_extrusion
     initial_time = time.time()
-    problems = sorted(set(enumerate_problems()) - set(EXCLUDE))
+    if args.problem == 'all':
+        problems = sorted(set(enumerate_problems()) - set(EXCLUDE))
+    else:
+        problems = [args.problem]
     #problems = ['simple_frame', 'topopt-101_tiny', 'topopt-100_S1_03-14-2019_w_layer']
     #algorithms = ALGORITHMS
     algorithms = list(ALGORITHMS)
@@ -85,7 +77,7 @@ def train_parallel(args):
     path = os.path.join(EXPERIMENTS_DIR, filename)
     print('Data path:', path)
 
-    user_input('Begin?')
+    #user_input('Begin?')
     start_time = time.time()
     timeouts = 0
     pool = Pool(processes=num_cores)  # , initializer=mute)
@@ -94,7 +86,7 @@ def train_parallel(args):
     while True:
         last_time = time.time()
         try:
-            configuration, data = generator.next(timeout=2 * args.max_time)
+            configuration, data = generator.next() # timeout=2 * args.max_time)
             results.append((configuration, data))
             print('{}/{} completed | {:.3f} seconds | timeouts: {} | {}'.format(
                 len(results), len(configurations), elapsed_time(start_time), timeouts,
@@ -106,9 +98,11 @@ def train_parallel(args):
         except StopIteration:
             break
         except TimeoutError:
-            # TODO: record this as a failure?
+            # TODO: record this as a failure? Nothing is saved though...
             timeouts += 1
+            #traceback.print_exc()
             print('Error! Timed out after {:.3f} seconds'.format(elapsed_time(last_time)))
-            break
+            break # This kills all jobs
+            #continue # This repeats jobs until success
     print('Total time:', elapsed_time(initial_time))
     return results
