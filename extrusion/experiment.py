@@ -75,7 +75,7 @@ def train_parallel(args):
     path = os.path.join(EXPERIMENTS_DIR, filename)
     print('Data path:', path)
 
-    user_input('Begin?')
+    #user_input('Begin?')
     start_time = time.time()
     timeouts = 0
     pool = Pool(processes=num_cores)  # , initializer=mute)
