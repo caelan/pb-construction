@@ -11,7 +11,7 @@ from extrusion.heuristics import get_heuristic_fn
 from extrusion.parsing import load_extrusion
 from extrusion.stream import get_print_gen_fn, MAX_DIRECTIONS, MAX_ATTEMPTS
 from extrusion.utils import check_connected, get_id_from_element, PrintTrajectory, JOINT_WEIGHTS, compute_printed_nodes, \
-    compute_printable_elements, roundrobin
+    compute_printable_elements, roundrobin, timeout
 from extrusion.stiffness import create_stiffness_checker, test_stiffness
 from extrusion.visualization import color_structure
 from extrusion.motion import compute_motion, compute_motions
@@ -182,94 +182,95 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
     plan = None
     min_remaining = INF
     num_evaluated = worst_backtrack = num_deadends = stiffness_failures = extrusion_failures= transit_failures = 0
-    while queue and (elapsed_time(start_time) < max_time):
-        num_evaluated += 1
-        visits, priority, printed, element, current_conf = heapq.heappop(queue)
-        num_remaining = len(all_elements) - len(printed)
-        backtrack = num_remaining - min_remaining
-        worst_backtrack = max(worst_backtrack, backtrack)
-        if backtrack_limit < backtrack:
-            break # continue
-        num_evaluated += 1
-        if num_remaining < min_remaining:
-            min_remaining = num_remaining
-        print('Iteration: {} | Best: {} | Backtrack: {} | Deadends: {} | Printed: {} | Element: {} | Index: {} | Time: {:.3f}'.format(
-            num_evaluated, min_remaining, worst_backtrack, num_deadends, len(printed), element, id_from_element[element], elapsed_time(start_time)))
-        if has_gui():
-            color_structure(element_bodies, printed, element)
+    with timeout(max_time):
+        while queue and (elapsed_time(start_time) < max_time):
+            num_evaluated += 1
+            visits, priority, printed, element, current_conf = heapq.heappop(queue)
+            num_remaining = len(all_elements) - len(printed)
+            backtrack = num_remaining - min_remaining
+            worst_backtrack = max(worst_backtrack, backtrack)
+            if backtrack_limit < backtrack:
+                break # continue
+            num_evaluated += 1
+            if num_remaining < min_remaining:
+                min_remaining = num_remaining
+            print('Iteration: {} | Best: {} | Backtrack: {} | Deadends: {} | Printed: {} | Element: {} | Index: {} | Time: {:.3f}'.format(
+                num_evaluated, min_remaining, worst_backtrack, num_deadends, len(printed), element, id_from_element[element], elapsed_time(start_time)))
+            if has_gui():
+                color_structure(element_bodies, printed, element)
 
-        next_printed = printed | {element}
-        if next_printed in visited:
-            continue
-        assert check_connected(ground_nodes, next_printed)
-        if stiffness and not test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker, verbose=False):
-            # Hard dead-end
-            #num_deadends += 1
-            stiffness_failures += 1
-            print('Partial structure is not stiff!')
-            continue
-
-        #condition = frozenset()
-        #condition = set(retrace_elements(visited, printed, horizon=2))
-        #condition = printed # horizon=1
-        condition = next_printed
-
-        if not sample_remaining(condition, next_printed, ee_sample_traj, num=num_ee):
-            num_deadends += 1
-            print('An end-effector successor could not be sampled!')
-            continue
-
-        print('Sampling transition')
-        #command = sample_extrusion(print_gen_fn, ground_nodes, printed, element)
-        command = next(iter(full_sample_traj(printed, printed, element, connected=True)), None)
-        if command is None:
-            # Soft dead-end
-            print('The transition could not be sampled!')
-            extrusion_failures += 1
-            continue
-
-        print('Sampling successors')
-        if not sample_remaining(condition, next_printed, full_sample_traj, num=num_arm):
-            num_deadends += 1
-            print('A successor could not be sampled!')
-            continue
-
-        start_conf = end_conf = None
-        if not ee_only:
-            start_conf, end_conf = command.start_conf, command.end_conf
-        if (start_conf is not None) and motions:
-            motion_traj = compute_motion(robot, obstacles, element_bodies,
-                                         printed, current_conf, start_conf, collisions=collisions,
-                                         max_time=max_time - elapsed_time(start_time))
-            if motion_traj is None:
-                transit_failures += 1
+            next_printed = printed | {element}
+            if next_printed in visited:
                 continue
-            command.trajectories.insert(0, motion_traj)
+            assert check_connected(ground_nodes, next_printed)
+            if stiffness and not test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker, verbose=False):
+                # Hard dead-end
+                #num_deadends += 1
+                stiffness_failures += 1
+                print('Partial structure is not stiff!')
+                continue
 
-        visited[next_printed] = Node(command, printed)
-        if all_elements <= next_printed:
-            # TODO: anytime mode
-            min_remaining = 0
-            plan = retrace_trajectories(visited, next_printed)
-            if motions and not lazy:
-                motion_traj = compute_motion(robot, obstacles, element_bodies, frozenset(),
-                                             initial_conf, plan[0].start_conf, collisions=collisions,
+            #condition = frozenset()
+            #condition = set(retrace_elements(visited, printed, horizon=2))
+            #condition = printed # horizon=1
+            condition = next_printed
+
+            if not sample_remaining(condition, next_printed, ee_sample_traj, num=num_ee):
+                num_deadends += 1
+                print('An end-effector successor could not be sampled!')
+                continue
+
+            print('Sampling transition')
+            #command = sample_extrusion(print_gen_fn, ground_nodes, printed, element)
+            command = next(iter(full_sample_traj(printed, printed, element, connected=True)), None)
+            if command is None:
+                # Soft dead-end
+                print('The transition could not be sampled!')
+                extrusion_failures += 1
+                continue
+
+            print('Sampling successors')
+            if not sample_remaining(condition, next_printed, full_sample_traj, num=num_arm):
+                num_deadends += 1
+                print('A successor could not be sampled!')
+                continue
+
+            start_conf = end_conf = None
+            if not ee_only:
+                start_conf, end_conf = command.start_conf, command.end_conf
+            if (start_conf is not None) and motions and not lazy:
+                motion_traj = compute_motion(robot, obstacles, element_bodies,
+                                             printed, current_conf, start_conf, collisions=collisions,
                                              max_time=max_time - elapsed_time(start_time))
                 if motion_traj is None:
-                    plan = None
                     transit_failures += 1
-                else:
-                    plan.append(motion_traj)
-            if motions and lazy:
-                plan = compute_motions(robot, obstacles, element_bodies, initial_conf, plan,
-                                       collisions=collisions, max_time=max_time - elapsed_time(start_time))
-            break
-            # if plan is not None:
-            #     break
-        add_successors(queue, all_elements, node_points, ground_nodes, priority_fn, next_printed, end_conf,
-                       partial_orders=partial_orders)
-        if revisit:
-            heapq.heappush(queue, (visits + 1, priority, printed, element, current_conf))
+                    continue
+                command.trajectories.insert(0, motion_traj)
+
+            visited[next_printed] = Node(command, printed)
+            if all_elements <= next_printed:
+                # TODO: anytime mode
+                min_remaining = 0
+                plan = retrace_trajectories(visited, next_printed)
+                if motions and not lazy:
+                    motion_traj = compute_motion(robot, obstacles, element_bodies, frozenset(),
+                                                 initial_conf, plan[0].start_conf, collisions=collisions,
+                                                 max_time=max_time - elapsed_time(start_time))
+                    if motion_traj is None:
+                        plan = None
+                        transit_failures += 1
+                    else:
+                        plan.append(motion_traj)
+                if motions and lazy:
+                    plan = compute_motions(robot, obstacles, element_bodies, initial_conf, plan,
+                                           collisions=collisions, max_time=max_time - elapsed_time(start_time))
+                break
+                # if plan is not None:
+                #     break
+            add_successors(queue, all_elements, node_points, ground_nodes, priority_fn, next_printed, end_conf,
+                           partial_orders=partial_orders)
+            if revisit:
+                heapq.heappush(queue, (visits + 1, priority, printed, element, current_conf))
 
     max_translation, max_rotation = compute_plan_deformation(extrusion_path, recover_sequence(plan))
     data = {

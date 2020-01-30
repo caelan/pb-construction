@@ -32,7 +32,7 @@ from extrusion.validator import verify_plan
 from extrusion.lookahead import lookahead
 
 from pybullet_tools.utils import connect, disconnect, get_movable_joints, get_joint_positions, LockRenderer, \
-    unit_pose, reset_simulation, draw_pose, apply_alpha, BLACK, Pose, Euler, set_numpy_seed, set_random_seed
+    unit_pose, reset_simulation, draw_pose, apply_alpha, BLACK, Pose, Euler, set_numpy_seed, set_random_seed, INF
 
 
 ##################################################
@@ -83,7 +83,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verify=False, verbose=F
     # plan = plan_sequence_test(node_points, elements, ground_nodes)
 
     partial_orders = [] # TODO: could treat ground as partial orders
-    backtrack_limit = 0 # 0 | INF
+    backtrack_limit = INF # 0 | INF
 
     connect(use_gui=viewer, color=BACKGROUND_COLOR) # TODO: avoid reconnecting
     with LockRenderer(True):

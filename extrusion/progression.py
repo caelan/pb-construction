@@ -14,7 +14,7 @@ from extrusion.parsing import load_extrusion
 from extrusion.visualization import draw_element
 from extrusion.stream import get_print_gen_fn, STEP_SIZE, APPROACH_DISTANCE, MAX_DIRECTIONS, MAX_ATTEMPTS
 from extrusion.utils import check_connected, get_id_from_element, load_world, PrintTrajectory, \
-    compute_printed_nodes, compute_printable_elements, RESOLUTION
+    compute_printed_nodes, compute_printable_elements, RESOLUTION, timeout
 from extrusion.stiffness import TRANS_TOL, ROT_TOL, create_stiffness_checker, test_stiffness
 from extrusion.motion import compute_motion, compute_motions
 
@@ -156,59 +156,60 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
     plan = None
     min_remaining = len(all_elements)
     num_evaluated = max_backtrack = stiffness_failures = extrusion_failures = transit_failures = 0
-    while queue and (elapsed_time(start_time) < max_time):
-        num_evaluated += 1
-        visits, _, printed, element, current_conf = heapq.heappop(queue)
-        num_remaining = len(all_elements) - len(printed)
-        backtrack = num_remaining - min_remaining
-        max_backtrack = max(max_backtrack, backtrack)
-        if backtrack_limit < backtrack:
-            break # continue
-        num_evaluated += 1
-        if num_remaining < min_remaining:
-            min_remaining = num_remaining
-        print('Iteration: {} | Best: {} | Printed: {} | Element: {} | Index: {} | Time: {:.3f}'.format(
-            num_evaluated, min_remaining, len(printed), element, id_from_element[element], elapsed_time(start_time)))
-        next_printed = printed | {element}
-        assert check_connected(ground_nodes, next_printed)
-        if (next_printed in visited) or (stiffness and not test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker)):
-            stiffness_failures += 1
-            continue
-        command = sample_extrusion(print_gen_fn, ground_nodes, printed, element)
-        if command is None:
-            extrusion_failures += 1
-            continue
-        if motions and not lazy:
-            # TODO: test reachability from initial_conf
-            motion_traj = compute_motion(robot, obstacles, element_bodies, printed,
-                                         current_conf, command.start_conf, collisions=collisions,
-                                         max_time=max_time - elapsed_time(start_time))
-            if motion_traj is None:
-                transit_failures += 1
+    with timeout(max_time):
+        while queue and (elapsed_time(start_time) < max_time):
+            num_evaluated += 1
+            visits, _, printed, element, current_conf = heapq.heappop(queue)
+            num_remaining = len(all_elements) - len(printed)
+            backtrack = num_remaining - min_remaining
+            max_backtrack = max(max_backtrack, backtrack)
+            if backtrack_limit < backtrack:
+                break # continue
+            num_evaluated += 1
+            if num_remaining < min_remaining:
+                min_remaining = num_remaining
+            print('Iteration: {} | Best: {} | Printed: {} | Element: {} | Index: {} | Time: {:.3f}'.format(
+                num_evaluated, min_remaining, len(printed), element, id_from_element[element], elapsed_time(start_time)))
+            next_printed = printed | {element}
+            assert check_connected(ground_nodes, next_printed)
+            if (next_printed in visited) or (stiffness and not test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker)):
+                stiffness_failures += 1
                 continue
-            command.trajectories.insert(0, motion_traj)
-
-        visited[next_printed] = Node(command, printed)
-        if all_elements <= next_printed:
-            min_remaining = 0
-            plan = retrace_trajectories(visited, next_printed)
+            command = sample_extrusion(print_gen_fn, ground_nodes, printed, element)
+            if command is None:
+                extrusion_failures += 1
+                continue
             if motions and not lazy:
-                motion_traj = compute_motion(robot, obstacles, element_bodies, frozenset(),
-                                             initial_conf, plan[0].start_conf, collisions=collisions,
+                # TODO: test reachability from initial_conf
+                motion_traj = compute_motion(robot, obstacles, element_bodies, printed,
+                                             current_conf, command.start_conf, collisions=collisions,
                                              max_time=max_time - elapsed_time(start_time))
                 if motion_traj is None:
-                    plan = None
                     transit_failures += 1
-                else:
-                    plan.append(motion_traj)
-            if motions and lazy:
-                plan = compute_motions(robot, obstacles, element_bodies, initial_conf, plan,
-                                       collisions=collisions, max_time=max_time - elapsed_time(start_time))
-            break
-            # if plan is not None:
-            #     break
-        add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn, next_printed, command.end_conf,
-                       partial_orders=partial_orders)
+                    continue
+                command.trajectories.insert(0, motion_traj)
+
+            visited[next_printed] = Node(command, printed)
+            if all_elements <= next_printed:
+                min_remaining = 0
+                plan = retrace_trajectories(visited, next_printed)
+                if motions and not lazy:
+                    motion_traj = compute_motion(robot, obstacles, element_bodies, frozenset(),
+                                                 initial_conf, plan[0].start_conf, collisions=collisions,
+                                                 max_time=max_time - elapsed_time(start_time))
+                    if motion_traj is None:
+                        plan = None
+                        transit_failures += 1
+                    else:
+                        plan.append(motion_traj)
+                if motions and lazy:
+                    plan = compute_motions(robot, obstacles, element_bodies, initial_conf, plan,
+                                           collisions=collisions, max_time=max_time - elapsed_time(start_time))
+                break
+                # if plan is not None:
+                #     break
+            add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn, next_printed, command.end_conf,
+                           partial_orders=partial_orders)
 
     max_translation, max_rotation = compute_plan_deformation(extrusion_path, recover_sequence(plan))
     data = {
