@@ -76,6 +76,7 @@ def bar_graph(data, attribute):
     plt.xlabel('Algorithm')
     ax.autoscale(tight=True)
     plt.legend(loc='best') # 'upper left'
+    #plt.legend(loc='upper left')
     plt.ylabel(rename(attribute))
     plt.ylim([0, y_max])
     #plt.savefig('test')
@@ -88,16 +89,22 @@ def bar_graph(data, attribute):
 #ALPHA = None
 #EDGES = ['face', 'face', 'g', 'b']
 #COLORS = ['r', 'y', 'none', 'none']
-EDGES = ['face', 'face', 'C2', 'C3']
-#COLORS = ['C0', 'C1', 'none', 'none']
-MARKERS = ['x', '+', 's', 'o']
+
+MARKERS = ['x', 'o', '+']
+EDGES = ['face', 'g', 'face', ] # C2
+#COLORS = ['C0', 'C1', 'none']
+#COLORS = ['c', 'y', 'none'] # m
+COLORS = ['r', 'none', 'b']
+
+
+# https://matplotlib.org/api/markers_api.html
+# https://matplotlib.org/2.0.2/api/colors_api.html
 
 def scatter_plot(data):
     all_sizes = sorted({result['num_elements'] for _, result in data})
     print('Sizes:', all_sizes)
-    plt.scatter(all_sizes, np.zeros(len(all_sizes)), marker='x',
-                label='problem size', edgecolors='b')
-    algorithms, heuristics = ALGORITHMS, ['plan-stiffness']
+    plt.scatter(all_sizes, np.zeros(len(all_sizes)), marker='|', color='k') # black
+    algorithms, heuristics = ALGORITHMS, ['z'] # plan-stiffness, z, dijkstra
     #algorithms, heuristics = ['regression'], HEURISTICS
 
     for a_idx, algorithm in enumerate(algorithms):
@@ -116,15 +123,17 @@ def scatter_plot(data):
             if len(heuristics) != 1:
                 components.append(rename(heuristic))
             label = '-'.join(components)
-            plt.scatter(sizes, runtimes, #marker=MARKERS[h_idx], edgecolors=EDGES[h_idx]
-                        alpha=0.5, label=label)
+            plt.scatter(sizes, runtimes, marker=MARKERS[a_idx],
+                        color=COLORS[a_idx], edgecolors=EDGES[a_idx],
+                        alpha=0.75, label=label)
 
     plt.title('Scaling: All Constraints')
     #plt.xticks(range(1, max_size+1)) #, [get_index(problem) for problem in problems])
     plt.xlim([1, 1000]) #max(all_sizes)])
     plt.xlabel('# elements')
     plt.ylabel('runtime (sec)')
-    plt.legend(loc='upper left')
+    #plt.legend(loc='upper left')
+    plt.legend(loc='upper center')
     #plt.savefig('test')
     plt.show()
     # logarithmic scale
