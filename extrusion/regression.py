@@ -14,7 +14,7 @@ from extrusion.motion import compute_motion, compute_motions
 from extrusion.parsing import load_extrusion
 from extrusion.stream import get_print_gen_fn, MAX_DIRECTIONS, MAX_ATTEMPTS
 from extrusion.utils import get_id_from_element, get_ground_elements, is_ground, \
-    check_connected, get_memory_in_kb, check_memory
+    check_connected, get_memory_in_kb, check_memory, timeout
 from extrusion.stiffness import create_stiffness_checker, test_stiffness
 from extrusion.validator import compute_plan_deformation
 from extrusion.visualization import draw_ordered, color_structure
@@ -28,7 +28,7 @@ from extrusion.logger import export_log_data, RECORD_BT, RECORD_CONSTRAINT_VIOLA
 
 def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=[],
                heuristic='z', max_time=INF, max_memory=INF, backtrack_limit=INF, # stiffness_attempts=1,
-               collisions=True, stiffness=True, motions=True, lazy=False, checker=None, **kwargs):
+               collisions=True, stiffness=True, motions=True, lazy=True, checker=None, **kwargs):
     # Focused has the benefit of reusing prior work
     # Greedy has the benefit of conditioning on previous choices
     # TODO: persistent search

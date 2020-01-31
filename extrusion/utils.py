@@ -4,6 +4,7 @@ import os
 import numpy as np
 from termcolor import cprint
 import math
+import traceback
 
 from collections import defaultdict, deque
 from itertools import islice, cycle
@@ -495,3 +496,40 @@ def check_memory(max_memory=MAX_MEMORY):
         return True
     cprint('Memory of {:.0f} KB exceeds memory limit of {:.0f} KB'.format(memory_kb, max_memory), 'red')
     return False
+
+##################################################
+
+# https://www.jujens.eu/posts/en/2018/Jun/02/python-timeout-function/
+# https://code-maven.com/python-timeout
+# https://pypi.org/project/func-timeout/
+# https://pypi.org/project/timeout-decorator/
+# https://eli.thegreenplace.net/2011/08/22/how-not-to-set-a-timeout-on-a-computation-in-python
+# https://docs.python.org/3/library/signal.html
+# https://docs.python.org/3/library/contextlib.html
+# https://stackoverflow.com/a/22348885
+
+import signal
+from contextlib import contextmanager
+
+def raise_timeout(signum, frame):
+    raise TimeoutError()
+
+@contextmanager
+def timeout(duration):
+    if duration == INF:
+        yield
+        return
+    # Register a function to raise a TimeoutError on the signal
+    signal.signal(signal.SIGALRM, raise_timeout)
+    # Schedule the signal to be sent after ``duration``
+    signal.alarm(int(math.ceil(duration)))
+    try:
+        yield
+    except TimeoutError as e:
+        print('Timeout after {} sec'.format(duration))
+        #traceback.print_exc()
+        pass
+    finally:
+        # Unregister the signal so it won't be triggered
+        # if the timeout is not reached
+        signal.signal(signal.SIGALRM, signal.SIG_IGN)

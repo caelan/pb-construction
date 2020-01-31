@@ -12,7 +12,7 @@ from extrusion.heuristics import get_heuristic_fn, score_stiffness
 from extrusion.parsing import load_extrusion
 from extrusion.stream import get_print_gen_fn, MAX_DIRECTIONS, MAX_ATTEMPTS
 from extrusion.utils import check_connected, get_id_from_element, PrintTrajectory, JOINT_WEIGHTS, compute_printed_nodes, \
-    compute_printable_elements, roundrobin, get_memory_in_kb, check_memory
+    compute_printable_elements, roundrobin, get_memory_in_kb, check_memory, timeout
 from extrusion.stiffness import create_stiffness_checker, test_stiffness
 from extrusion.visualization import color_structure
 from extrusion.motion import compute_motion, compute_motions
@@ -356,7 +356,7 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
             start_conf = end_conf = None
             if not ee_only:
                 start_conf, end_conf = command.start_conf, command.end_conf
-            if (start_conf is not None) and motions and lazy:
+            if (start_conf is not None) and motions and not lazy:
                 motion_traj = compute_motion(robot, obstacles, element_bodies,
                                              printed, current_conf, start_conf, collisions=collisions,
                                              max_time=max_time - elapsed_time(start_time))
