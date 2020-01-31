@@ -11,7 +11,7 @@ from itertools import islice, cycle
 from pybullet_tools.utils import get_link_pose, BodySaver, set_point, multiply, set_pose, set_joint_positions, \
     Point, HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, get_aabb, \
     get_distance, get_relative_pose, get_link_subtree, clone_body, randomize, get_movable_joints, get_all_links, get_bodies_in_region, pairwise_link_collision, \
-    set_static, BASE_LINK, add_data_path, INF, load_model
+    set_static, BASE_LINK, add_data_path, INF, load_model, create_plane, set_color, TAN, set_texture, create_box, apply_alpha
 from pddlstream.utils import get_connected_components
 
 KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
@@ -40,6 +40,10 @@ JOINT_WEIGHTS = np.array([0.3078557810844393, 0.443600199302506, 0.2354436760731
 
 INITIAL_CONF = [0, -np.pi/4, np.pi/4, 0, 0, 0]
 
+#GROUND_COLOR = 0.9*np.ones(3)
+GROUND_COLOR = 0.8*np.ones(3)
+#GROUND_COLOR = TAN
+
 ##################################################
 
 # https://docs.python.org/3.1/library/itertools.html#recipes
@@ -58,21 +62,25 @@ def roundrobin(*iterables):
 
 ##################################################
 
-def load_world(use_floor=USE_FLOOR):
+def load_world(use_floor=True):
     root_directory = os.path.dirname(os.path.abspath(__file__))
     obstacles = []
+    #side, height = 10, 0.01
     with HideOutput():
         robot = load_pybullet(os.path.join(root_directory, KUKA_PATH), fixed_base=True)
         set_static(robot)
         set_joint_positions(robot, get_movable_joints(robot), INITIAL_CONF)
         lower, _ = get_aabb(robot)
         if use_floor:
-            floor = load_model('models/short_floor.urdf', fixed_base=True)
+            #floor = load_model('models/short_floor.urdf', fixed_base=True)
             #add_data_path()
             #floor = load_pybullet('plane.urdf', fixed_base=True)
+            #set_color(floor, TAN)
+            #floor = create_box(w=side, l=side, h=height, color=apply_alpha(GROUND_COLOR))
+            floor = create_plane(color=apply_alpha(GROUND_COLOR))
             obstacles.append(floor)
             #set_point(floor, Point(z=lower[2]))
-            set_point(floor, Point(x=1.2, z=0.023-0.025))
+            set_point(floor, Point(x=1.2, z=0.023-0.025)) # -0.02
         else:
             floor = None # TODO: make this an empty list of obstacles
         #set_all_static()

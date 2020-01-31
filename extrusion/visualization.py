@@ -12,7 +12,15 @@ from pybullet_tools.utils import add_text, draw_pose, get_pose, wait_for_user, a
     reset_simulation, disconnect
 
 #BACKGROUND_COLOR = 1*np.ones(3)
-BACKGROUND_COLOR = None
+BACKGROUND_COLOR = [0.9, 0.9, 1.0] # 229, 229, 255
+#BACKGROUND_COLOR = None # 178, 178, 204
+SHADOWS = False
+LINE_WIDTH = 1.0
+
+# Largest
+# bunny_full_quad (squares): Nodes: 388 | Ground: 59 | Elements: 786
+# bunny_full_tri_dense (triangles): Nodes: 246 | Ground: 40 | Elements: 732
+# duck: Nodes: 305 | Ground: 72 | Elements: 909
 
 ##################################################
 
@@ -134,7 +142,7 @@ def draw_element(node_points, element, color=RED):
     n1, n2 = element
     p1 = node_points[n1]
     p2 = node_points[n2]
-    return add_line(p1, p2, color=color[:3])
+    return add_line(p1, p2, color=color[:3], width=LINE_WIDTH)
 
 
 def draw_model(elements, node_points, ground_nodes):
@@ -147,7 +155,7 @@ def draw_model(elements, node_points, ground_nodes):
 
 
 def sample_colors(num, lower=0.0, upper=0.75): # for now wrap around
-    return [colorsys.hsv_to_rgb(h, s=1, v=1) for h in np.linspace(lower, upper, num, endpoint=True)]
+    return [colorsys.hsv_to_rgb(h, s=1, v=1) for h in reversed(np.linspace(lower, upper, num, endpoint=True))]
 
 
 def draw_ordered(elements, node_points):
@@ -170,7 +178,7 @@ def set_extrusion_camera(node_points):
 def display_trajectories(node_points, ground_nodes, trajectories, animate=True, time_step=0.02, video=False):
     if trajectories is None:
         return
-    connect(use_gui=True, color=BACKGROUND_COLOR)
+    connect(use_gui=True, shadows=SHADOWS, color=BACKGROUND_COLOR)
     set_extrusion_camera(node_points)
     obstacles, robot = load_world()
     movable_joints = get_movable_joints(robot)
@@ -213,7 +221,7 @@ def display_trajectories(node_points, ground_nodes, trajectories, animate=True, 
                 if last_point is not None:
                     # color = BLUE if is_ground(trajectory.element, ground_nodes) else RED
                     color = colors[len(printed_elements)]
-                    handles.append(add_line(last_point, current_point, color=color))
+                    handles.append(add_line(last_point, current_point, color=color, width=LINE_WIDTH))
                 last_point = current_point
             if time_step is None:
                 wait_for_user()

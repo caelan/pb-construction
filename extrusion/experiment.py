@@ -14,6 +14,7 @@ from extrusion.lookahead import lookahead
 from extrusion.heuristics import HEURISTICS
 from extrusion.parsing import enumerate_problems
 from extrusion.regression import regression
+from extrusion.stream import SKIP_PERCENTAGE
 from pddlstream.utils import get_python_version
 from pybullet_tools.utils import is_darwin, user_input, write_pickle, elapsed_time
 
@@ -42,6 +43,7 @@ DATE_FORMAT = '%y-%m-%d_%H-%M-%S'
 
 def train_parallel(args):
     from extrusion.run import plan_extrusion
+    assert SKIP_PERCENTAGE == 0
     initial_time = time.time()
     problems = sorted(set(enumerate_problems()) - set(EXCLUDE))
     #problems = ['simple_frame', 'topopt-101_tiny', 'topopt-100_S1_03-14-2019_w_layer']

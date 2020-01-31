@@ -14,6 +14,7 @@ from collections import OrderedDict, defaultdict
 from extrusion.experiment import EXCLUDE, Configuration, EXPERIMENTS_DIR, HEURISTICS, ALGORITHMS
 
 DEFAULT_MAX_TIME = 1 * 60 * 60
+#DEFAULT_MAX_TIME = 1.5 * 60 * 60
 
 SUCCESS = 'success'
 RUNTIME = 'runtime'
@@ -26,13 +27,16 @@ ALPHA = 1.0 # 0.5
 ##################################################
 
 RENAME_LABELS = {
-    'none': 'random',
-    'z': 'task-distance',
-    'dijkstra': 'truss-distance',
-    'plan-stiffness': 'stiffness-plan',
+    'none': 'Random', # random
+    'z': 'EuclideanDist', # task-distance
+    'dijkstra': 'GraphDist', # truss-distance
+    'plan-stiffness': 'StiffPlan', # stiffness-plan
     #'lookahead': 'progression+lookahead',
     SUCCESS: '% solved',
     RUNTIME: 'runtime (sec)',
+    'progression': 'Progression',
+    'lookahead': 'ForwardCheck',
+    'regression': 'Regression',
 }
 
 def rename(name):

@@ -17,7 +17,7 @@ sys.path.extend([
 
 from extrusion.figure import DEFAULT_MAX_TIME
 from extrusion.visualization import label_element, set_extrusion_camera, label_nodes, display_trajectories, \
-    BACKGROUND_COLOR
+    BACKGROUND_COLOR, draw_model, SHADOWS
 from extrusion.experiment import train_parallel
 from extrusion.motion import compute_motions, validate_trajectories
 from extrusion.stripstream import plan_sequence
@@ -32,7 +32,8 @@ from extrusion.validator import verify_plan
 from extrusion.lookahead import lookahead
 
 from pybullet_tools.utils import connect, disconnect, get_movable_joints, get_joint_positions, LockRenderer, \
-    unit_pose, reset_simulation, draw_pose, apply_alpha, BLACK, Pose, Euler, set_numpy_seed, set_random_seed, INF
+    unit_pose, reset_simulation, draw_pose, apply_alpha, BLACK, Pose, Euler, set_numpy_seed, \
+    set_random_seed, INF, wait_for_user
 
 
 ##################################################
@@ -85,10 +86,12 @@ def plan_extrusion(args, viewer=False, precompute=False, verify=False, verbose=F
     partial_orders = [] # TODO: could treat ground as partial orders
     backtrack_limit = INF # 0 | INF
 
-    connect(use_gui=viewer, color=BACKGROUND_COLOR) # TODO: avoid reconnecting
-    with LockRenderer(True):
+    connect(use_gui=viewer, shadows=SHADOWS, color=BACKGROUND_COLOR) # TODO: avoid reconnecting
+    with LockRenderer(False):
         draw_pose(unit_pose(), length=1.)
         obstacles, robot = load_world()
+        #draw_model(elements, node_points, ground_nodes)
+        #wait_for_user()
         alpha = 1 # 0
         element_bodies = dict(zip(elements, create_elements_bodies(
             node_points, elements, color=apply_alpha(BLACK, alpha))))

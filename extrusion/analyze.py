@@ -158,7 +158,8 @@ def main():
     np.set_printoptions(precision=3)
     if args.dump:
         enumerate_experiments()
-    load_experiment(args.path, overall=args.all)
+    else:
+        load_experiment(args.path, overall=args.all)
 
 if __name__ == '__main__':
     main()

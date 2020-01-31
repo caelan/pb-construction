@@ -182,7 +182,7 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
     plan = None
     min_remaining = INF
     num_evaluated = worst_backtrack = num_deadends = stiffness_failures = extrusion_failures= transit_failures = 0
-    with timeout(max_time):
+    with timeout(max_time): # TODO: put around the full function
         while queue and (elapsed_time(start_time) < max_time):
             num_evaluated += 1
             visits, priority, printed, element, current_conf = heapq.heappop(queue)
