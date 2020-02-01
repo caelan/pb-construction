@@ -13,7 +13,7 @@ from collections import OrderedDict, defaultdict
 
 from extrusion.experiment import EXCLUDE, Configuration, EXPERIMENTS_DIR, HEURISTICS, ALGORITHMS
 
-DEFAULT_MAX_TIME = 1 * 60 * 60
+DEFAULT_MAX_TIME = 3 * 60 * 60
 
 SUCCESS = 'success'
 RUNTIME = 'runtime'

@@ -417,21 +417,6 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
             wait_for_user()
         # assert False, 'search terminated.'
 
-    if RECORD_QUEUE | RECORD_CONSTRAINT_VIOLATION | RECORD_BT:
-        # log data even if a plan has been found
-        cur_data = {}
-        cur_data['algorithm'] = 'lookahead'
-        cur_data['heuristic'] = heuristic
-        when_stop_data = snapshot_state(reason='plan found')
-
-        cur_data['when_stopped'] = when_stop_data
-        cur_data['backtrack_history'] = bt_data
-        cur_data['constraint_violation_history'] = cons_data
-        cur_data['deadend_history'] = deadend_data
-        cur_data['queue_history'] = queue_data
-
-        export_log_data(extrusion_path, cur_data, overwrite=OVERWRITE, **kwargs)
-
     max_translation, max_rotation, max_compliance = compute_plan_deformation(extrusion_path, recover_sequence(plan))
     data = {
         'sequence': recover_directed_sequence(plan),

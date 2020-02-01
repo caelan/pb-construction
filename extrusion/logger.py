@@ -10,7 +10,7 @@ from extrusion.stiffness import TRANS_TOL, ROT_TOL
 from extrusion.utils import RESOLUTION, get_memory_in_kb
 from extrusion.stream import STEP_SIZE, APPROACH_DISTANCE, MAX_DIRECTIONS, MAX_ATTEMPTS
 
-MAX_BACKTACK = 2
+MAX_BACKTACK = INF
 
 # log options
 RECORD_BT = True
@@ -33,7 +33,7 @@ VISUALIZE_ACTION = False # visualize action step-by-step
 CHECK_BACKTRACK = False # visually check
 
 # video recording
-RECORD_VIDEO = False
+RECORD_VIDEO = True
 DISPLAY_TIME_STEP = None
 
 
@@ -102,6 +102,9 @@ def export_result_data(config, plan_data, overwrite=True, indent=None, tag=None)
     # result_file_dir = "C:/Users/yijiangh/Documents/pb_ws/pychoreo/tests/test_data"
     here = os.path.abspath(os.path.dirname(__file__))
     result_file_dir = os.path.join(here, 'extrusion_results')
+    if tag is not None and 'server' in tag:
+        result_file_dir = os.path.join(result_file_dir, 'server_results')
+
     if not os.path.exists(result_file_dir):
         os.makedirs(result_file_dir) 
 

@@ -5,6 +5,7 @@ import argparse
 import os
 import numpy as np
 import sys
+import datetime
 sys.path.extend([
     'pddlstream/',
     'ss-pybullet/',
@@ -79,7 +80,10 @@ def load_experiment(filename, overall=False, failed_runtimes=True, write_result=
         #max_trans, max_rot = max_plan_deformation(config.problem, plan)
         #result['max_trans'] = max_trans
         #result['max_rot'] = max_rot
-        result.pop('sequence', None)
+        result['write_time'] = datetime.datetime.now().strftime('%y-%m-%d_%H-%M-%S')
+        result['plan'] = result.pop('sequence', None)
+        if not write_result:
+            del result['plan']
         max_time = max(max_time, result[RUNTIME])
         if not result[SUCCESS] and not failed_runtimes:
             result.pop(RUNTIME, None)
@@ -124,7 +128,7 @@ def load_experiment(filename, overall=False, failed_runtimes=True, write_result=
             data_from_config.setdefault(new_config, []).append(result)
 
         # * config print at each problem
-        print('Attributes:', str_from_object(value_per_field))
+        # print('Attributes:', str_from_object(value_per_field))
         df = df.append([{ 'info' : str_from_object(
             {field : value_per_field[field] for field in value_per_field.keys() if field not in \
                 ['algorithm', 'bias', 'seed', 'problem']})
@@ -132,7 +136,7 @@ def load_experiment(filename, overall=False, failed_runtimes=True, write_result=
         if not overall:
             df = df.append([col_name_df])
 
-        print('Configs:', len(data_from_config))
+        # print('Configs:', len(data_from_config))
 
         all_results = {}
         for c_idx, config in enumerate(sorted(data_from_config, key=str)):
@@ -148,8 +152,8 @@ def load_experiment(filename, overall=False, failed_runtimes=True, write_result=
                    if (value is not None) and (2 <= len(value_per_field[field]))}
             all_results[frozenset(key.items())] = {name: values for name, values in accumulated_result.items() if name in SCORES}
             score = score_result(mean_result)
-            print('{}) {} ({}): {}'.format(c_idx, str_from_object(key), len(results), str_from_object(score)))
-            print('Max time: {:.3f} sec'.format(max_time))
+            # print('{}) {} ({}): {}'.format(c_idx, str_from_object(key), len(results), str_from_object(score)))
+            # print('Max time: {:.3f} sec'.format(max_time))
 
             df_data = {}
             df_data.update({'config_id' : c_idx})
