@@ -21,7 +21,7 @@ from pybullet_tools.utils import INF, get_movable_joints, get_joint_positions, r
 
 def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=[],
                heuristic='z', max_time=INF, max_memory=INF, backtrack_limit=INF, # stiffness_attempts=1,
-               collisions=True, stiffness=True, motions=True, lazy=True, checker=None, **kwargs):
+               collisions=True, stiffness=True, motions=True, lazy=False, checker=None, **kwargs):
     # Focused has the benefit of reusing prior work
     # Greedy has the benefit of conditioning on previous choices
     # TODO: persistent search

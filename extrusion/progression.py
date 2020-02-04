@@ -129,7 +129,7 @@ def add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn,
 
 def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders=[],
                 heuristic='z', max_time=INF, backtrack_limit=INF,
-                stiffness=True, motions=True, collisions=True, lazy=True, **kwargs):
+                stiffness=True, motions=True, collisions=True, lazy=False, **kwargs):
 
     start_time = time.time()
     joints = get_movable_joints(robot)

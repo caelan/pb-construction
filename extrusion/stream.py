@@ -317,7 +317,7 @@ def get_element_collision_fn(robot, obstacles):
 
 ##################################################
 
-SKIP_PERCENTAGE = 0.0 # 0.0
+SKIP_PERCENTAGE = 0.0 # 0.0 | 0.95
 
 def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground_nodes,
                      precompute_collisions=False, supports=False, # bidirectional=False,
