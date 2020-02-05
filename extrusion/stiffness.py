@@ -11,8 +11,8 @@ from itertools import product
 from pyconmech import StiffnessChecker
 
 from extrusion.utils import get_extructed_ids, compute_printable_elements, compute_z_distance, \
-    compute_sequence_distance, compute_printed_nodes, is_printable, get_distance
-from pybullet_tools.utils import HideOutput, INF, elapsed_time, randomize
+    compute_sequence_distance, compute_printed_nodes, is_printable, get_distance, get_midpoint
+from pybullet_tools.utils import HideOutput, INF, elapsed_time, randomize, wait_for_user
 
 TRANS_TOL = 0.0015
 ROT_TOL = INF # 5 * np.pi / 180
@@ -104,34 +104,25 @@ def test_stiffness(extrusion_path, element_from_id, elements, **kwargs):
 
 SCALE = 1e3
 
-def print_solution(manager, routing, assignment):
-    if not assignment:
-        return None
-    print('Objective: {:.3f}'.format(assignment.ObjectiveValue() / SCALE))
-    index = routing.Start(0)
-    order = []
-    while not routing.IsEnd(index):
-        order.append(manager.IndexToNode(index))
-        previous_index = index
-        index = assignment.Value(routing.NextVar(index))
-        #route_distance += routing.GetArcCostForVehicle(previous_index, index, 0)
-    order.append(manager.IndexToNode(index))
-    return order
-
-def tsp(elements, node_points):
+def tsp(elements, node_points, initial_point, max_time=5, verbose=False):
     # https://developers.google.com/optimization/routing/tsp
     # TODO: pick up and delivery
     # TODO: time window for skipping elements
     # TODO: Minimum Spanning Tree (MST) bias
     from ortools.constraint_solver import routing_enums_pb2
     from ortools.constraint_solver import pywrapcp
+    from extrusion.visualization import draw_ordered
+    assert initial_point is not None
+    start_time = time.time()
 
-    print(node_points)
     #nodes = list(range(len(node_points)))
     nodes = sorted({node for element in elements for node in element})
-    print(nodes)
 
-    #point_from_node = dict( for pair in enumerate(node_points))
+    point_from_node = dict(enumerate(node_points))
+    # for element in elements:
+    #     point_from_node[element] = get_midpoint(node_points, element)
+    # node_from_index = sorted(nodes) + sorted(elements)
+    # index_from_node = dict(map(reversed, enumerate(node_from_index)))
 
     num_vehicles, depot = 1, 0
     manager = pywrapcp.RoutingIndexManager(len(nodes), num_vehicles, depot)
@@ -141,35 +132,46 @@ def tsp(elements, node_points):
     for n1, n2 in product(nodes, repeat=2):
         distance_from_node[n1, n2] = int(math.ceil(SCALE*get_distance(node_points[n1], node_points[n2])))
 
-    def distance_callback(from_index, to_index):
-        # Convert from routing variable Index to distance matrix NodeIndex.
-        n1 = manager.IndexToNode(from_index)
-        n2 = manager.IndexToNode(to_index)
-        return distance_from_node[n1, n2]
-
-    transit_callback_index = routing.RegisterTransitCallback(distance_callback)
-    routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
+    transit_callback = routing.RegisterTransitCallback(
+        lambda i1, i2: distance_from_node[manager.IndexToNode(i1), manager.IndexToNode(i2)])
+    routing.SetArcCostEvaluatorOfAllVehicles(transit_callback)
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()
-
-    search_parameters.time_limit.seconds = 30
+    search_parameters.solution_limit = 1000
+    search_parameters.time_limit.seconds = int(max_time)
+    search_parameters.log_search = verbose
     search_parameters.first_solution_strategy = (
-        routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC)
+        routing_enums_pb2.FirstSolutionStrategy.AUTOMATIC) # AUTOMATIC | PATH_CHEAPEST_ARC
+    search_parameters.local_search_metaheuristic = (
+        routing_enums_pb2.LocalSearchMetaheuristic.AUTOMATIC) # AUTOMATIC | GUIDED_LOCAL_SEARCH
     assignment = routing.SolveWithParameters(search_parameters)
-
-    print(assignment)
-    #print("Solver status: ", solver.status())
-
-    # Print solution on console.
-    print(print_solution(manager, routing, assignment))
-
     #initial_solution = routing.ReadAssignmentFromRoutes(data['initial_routes'], True)
 
+    if not assignment:
+        print('Failure! Duration: {:.3f}s'.format(elapsed_time(start_time)))
+        return None
+    print('Success! Objective: {:.3f}, Duration: {:.3f}s'.format(
+        assignment.ObjectiveValue() / SCALE, elapsed_time(start_time)))
+    index = routing.Start(0)
+    order = []
+    while not routing.IsEnd(index):
+        order.append(manager.IndexToNode(index))
+        #previous_index = index
+        index = assignment.Value(routing.NextVar(index))
+        #route_distance += routing.GetArcCostForVehicle(previous_index, index, 0)
+    order.append(manager.IndexToNode(index))
+
+    print(order)
+    edges = list(zip(order[:-1], order[1:]))
+    draw_ordered(edges, node_points)
+    wait_for_user()
+
+    return order
 
 ##################################################
 
 def plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, elements,
                    initial_position=None, checker=None, max_time=INF, max_backtrack=0):
-    return tsp(elements, node_points)
+    return tsp(elements, node_points, initial_position)
 
     start_time = time.time()
     if checker is None:
