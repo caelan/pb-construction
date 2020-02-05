@@ -17,8 +17,6 @@ from pddlstream.utils import outgoing_from_edges
 from pybullet_tools.utils import INF, get_movable_joints, get_joint_positions, randomize, has_gui, \
     remove_all_debug, wait_for_user, elapsed_time
 
-# https://developers.google.com/optimization/routing/tsp
-
 def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=[],
                heuristic='z', max_time=INF, max_memory=INF, backtrack_limit=INF, # stiffness_attempts=1,
                collisions=True, stiffness=True, motions=True, lazy=False, checker=None, **kwargs):
@@ -46,7 +44,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
                                     supports=False, precompute_collisions=False,
                                     max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS,
                                     collisions=collisions, **kwargs)
-    heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=False)
+    heuristic_fn = get_heuristic_fn(robot, extrusion_path, heuristic, checker=checker, forward=False)
 
     final_conf = initial_conf # TODO: allow choice of config
     final_printed = all_elements

@@ -6,7 +6,7 @@ from collections import namedtuple, OrderedDict
 from pybullet_tools.utils import create_box, create_cylinder, set_point, set_quat, \
     quat_from_euler, Euler, tform_point, multiply, tform_from_pose, pose_from_tform, \
     RED, apply_alpha, get_collision_data, get_visual_data, get_aabb_extent, get_aabb, \
-    wait_for_user, Pose, draw_aabb, dump_body, get_all_links, STATIC_MASS
+    wait_for_user, Pose, draw_aabb, dump_body, get_all_links, STATIC_MASS, set_color
 
 Element = namedtuple('Element', ['id', 'layer', 'nodes'])
 
@@ -162,6 +162,7 @@ def affine_extrusion(extrusion_path, tform):
 
 def create_elements_bodies(node_points, elements, color=apply_alpha(RED, alpha=1)):
     # TODO: could scale the whole environment
+    # TODO: create a version without shrinking for transit planning
     # URDF_USE_IMPLICIT_CYLINDER
     element_bodies = []
     for (n1, n2) in elements:
@@ -182,6 +183,7 @@ def create_elements_bodies(node_points, elements, color=apply_alpha(RED, alpha=1
         # Much smaller than cylinder
         # Also faster, C_shape 177.398 vs 400
         body = create_box(ELEMENT_DIAMETER, ELEMENT_DIAMETER, height, color=color, mass=STATIC_MASS)
+        set_color(body, color)
         set_point(body, center)
         set_quat(body, quat)
         #dump_body(body, fixed=True)

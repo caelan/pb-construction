@@ -143,7 +143,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
                                     collisions=collisions, **kwargs)
     id_from_element = get_id_from_element(element_from_id)
     all_elements = frozenset(element_bodies)
-    heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=True)
+    heuristic_fn = get_heuristic_fn(robot, extrusion_path, heuristic, checker=checker, forward=True)
 
     initial_printed = frozenset()
     queue = []

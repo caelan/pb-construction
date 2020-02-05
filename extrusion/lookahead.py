@@ -114,7 +114,7 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
                                         max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS, collisions=collisions, **kwargs)
     id_from_element = get_id_from_element(element_from_id)
     all_elements = frozenset(element_bodies)
-    heuristic_fn = get_heuristic_fn(extrusion_path, heuristic, checker=checker, forward=True)
+    heuristic_fn = get_heuristic_fn(robot, extrusion_path, heuristic, checker=checker, forward=True)
     #distance_fn = get_distance_fn(robot, joints, weights=JOINT_WEIGHTS)
     # TODO: 2-step lookahead based on neighbors or spatial proximity
 

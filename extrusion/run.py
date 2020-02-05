@@ -17,7 +17,7 @@ sys.path.extend([
 
 from extrusion.figure import DEFAULT_MAX_TIME
 from extrusion.visualization import label_element, set_extrusion_camera, label_nodes, display_trajectories, \
-    BACKGROUND_COLOR, draw_model, SHADOWS
+    BACKGROUND_COLOR, draw_model, SHADOWS, draw_ordered
 from extrusion.experiment import train_parallel
 from extrusion.motion import compute_motions, validate_trajectories
 from extrusion.stripstream import plan_sequence
@@ -30,6 +30,7 @@ from extrusion.regression import regression
 from extrusion.heuristics import HEURISTICS
 from extrusion.validator import verify_plan
 from extrusion.lookahead import lookahead
+from extrusion.stiffness import plan_stiffness
 
 from pybullet_tools.utils import connect, disconnect, get_movable_joints, get_joint_positions, LockRenderer, \
     unit_pose, reset_simulation, draw_pose, apply_alpha, BLACK, Pose, Euler, set_numpy_seed, \
@@ -92,9 +93,10 @@ def plan_extrusion(args, viewer=False, precompute=False, verify=False, verbose=F
         obstacles, robot = load_world()
         #draw_model(elements, node_points, ground_nodes)
         #wait_for_user()
-        alpha = 1 # 0
+        #color = apply_alpha(BLACK, alpha=1) # 0, 1
+        color = None
         element_bodies = dict(zip(elements, create_elements_bodies(
-            node_points, elements, color=apply_alpha(BLACK, alpha))))
+            node_points, elements, color=color)))
         set_extrusion_camera(node_points)
         if viewer:
             label_nodes(node_points)
@@ -104,8 +106,15 @@ def plan_extrusion(args, viewer=False, precompute=False, verify=False, verbose=F
     # dump_body(robot)
     #visualize_stiffness(problem_path)
     # debug_elements(robot, node_points, node_order, elements)
+    sequence = plan_stiffness(problem_path, element_from_id, node_points, ground_nodes, elements,
+                              max_time=INF, max_backtrack=INF)
+    if viewer:
+        draw_ordered(sequence, node_points)
+        wait_for_user()
+    #return
 
     with LockRenderer(True):
+        # TODO: reuse checker for multiple trials to account for memory leaks
         pr = cProfile.Profile()
         pr.enable()
         if args.algorithm == 'stripstream':
@@ -113,24 +122,24 @@ def plan_extrusion(args, viewer=False, precompute=False, verify=False, verbose=F
             if precompute:
                 sampled_trajectories = sample_trajectories(robot, obstacles, node_points, element_bodies, ground_nodes)
             trajectories, data = plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                                       trajectories=sampled_trajectories, collisions=not args.cfree,
-                                                       max_time=args.max_time, disable=args.disable, debug=False)
+                                               trajectories=sampled_trajectories, collisions=not args.cfree,
+                                               max_time=args.max_time, disable=args.disable, debug=False)
         elif args.algorithm == 'progression':
             trajectories, data = progression(robot, obstacles, element_bodies, problem_path, partial_orders=partial_orders,
-                                                     heuristic=args.bias, max_time=args.max_time,
-                                                     backtrack_limit=backtrack_limit, collisions=not args.cfree,
-                                                     disable=args.disable, stiffness=args.stiffness, motions=args.motions)
+                                             heuristic=args.bias, max_time=args.max_time,
+                                             backtrack_limit=backtrack_limit, collisions=not args.cfree,
+                                             disable=args.disable, stiffness=args.stiffness, motions=args.motions)
         elif args.algorithm == 'regression':
             trajectories, data = regression(robot, obstacles, element_bodies, problem_path,
-                                                    heuristic=args.bias, max_time=args.max_time,
-                                                    backtrack_limit=backtrack_limit, collisions=not args.cfree,
-                                                    disable=args.disable, stiffness=args.stiffness, motions=args.motions)
+                                            heuristic=args.bias, max_time=args.max_time,
+                                            backtrack_limit=backtrack_limit, collisions=not args.cfree,
+                                            disable=args.disable, stiffness=args.stiffness, motions=args.motions)
         elif args.algorithm == 'lookahead':
             trajectories, data = lookahead(robot, obstacles, element_bodies, problem_path,
-                                                   partial_orders=partial_orders, heuristic=args.bias,
-                                                   max_time=args.max_time, backtrack_limit=backtrack_limit,
-                                                   ee_only=args.ee_only, collisions=not args.cfree,
-                                                   disable=args.disable, stiffness=args.stiffness, motions=args.motions)
+                                           partial_orders=partial_orders, heuristic=args.bias,
+                                           max_time=args.max_time, backtrack_limit=backtrack_limit,
+                                           ee_only=args.ee_only, collisions=not args.cfree,
+                                           disable=args.disable, stiffness=args.stiffness, motions=args.motions)
         else:
             raise ValueError(args.algorithm)
         pr.disable()
@@ -146,7 +155,8 @@ def plan_extrusion(args, viewer=False, precompute=False, verify=False, verbose=F
 
     safe = validate_trajectories(element_bodies, obstacles, trajectories) if verify else True
     data['safe'] = safe
-    print('Safe:', safe)
+    if verify:
+        print('Safe:', safe)
     reset_simulation()
     disconnect()
 

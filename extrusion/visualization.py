@@ -160,6 +160,8 @@ def sample_colors(num, lower=0.0, upper=0.75): # for now wrap around
 
 def draw_ordered(elements, node_points):
     # TODO: account for oriented elements
+    # TODO: draw with a direction
+    # TODO: draw in between elements
     #colors = spaced_colors(len(elements))
     colors = sample_colors(len(elements))
     handles = []
@@ -189,7 +191,6 @@ def display_trajectories(node_points, ground_nodes, trajectories, animate=True, 
     #     wait_for_user()
     #     disconnect()
     #     return
-    print(len(planned_elements), len(colors))
 
     video_saver = None
     if video:

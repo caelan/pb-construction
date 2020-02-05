@@ -346,6 +346,21 @@ def compute_printable_elements(all_elements, ground_nodes, printed):
 
 ##################################################
 
+def compute_sequence_distance(node_points, directed_elements, start=None):
+    # TODO: initial end-effector position
+    distance = 0
+    position = start
+    for (n1, n2) in directed_elements:
+        if position is not None:
+            distance += get_distance(position, node_points[n1])
+        distance += get_distance(node_points[n1], node_points[n2])
+        position = node_points[n2]
+    if start is not None:
+        distance += get_distance(position, start)
+    return distance
+
+##################################################
+
 def is_start_node(n1, e, node_points):
     return not element_supports(e, n1, node_points)
 

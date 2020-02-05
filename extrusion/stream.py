@@ -44,6 +44,8 @@ MAX_DIRECTIONS = 500
 MAX_ATTEMPTS = 1
 TRANSLATION_TOLERANCE = 1e-2
 
+# TODO: wire wrapping collision checker
+
 ##################################################
 
 #def get_grasp_rotation(direction, angle):
