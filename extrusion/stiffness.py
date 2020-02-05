@@ -103,6 +103,7 @@ def test_stiffness(extrusion_path, element_from_id, elements, **kwargs):
 ##################################################
 
 SCALE = 1e3
+INITIAL_NODE = None
 
 def tsp(elements, node_points, initial_point, max_time=5, verbose=False):
     # https://developers.google.com/optimization/routing/tsp
@@ -115,54 +116,57 @@ def tsp(elements, node_points, initial_point, max_time=5, verbose=False):
     assert initial_point is not None
     start_time = time.time()
 
-    #nodes = list(range(len(node_points)))
-    nodes = sorted({node for element in elements for node in element})
-
+    #nodes = set(range(len(node_points)))
+    nodes = {node for element in elements for node in element}
     point_from_node = dict(enumerate(node_points))
+    point_from_node[INITIAL_NODE] = initial_point
     # for element in elements:
     #     point_from_node[element] = get_midpoint(node_points, element)
-    # node_from_index = sorted(nodes) + sorted(elements)
-    # index_from_node = dict(map(reversed, enumerate(node_from_index)))
+    node_from_index = [INITIAL_NODE] + sorted(nodes) # + sorted(elements)
+    index_from_node = dict(map(reversed, enumerate(node_from_index)))
 
     num_vehicles, depot = 1, 0
-    manager = pywrapcp.RoutingIndexManager(len(nodes), num_vehicles, depot)
-    routing = pywrapcp.RoutingModel(manager)
+    manager = pywrapcp.RoutingIndexManager(len(node_from_index), num_vehicles, depot)
+    solver = pywrapcp.RoutingModel(manager)
 
     distance_from_node = {}
-    for n1, n2 in product(nodes, repeat=2):
-        distance_from_node[n1, n2] = int(math.ceil(SCALE*get_distance(node_points[n1], node_points[n2])))
+    for n1, n2 in product(point_from_node, repeat=2):
+        i1, i2 = index_from_node[n1], index_from_node[n2]
+        p1, p2 = point_from_node[n1], point_from_node[n2]
+        distance_from_node[i1, i2] = int(math.ceil(SCALE*get_distance(p1, p2)))
 
-    transit_callback = routing.RegisterTransitCallback(
+    transit_callback = solver.RegisterTransitCallback(
         lambda i1, i2: distance_from_node[manager.IndexToNode(i1), manager.IndexToNode(i2)])
-    routing.SetArcCostEvaluatorOfAllVehicles(transit_callback)
+    solver.SetArcCostEvaluatorOfAllVehicles(transit_callback)
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()
-    search_parameters.solution_limit = 1000
+    #search_parameters.solution_limit = 1
     search_parameters.time_limit.seconds = int(max_time)
     search_parameters.log_search = verbose
     search_parameters.first_solution_strategy = (
         routing_enums_pb2.FirstSolutionStrategy.AUTOMATIC) # AUTOMATIC | PATH_CHEAPEST_ARC
     search_parameters.local_search_metaheuristic = (
         routing_enums_pb2.LocalSearchMetaheuristic.AUTOMATIC) # AUTOMATIC | GUIDED_LOCAL_SEARCH
-    assignment = routing.SolveWithParameters(search_parameters)
-    #initial_solution = routing.ReadAssignmentFromRoutes(data['initial_routes'], True)
+    assignment = solver.SolveWithParameters(search_parameters)
+    #initial_solution = solver.ReadAssignmentFromRoutes(data['initial_routes'], True)
 
+    #print('Status: {}'.format(solver.status()))
     if not assignment:
         print('Failure! Duration: {:.3f}s'.format(elapsed_time(start_time)))
         return None
     print('Success! Objective: {:.3f}, Duration: {:.3f}s'.format(
         assignment.ObjectiveValue() / SCALE, elapsed_time(start_time)))
-    index = routing.Start(0)
+    index = solver.Start(0)
     order = []
-    while not routing.IsEnd(index):
-        order.append(manager.IndexToNode(index))
+    while not solver.IsEnd(index):
+        order.append(node_from_index[manager.IndexToNode(index)])
         #previous_index = index
-        index = assignment.Value(routing.NextVar(index))
-        #route_distance += routing.GetArcCostForVehicle(previous_index, index, 0)
-    order.append(manager.IndexToNode(index))
+        index = assignment.Value(solver.NextVar(index))
+        #route_distance += solver.GetArcCostForVehicle(previous_index, index, 0)
+    order.append(node_from_index[manager.IndexToNode(index)])
 
     print(order)
     edges = list(zip(order[:-1], order[1:]))
-    draw_ordered(edges, node_points)
+    draw_ordered(edges, point_from_node)
     wait_for_user()
 
     return order
