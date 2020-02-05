@@ -2,9 +2,12 @@ import heapq
 import os
 import random
 import time
-from collections import namedtuple
-
 import numpy as np
+import math
+
+from collections import namedtuple
+from itertools import product
+
 from pyconmech import StiffnessChecker
 
 from extrusion.utils import get_extructed_ids, compute_printable_elements, compute_z_distance, \
@@ -99,11 +102,75 @@ def test_stiffness(extrusion_path, element_from_id, elements, **kwargs):
 
 ##################################################
 
-# https://developers.google.com/optimization/routing/tsp
+SCALE = 1e3
+
+def print_solution(manager, routing, assignment):
+    if not assignment:
+        return None
+    print('Objective: {:.3f}'.format(assignment.ObjectiveValue() / SCALE))
+    index = routing.Start(0)
+    order = []
+    while not routing.IsEnd(index):
+        order.append(manager.IndexToNode(index))
+        previous_index = index
+        index = assignment.Value(routing.NextVar(index))
+        #route_distance += routing.GetArcCostForVehicle(previous_index, index, 0)
+    order.append(manager.IndexToNode(index))
+    return order
+
+def tsp(elements, node_points):
+    # https://developers.google.com/optimization/routing/tsp
+    # TODO: pick up and delivery
+    # TODO: time window for skipping elements
+    # TODO: Minimum Spanning Tree (MST) bias
+    from ortools.constraint_solver import routing_enums_pb2
+    from ortools.constraint_solver import pywrapcp
+
+    print(node_points)
+    #nodes = list(range(len(node_points)))
+    nodes = sorted({node for element in elements for node in element})
+    print(nodes)
+
+    #point_from_node = dict( for pair in enumerate(node_points))
+
+    num_vehicles, depot = 1, 0
+    manager = pywrapcp.RoutingIndexManager(len(nodes), num_vehicles, depot)
+    routing = pywrapcp.RoutingModel(manager)
+
+    distance_from_node = {}
+    for n1, n2 in product(nodes, repeat=2):
+        distance_from_node[n1, n2] = int(math.ceil(SCALE*get_distance(node_points[n1], node_points[n2])))
+
+    def distance_callback(from_index, to_index):
+        # Convert from routing variable Index to distance matrix NodeIndex.
+        n1 = manager.IndexToNode(from_index)
+        n2 = manager.IndexToNode(to_index)
+        return distance_from_node[n1, n2]
+
+    transit_callback_index = routing.RegisterTransitCallback(distance_callback)
+    routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
+    search_parameters = pywrapcp.DefaultRoutingSearchParameters()
+
+    search_parameters.time_limit.seconds = 30
+    search_parameters.first_solution_strategy = (
+        routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC)
+    assignment = routing.SolveWithParameters(search_parameters)
+
+    print(assignment)
+    #print("Solver status: ", solver.status())
+
+    # Print solution on console.
+    print(print_solution(manager, routing, assignment))
+
+    #initial_solution = routing.ReadAssignmentFromRoutes(data['initial_routes'], True)
+
+
+##################################################
 
 def plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, elements,
                    initial_position=None, checker=None, max_time=INF, max_backtrack=0):
-    # TODO: Minimum Spanning Tree (MST) bias
+    return tsp(elements, node_points)
+
     start_time = time.time()
     if checker is None:
         checker = create_stiffness_checker(extrusion_path)

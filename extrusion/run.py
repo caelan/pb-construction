@@ -21,7 +21,7 @@ from extrusion.visualization import label_element, set_extrusion_camera, label_n
 from extrusion.experiment import train_parallel
 from extrusion.motion import compute_motions, validate_trajectories
 from extrusion.stripstream import plan_sequence
-from extrusion.utils import load_world
+from extrusion.utils import load_world, TOOL_LINK
 from extrusion.parsing import load_extrusion, create_elements_bodies, \
     enumerate_problems, get_extrusion_path, affine_extrusion
 from extrusion.stream import get_print_gen_fn
@@ -34,7 +34,7 @@ from extrusion.stiffness import plan_stiffness
 
 from pybullet_tools.utils import connect, disconnect, get_movable_joints, get_joint_positions, LockRenderer, \
     unit_pose, reset_simulation, draw_pose, apply_alpha, BLACK, Pose, Euler, set_numpy_seed, \
-    set_random_seed, INF, wait_for_user
+    set_random_seed, INF, wait_for_user, link_from_name, get_link_pose, point_from_pose
 
 
 ##################################################

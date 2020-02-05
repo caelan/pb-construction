@@ -349,6 +349,9 @@ def compute_printable_elements(all_elements, ground_nodes, printed):
     return {element for element in set(all_elements) - set(printed)
             if is_printable(element, nodes)}
 
+def get_midpoint(node_points, element):
+    return np.average([node_points[n] for n in element], axis=0)
+
 ##################################################
 
 def compute_sequence_distance(node_points, directed_elements, start=None):
@@ -457,7 +460,7 @@ def get_extructed_ids(element_from_id, directed_elements):
 def compute_z_distance(node_points, element):
     # Distance to a ground plane
     # Opposing gravitational force
-    return np.average([node_points[n][2] for n in element])
+    return get_midpoint(node_points, element)[2]
 
 ##################################################
 
