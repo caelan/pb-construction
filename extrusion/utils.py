@@ -316,6 +316,11 @@ def get_directed_element(node1, element):
         return reversed(element)
     return element
 
+def get_undirected(elements, directed):
+    is_reverse = directed not in elements
+    assert (directed in elements) != is_reverse
+    return directed[::-1] if is_reverse else directed
+
 def get_other_node(node1, element):
     assert node1 in element
     return element[node1 == element[0]]
@@ -445,9 +450,7 @@ def get_extructed_ids(element_from_id, directed_elements):
     id_from_element = get_id_from_element(element_from_id)
     extruded_ids = []
     for directed in directed_elements:
-        is_reverse = directed not in id_from_element
-        assert (directed in id_from_element) != is_reverse
-        element = directed[::-1] if is_reverse else directed
+        element = get_undirected(id_from_element, directed)
         extruded_ids.append(id_from_element[element])
     return sorted(extruded_ids)
 

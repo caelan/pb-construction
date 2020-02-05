@@ -102,12 +102,14 @@ def plan_extrusion(args, viewer=False, precompute=False, verify=False, verbose=F
             label_nodes(node_points)
 
     # joint_weights = compute_joint_weights(robot, num=1000)
-    initial_conf = get_joint_positions(robot, get_movable_joints(robot))
+
+    #initial_conf = get_joint_positions(robot, get_movable_joints(robot))
+    initial_position = point_from_pose(get_link_pose(robot, link_from_name(robot, TOOL_LINK)))
     # dump_body(robot)
     #visualize_stiffness(problem_path)
     # debug_elements(robot, node_points, node_order, elements)
     sequence = plan_stiffness(problem_path, element_from_id, node_points, ground_nodes, elements,
-                              max_time=INF, max_backtrack=INF)
+                              initial_position=initial_position, max_time=INF, max_backtrack=INF)
     if viewer:
         draw_ordered(sequence, node_points)
         wait_for_user()

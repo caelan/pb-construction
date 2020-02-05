@@ -8,7 +8,7 @@ import numpy as np
 from pyconmech import StiffnessChecker
 
 from extrusion.utils import get_extructed_ids, compute_printable_elements, compute_z_distance, \
-    compute_sequence_distance, compute_printed_nodes, is_printable
+    compute_sequence_distance, compute_printed_nodes, is_printable, get_distance
 from pybullet_tools.utils import HideOutput, INF, elapsed_time, randomize
 
 TRANS_TOL = 0.0015
@@ -102,14 +102,14 @@ def test_stiffness(extrusion_path, element_from_id, elements, **kwargs):
 # https://developers.google.com/optimization/routing/tsp
 
 def plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, elements,
-                   checker=None, max_time=INF, max_backtrack=0):
+                   initial_position=None, checker=None, max_time=INF, max_backtrack=0):
     # TODO: Minimum Spanning Tree (MST) bias
     start_time = time.time()
     if checker is None:
         checker = create_stiffness_checker(extrusion_path)
     remaining_elements = frozenset(elements)
     min_remaining = len(remaining_elements)
-    queue = [(None, frozenset(), None, [])]
+    queue = [(None, frozenset(), initial_position, [])]
     while queue and (elapsed_time(start_time) < max_time):
         _, printed, position, sequence = heapq.heappop(queue)
         num_remaining = len(remaining_elements) - len(printed)
@@ -131,12 +131,15 @@ def plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, e
                 node1, node2 = directed
                 if node1 in nodes:
                     new_printed = printed | {element}
-                    new_sequence = sequence + [element]
+                    new_sequence = sequence + [directed]
                     num_remaining = len(remaining_elements) - len(new_printed)
                     min_remaining = min(min_remaining, num_remaining)
-                    distance = compute_sequence_distance(node_points, new_sequence)
+                    # Don't count edge length
+                    distance = get_distance(position, node_points[node1]) if position is not None else None
+                    #distance = compute_sequence_distance(node_points, new_sequence)
                     #bias = None
-                    bias = compute_z_distance(node_points, element)
+                    #bias = compute_z_distance(node_points, element)
+                    bias = distance
                     #bias = heuristic_fn(printed, element, conf=None) # TODO: experiment with other biases
                     priority = (num_remaining, bias, random.random())
                     heapq.heappush(queue, (priority, new_printed, node_points[node2], new_sequence))

@@ -4,7 +4,7 @@ import numpy as np
 
 from extrusion.equilibrium import compute_all_reactions, compute_node_reactions
 from extrusion.parsing import load_extrusion
-from extrusion.utils import get_extructed_ids, downselect_elements, compute_z_distance, TOOL_LINK
+from extrusion.utils import get_extructed_ids, downselect_elements, compute_z_distance, TOOL_LINK, get_undirected
 from extrusion.stiffness import create_stiffness_checker, force_from_reaction, torque_from_reaction, plan_stiffness
 from pddlstream.utils import adjacent_from_edges
 from pybullet_tools.utils import get_distance, INF, get_joint_positions, get_movable_joints, get_link_pose, link_from_name
@@ -115,7 +115,7 @@ def score_stiffness(extrusion_path, element_from_id, elements, checker=None):
 def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
     # TODO: penalize disconnected
     initial_conf = get_joint_positions(robot, get_movable_joints(robot))
-    initial_position = get_link_pose(robot, link_from_name(robot, TOOL_LINK))
+    initial_pose = get_link_pose(robot, link_from_name(robot, TOOL_LINK))
 
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
     elements = frozenset(element_from_id.values())
@@ -127,7 +127,7 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
         stiffness_plan = plan_stiffness(extrusion_path, element_from_id, node_points,
                                         ground_nodes, elements, checker=checker, max_backtrack=INF)
         if stiffness_plan is not None:
-            stiffness_order = dict(pair[::-1] for pair in enumerate(stiffness_plan))
+            stiffness_order = {get_undirected(elements, directed): i for i, directed in enumerate(stiffness_plan)}
 
     stiffness_cache = {}
     if heuristic in ('fixed-stiffness', 'relative-stiffness'):
