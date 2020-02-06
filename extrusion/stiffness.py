@@ -105,11 +105,14 @@ def test_stiffness(extrusion_path, element_from_id, elements, **kwargs):
 SCALE = 1e3
 INITIAL_NODE = None
 
-def tsp(elements, node_points, initial_point, max_time=5, verbose=False):
+def solve_tsp(elements, node_points, initial_point, max_time=5, verbose=False):
     # https://developers.google.com/optimization/routing/tsp
+    # https://developers.google.com/optimization/reference/constraint_solver/routing/RoutingModel
+    # AddDisjunction
     # TODO: pick up and delivery
     # TODO: time window for skipping elements
     # TODO: Minimum Spanning Tree (MST) bias
+    # TODO: time window constraint to ensure connected
     from ortools.constraint_solver import routing_enums_pb2
     from ortools.constraint_solver import pywrapcp
     from extrusion.visualization import draw_ordered
@@ -128,12 +131,35 @@ def tsp(elements, node_points, initial_point, max_time=5, verbose=False):
     num_vehicles, depot = 1, 0
     manager = pywrapcp.RoutingIndexManager(len(node_from_index), num_vehicles, depot)
     solver = pywrapcp.RoutingModel(manager)
+    #print(solver.GetAllDimensionNames())
+    #print(solver.ComputeLowerBound())
 
     distance_from_node = {}
     for n1, n2 in product(point_from_node, repeat=2):
         i1, i2 = index_from_node[n1], index_from_node[n2]
         p1, p2 = point_from_node[n1], point_from_node[n2]
         distance_from_node[i1, i2] = int(math.ceil(SCALE*get_distance(p1, p2)))
+
+    # def time_callback(from_index, to_index):
+    #     """Returns the travel time between the two nodes."""
+    #     # Convert from routing variable Index to time matrix NodeIndex.
+    #     from_node = manager.IndexToNode(from_index)
+    #     to_node = manager.IndexToNode(to_index)
+    #     return 1
+    #     #return data['time_matrix'][from_node][to_node]
+    #
+    # transit_callback_index = solver.RegisterTransitCallback(time_callback)
+    # step = 'Time'
+    # solver.AddDimension(
+    #     transit_callback_index,
+    #     30,  # allow waiting time
+    #     30,  # maximum time per vehicle
+    #     False,  # Don't force start cumul to zero.
+    #     step)
+    #
+    # time_dimension = solver.GetDimensionOrDie(step)
+    # for node, index in index_from_node.items():
+    #     time_dimension.CumulVar(manager.NodeToIndex(index))
 
     transit_callback = solver.RegisterTransitCallback(
         lambda i1, i2: distance_from_node[manager.IndexToNode(i1), manager.IndexToNode(i2)])
@@ -175,8 +201,7 @@ def tsp(elements, node_points, initial_point, max_time=5, verbose=False):
 
 def plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, elements,
                    initial_position=None, checker=None, max_time=INF, max_backtrack=0):
-    return tsp(elements, node_points, initial_position)
-
+    #return solve_tsp(elements, node_points, initial_position)
     start_time = time.time()
     if checker is None:
         checker = create_stiffness_checker(extrusion_path)

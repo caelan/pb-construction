@@ -89,12 +89,12 @@ def plan_extrusion(args, viewer=False, precompute=False, verify=False, verbose=F
 
     connect(use_gui=viewer, shadows=SHADOWS, color=BACKGROUND_COLOR) # TODO: avoid reconnecting
     with LockRenderer(False):
-        draw_pose(unit_pose(), length=1.)
+        #draw_pose(unit_pose(), length=1.)
         obstacles, robot = load_world()
         #draw_model(elements, node_points, ground_nodes)
         #wait_for_user()
-        #color = apply_alpha(BLACK, alpha=1) # 0, 1
-        color = None
+        color = apply_alpha(BLACK, alpha=1) # 0, 1
+        #color = None
         element_bodies = dict(zip(elements, create_elements_bodies(
             node_points, elements, color=color)))
         set_extrusion_camera(node_points)
@@ -103,17 +103,17 @@ def plan_extrusion(args, viewer=False, precompute=False, verify=False, verbose=F
 
     # joint_weights = compute_joint_weights(robot, num=1000)
 
-    #initial_conf = get_joint_positions(robot, get_movable_joints(robot))
+    initial_conf = get_joint_positions(robot, get_movable_joints(robot))
     initial_position = point_from_pose(get_link_pose(robot, link_from_name(robot, TOOL_LINK)))
     # dump_body(robot)
     #visualize_stiffness(problem_path)
     # debug_elements(robot, node_points, node_order, elements)
-    sequence = plan_stiffness(problem_path, element_from_id, node_points, ground_nodes, elements,
-                              initial_position=initial_position, max_time=INF, max_backtrack=INF)
-    if viewer:
-        draw_ordered(sequence, node_points)
-        wait_for_user()
-    #return
+    # sequence = plan_stiffness(problem_path, element_from_id, node_points, ground_nodes, elements,
+    #                           initial_position=initial_position, max_time=INF, max_backtrack=INF)
+    # if viewer:
+    #     draw_ordered(sequence, node_points)
+    #     wait_for_user()
+    # return
 
     with LockRenderer(True):
         # TODO: reuse checker for multiple trials to account for memory leaks
