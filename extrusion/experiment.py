@@ -2,6 +2,12 @@ import datetime
 import os
 import time
 import traceback
+import sys
+
+sys.path.extend([
+    'pddlstream/',
+    'ss-pybullet/',
+])
 
 from itertools import product
 from multiprocessing import cpu_count, Pool
@@ -46,6 +52,7 @@ def train_parallel(args):
     assert SKIP_PERCENTAGE == 0
     initial_time = time.time()
     problems = sorted(set(enumerate_problems()) - set(EXCLUDE))
+    problems = ['four-frame']
     #problems = ['simple_frame', 'topopt-101_tiny', 'topopt-100_S1_03-14-2019_w_layer']
     #algorithms = ALGORITHMS
     algorithms = list(ALGORITHMS)
@@ -53,15 +60,15 @@ def train_parallel(args):
         for algorithm in LOOKAHEAD_ALGORITHMS:
             if algorithm in algorithms:
                 algorithms.remove(algorithm)
-    #algorithms = ['regression']
-    heuristics = HEURISTICS
-    #heuristics = ['z']
+    algorithms = ['regression']
+    #heuristics = HEURISTICS
+    heuristics = ['z']
 
     print('Problems ({}): {}'.format(len(problems), problems))
     #problems = [path for path in problems if 'simple_frame' in path]
     print('Algorithms ({}): {}'.format(len(algorithms), algorithms))
     print('Heuristics ({}): {}'.format(len(heuristics), heuristics))
-    configurations = [Configuration(*c) for c in product(
+    configurations = [[Configuration(*c)] for c in product(
         range(args.num), problems, algorithms, heuristics, [args.max_time],
         [args.cfree], [args.disable], [args.stiffness], [args.motions], [args.ee_only])]
     print('Configurations: {}'.format(len(configurations)))
@@ -77,7 +84,7 @@ def train_parallel(args):
     path = os.path.join(EXPERIMENTS_DIR, filename)
     print('Data path:', path)
 
-    #user_input('Begin?')
+    user_input('Begin?')
     start_time = time.time()
     timeouts = 0
     pool = Pool(processes=num_cores)  # , initializer=mute)
@@ -86,12 +93,12 @@ def train_parallel(args):
     while True:
         last_time = time.time()
         try:
-            configuration, data = generator.next() # timeout=2 * args.max_time)
-            results.append((configuration, data))
-            print('{}/{} completed | {:.3f} seconds | timeouts: {} | {}'.format(
-                len(results), len(configurations), elapsed_time(start_time), timeouts,
-                datetime.datetime.now().strftime(DATE_FORMAT)))
-            print(configuration, data)
+            for config, data in generator.next(): # timeout=2 * args.max_time)
+                results.append((config, data))
+                print('{}/{} completed | {:.3f} seconds | timeouts: {} | {}'.format(
+                    len(results), len(configurations), elapsed_time(start_time), timeouts,
+                    datetime.datetime.now().strftime(DATE_FORMAT)))
+                print(config, data)
             if results:
                 write_pickle(path, results)
                 print('Saved', path)
@@ -106,3 +113,22 @@ def train_parallel(args):
             #continue # This repeats jobs until success
     print('Total time:', elapsed_time(initial_time))
     return results
+
+def main():
+    from extrusion.run import create_parser
+    parser = create_parser()
+    parser.add_argument('-n', '--num', default=3, type=int,
+                        help='Number of experiment trials')
+    args = parser.parse_args()
+    args.viewer = False
+    if args.disable:
+        args.cfree = True
+        args.motions = False
+        args.max_time = 5*60 # 259 for duck
+    print('Arguments:', args)
+    train_parallel(args)
+
+if __name__ == '__main__':
+    main()
+
+# python -m extrusion.run -n 10 2>&1 | tee log.txt

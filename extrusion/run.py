@@ -66,26 +66,80 @@ def rotate_problem(problem_path, roll=np.pi):
 
 ##################################################
 
-def plan_extrusion(args, viewer=False, precompute=False, verify=False, verbose=False, watch=False):
+def solve_extrusion(robot, obstacles, node_points, element_bodies, extrusion_path, ground_nodes, args,
+                    partial_orders=[], precompute=False):
+    # TODO: could treat ground as partial orders
+    backtrack_limit = INF # 0 | INF
+    seed = hash((time.time(), args.seed))
+    set_numpy_seed(seed)
+    set_random_seed(seed)
+
+    initial_conf = get_joint_positions(robot, get_movable_joints(robot))
+    #initial_position = point_from_pose(get_link_pose(robot, link_from_name(robot, TOOL_LINK)))
+    # dump_body(robot)
+    #visualize_stiffness(extrusion_path)
+    # debug_elements(robot, node_points, node_order, elements)
+    # sequence = plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, elements,
+    #                           initial_position=initial_position, max_time=INF, max_backtrack=INF)
+    # if viewer:
+    #     draw_ordered(sequence, node_points)
+    #     wait_for_user()
+    # return
+
+    # TODO: reuse checker for multiple trials to account for memory leaks
+    pr = cProfile.Profile()
+    pr.enable()
+    if args.algorithm == 'stripstream':
+        sampled_trajectories = []
+        if precompute:
+            sampled_trajectories = sample_trajectories(robot, obstacles, node_points, element_bodies, ground_nodes)
+        plan, data = plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
+                                   trajectories=sampled_trajectories, collisions=not args.cfree,
+                                   max_time=args.max_time, disable=args.disable, debug=False)
+    elif args.algorithm == 'progression':
+        plan, data = progression(robot, obstacles, element_bodies, extrusion_path, partial_orders=partial_orders,
+                                 heuristic=args.bias, max_time=args.max_time,
+                                 backtrack_limit=backtrack_limit, collisions=not args.cfree,
+                                 disable=args.disable, stiffness=args.stiffness, motions=args.motions)
+    elif args.algorithm == 'regression':
+        plan, data = regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=partial_orders,
+                                heuristic=args.bias, max_time=args.max_time,
+                                backtrack_limit=backtrack_limit, collisions=not args.cfree,
+                                disable=args.disable, stiffness=args.stiffness, motions=args.motions)
+    elif args.algorithm == 'lookahead':
+        plan, data = lookahead(robot, obstacles, element_bodies, extrusion_path,
+                               partial_orders=partial_orders, heuristic=args.bias,
+                               max_time=args.max_time, backtrack_limit=backtrack_limit,
+                               ee_only=args.ee_only, collisions=not args.cfree,
+                               disable=args.disable, stiffness=args.stiffness, motions=args.motions)
+    else:
+        raise ValueError(args.algorithm)
+    if args.motions:
+        plan = compute_motions(robot, obstacles, element_bodies, initial_conf,
+                               plan, collisions=not args.cfree)
+    pr.disable()
+    pstats.Stats(pr).sort_stats('tottime').print_stats(10) # tottime | cumtime
+    return plan, data
+
+def plan_extrusion(args_list, viewer=False, verify=False, verbose=False, watch=False):
+    results = []
+    if not args_list:
+        return results
     # TODO: setCollisionFilterGroupMask
     if not verbose:
         sys.stdout = open(os.devnull, 'w')
 
-    seed = hash((time.time(), args.seed))
-    set_numpy_seed(seed)
-    set_random_seed(seed)
-    # TODO: change dir for pddlstream
-    extrusion_path = get_extrusion_path(args.problem)
-    #extrusion_path = rotate_problem(extrusion_path)
+    problems = {args.problem for args in args_list}
+    assert len(problems) == 1
+    [problem] = problems
 
+    # TODO: change dir for pddlstream
+    extrusion_path = get_extrusion_path(problem)
+    #extrusion_path = rotate_problem(extrusion_path)
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path, verbose=True)
     elements = sorted(element_from_id.values())
     #elements = downsample_structure(elements, node_points, ground_nodes, num=None)
     #elements, ground_nodes = downsample_nodes(elements, node_points, ground_nodes)
-    # plan = plan_sequence_test(node_points, elements, ground_nodes)
-
-    partial_orders = [] # TODO: could treat ground as partial orders
-    backtrack_limit = INF # 0 | INF
 
     connect(use_gui=viewer, shadows=SHADOWS, color=BACKGROUND_COLOR)
     with LockRenderer(True):
@@ -102,111 +156,61 @@ def plan_extrusion(args, viewer=False, precompute=False, verify=False, verbose=F
             label_nodes(node_points)
         saver = WorldSaver()
 
-    initial_conf = get_joint_positions(robot, get_movable_joints(robot))
-    #initial_position = point_from_pose(get_link_pose(robot, link_from_name(robot, TOOL_LINK)))
-    # dump_body(robot)
-    #visualize_stiffness(extrusion_path)
-    # debug_elements(robot, node_points, node_order, elements)
-    # sequence = plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, elements,
-    #                           initial_position=initial_position, max_time=INF, max_backtrack=INF)
-    # if viewer:
-    #     draw_ordered(sequence, node_points)
-    #     wait_for_user()
-    # return
+    for args in args_list:
+        saver.restore()
+        with LockRenderer(True):
+            start_time = time.time()
+            plan, data = solve_extrusion(robot, obstacles, node_points, element_bodies, extrusion_path, ground_nodes, args)
+            runtime = elapsed_time(start_time)
 
-    with LockRenderer(True):
-        # TODO: reuse checker for multiple trials to account for memory leaks
-        pr = cProfile.Profile()
-        pr.enable()
-        start_time = time.time()
-        if args.algorithm == 'stripstream':
-            sampled_trajectories = []
-            if precompute:
-                sampled_trajectories = sample_trajectories(robot, obstacles, node_points, element_bodies, ground_nodes)
-            trajectories, data = plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                               trajectories=sampled_trajectories, collisions=not args.cfree,
-                                               max_time=args.max_time, disable=args.disable, debug=False)
-        elif args.algorithm == 'progression':
-            trajectories, data = progression(robot, obstacles, element_bodies, extrusion_path, partial_orders=partial_orders,
-                                             heuristic=args.bias, max_time=args.max_time,
-                                             backtrack_limit=backtrack_limit, collisions=not args.cfree,
-                                             disable=args.disable, stiffness=args.stiffness, motions=args.motions)
-        elif args.algorithm == 'regression':
-            trajectories, data = regression(robot, obstacles, element_bodies, extrusion_path,
-                                            heuristic=args.bias, max_time=args.max_time,
-                                            backtrack_limit=backtrack_limit, collisions=not args.cfree,
-                                            disable=args.disable, stiffness=args.stiffness, motions=args.motions)
-        elif args.algorithm == 'lookahead':
-            trajectories, data = lookahead(robot, obstacles, element_bodies, extrusion_path,
-                                           partial_orders=partial_orders, heuristic=args.bias,
-                                           max_time=args.max_time, backtrack_limit=backtrack_limit,
-                                           ee_only=args.ee_only, collisions=not args.cfree,
-                                           disable=args.disable, stiffness=args.stiffness, motions=args.motions)
-        else:
-            raise ValueError(args.algorithm)
-        if args.motions:
-            trajectories = compute_motions(robot, obstacles, element_bodies, initial_conf,
-                                           trajectories, collisions=not args.cfree)
-        runtime = elapsed_time(start_time)
-        pr.disable()
-        pstats.Stats(pr).sort_stats('tottime').print_stats(10) # tottime | cumtime
+        sequence = recover_directed_sequence(plan)
+        if verify:
+            max_translation, max_rotation = compute_plan_deformation(extrusion_path, recover_sequence(plan))
+            valid = check_plan(extrusion_path, sequence)
+            print('Valid:', valid)
+            safe = validate_trajectories(element_bodies, obstacles, plan)
+            print('Safe:', safe)
+            data.update({
+                'safe': safe,
+                'valid': valid,
+                'max_translation': max_translation,
+                'max_rotation': max_rotation,
+            })
 
-    sequence = recover_directed_sequence(trajectories)
-    if verify:
-        max_translation, max_rotation = compute_plan_deformation(extrusion_path, recover_sequence(trajectories))
-        valid = check_plan(extrusion_path, sequence)
-        print('Valid:', valid)
-        safe = validate_trajectories(element_bodies, obstacles, trajectories)
-        print('Safe:', safe)
         data.update({
-            'safe': safe,
-            'valid': valid,
-            'max_translation': max_translation,
-            'max_rotation': max_rotation,
+            'runtime': runtime,
+            'num_elements': len(elements),
+            'sequence': sequence,
+            'parameters': get_global_parameters(),
+            'problem':  args.problem,
+            'algorithm': args.algorithm,
+            'heuristic': args.bias,
+            'plan_extrusions': not args.disable,
+            'use_collisions': not args.cfree,
+            'use_stiffness': args.stiffness,
         })
-
-    data.update({
-        'runtime': runtime,
-        'num_elements': len(elements),
-        'sequence': sequence,
-        'parameters': get_global_parameters(),
-        'problem':  args.problem,
-        'algorithm': args.algorithm,
-        'heuristic': args.bias,
-        'plan_extrusions': not args.disable,
-        'use_collisions': not args.cfree,
-        'use_stiffness': args.stiffness,
-    })
-    print(data)
-    #plan_path = '{}_solution.json'.format(args.problem)
-    #with open(plan_path, 'w') as f:
-    #    json.dump(plan_data, f, indent=2, sort_keys=True)
+        print(data)
+        #plan_path = '{}_solution.json'.format(args.problem)
+        #with open(plan_path, 'w') as f:
+        #    json.dump(plan_data, f, indent=2, sort_keys=True)
+        results.append((args, data))
 
     reset_simulation()
     disconnect()
     if watch:
         # TODO: avoid reconnecting
         animate = not (args.disable or args.ee_only)
-        display_trajectories(node_points, ground_nodes, trajectories, #time_step=None, video=True,
+        display_trajectories(node_points, ground_nodes, plan, #time_step=None, video=True,
                              animate=animate)
     if not verbose:
         sys.stdout.close()
-    return args, data
+    return results
 
 ##################################################
 
-def main():
+def create_parser():
+    np.set_printoptions(precision=3)
     parser = argparse.ArgumentParser()
-    # simple_frame | Nodes: 12 | Ground: 4 | Elements: 19
-    # topopt-100 | Nodes: 88 | Ground: 20 | Elements: 132
-    # topopt-205 | Nodes: 89 | Ground: 19 | Elements: 164
-    # mars-bubble | Nodes: 97 | Ground: 11 | Elements: 225
-    # djmm_test_block | Nodes: 76 | Ground: 13 | Elements: 253
-    # voronoi | Nodes: 162 | Ground: 14 | Elements: 306
-    # topopt-310 | Nodes: 160 | Ground: 39 | Elements: 310
-    # sig_artopt-bunny | Nodes: 219 | Ground: 14 | Elements: 418
-    # djmm_bridge | Nodes: 1548 | Ground: 258 | Elements: 6427
-    # djmm_test_block | Nodes: 76 | Ground: 13 | Elements: 253
     parser.add_argument('-a', '--algorithm', default='regression',
                         help='Which algorithm to use')
     parser.add_argument('-b', '--bias', default='plan-stiffness', choices=HEURISTICS,
@@ -219,37 +223,27 @@ def main():
                         help='Disables arm planning')
     parser.add_argument('-m', '--motions', action='store_false',
                         help='Plans motions between each extrusion')
-    parser.add_argument('-n', '--num', default=0, type=int,
-                        help='Number of experiment trials')
-    parser.add_argument('-p', '--problem', default='simple_frame',
-                        help='The name of the problem to solve')
     parser.add_argument('-s', '--stiffness',  action='store_false',
                         help='Disables stiffness checking')
     parser.add_argument('-t', '--max_time', default=DEFAULT_MAX_TIME, type=int,
                         help='The max time')
+    return parser
+
+def main():
+    parser = create_parser()
+    parser.add_argument('-p', '--problem', default='simple_frame',
+                        help='The name of the problem to solve')
     parser.add_argument('-v', '--viewer', action='store_true',
                         help='Enables the viewer during planning')
     args = parser.parse_args()
-    if args.disable:
-        args.cfree = True
-        args.motions = False
-        args.max_time = 5*60 # 259 for duck
     print('Arguments:', args)
-    np.set_printoptions(precision=3)
-
-    if args.num:
-        train_parallel(args)
-        return
-
     args.seed = hash(time.time())
     if args.problem == 'all':
         for problem in enumerate_problems():
             args.problem = problem
-            plan_extrusion(args, verbose=True, watch=False)
+            plan_extrusion([args], verbose=True, watch=False)
     else:
-        plan_extrusion(args, viewer=args.viewer, verbose=True, watch=True)
-
-    # python -m extrusion.run -n 10 2>&1 | tee log.txt
+        plan_extrusion([args], viewer=args.viewer, verbose=True, watch=True)
 
 
 if __name__ == '__main__':
