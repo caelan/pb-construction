@@ -525,6 +525,7 @@ def raise_timeout(signum, frame):
 
 @contextmanager
 def timeout(duration):
+    assert 0 < duration
     if duration == INF:
         yield
         return

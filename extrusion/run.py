@@ -21,7 +21,7 @@ from extrusion.visualization import label_element, set_extrusion_camera, label_n
 from extrusion.experiment import train_parallel
 from extrusion.motion import compute_motions, validate_trajectories
 from extrusion.stripstream import plan_sequence
-from extrusion.utils import load_world, TOOL_LINK
+from extrusion.utils import load_world, TOOL_LINK, timeout
 from extrusion.parsing import load_extrusion, create_elements_bodies, \
     enumerate_problems, get_extrusion_path, affine_extrusion
 from extrusion.stream import get_print_gen_fn
@@ -30,7 +30,7 @@ from extrusion.regression import regression
 from extrusion.heuristics import HEURISTICS
 from extrusion.validator import check_plan, compute_plan_deformation
 from extrusion.lookahead import lookahead
-from extrusion.stiffness import plan_stiffness
+from extrusion.stiffness import plan_stiffness, create_stiffness_checker
 
 from pybullet_tools.utils import connect, disconnect, get_movable_joints, get_joint_positions, LockRenderer, \
     unit_pose, reset_simulation, draw_pose, apply_alpha, BLACK, Pose, Euler, set_numpy_seed, \
@@ -67,7 +67,7 @@ def rotate_problem(problem_path, roll=np.pi):
 ##################################################
 
 def solve_extrusion(robot, obstacles, node_points, element_bodies, extrusion_path, ground_nodes, args,
-                    partial_orders=[], precompute=False):
+                    partial_orders=[], precompute=False, **kwargs):
     # TODO: could treat ground as partial orders
     backtrack_limit = INF # 0 | INF
     seed = hash((time.time(), args.seed))
@@ -86,7 +86,6 @@ def solve_extrusion(robot, obstacles, node_points, element_bodies, extrusion_pat
     #     wait_for_user()
     # return
 
-    # TODO: reuse checker for multiple trials to account for memory leaks
     pr = cProfile.Profile()
     pr.enable()
     if args.algorithm == 'stripstream':
@@ -95,23 +94,23 @@ def solve_extrusion(robot, obstacles, node_points, element_bodies, extrusion_pat
             sampled_trajectories = sample_trajectories(robot, obstacles, node_points, element_bodies, ground_nodes)
         plan, data = plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
                                    trajectories=sampled_trajectories, collisions=not args.cfree,
-                                   max_time=args.max_time, disable=args.disable, debug=False)
+                                   max_time=args.max_time, disable=args.disable, debug=False, **kwargs)
     elif args.algorithm == 'progression':
         plan, data = progression(robot, obstacles, element_bodies, extrusion_path, partial_orders=partial_orders,
                                  heuristic=args.bias, max_time=args.max_time,
                                  backtrack_limit=backtrack_limit, collisions=not args.cfree,
-                                 disable=args.disable, stiffness=args.stiffness, motions=args.motions)
+                                 disable=args.disable, stiffness=args.stiffness, motions=args.motions, **kwargs)
     elif args.algorithm == 'regression':
         plan, data = regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=partial_orders,
                                 heuristic=args.bias, max_time=args.max_time,
                                 backtrack_limit=backtrack_limit, collisions=not args.cfree,
-                                disable=args.disable, stiffness=args.stiffness, motions=args.motions)
+                                disable=args.disable, stiffness=args.stiffness, motions=args.motions, **kwargs)
     elif args.algorithm == 'lookahead':
         plan, data = lookahead(robot, obstacles, element_bodies, extrusion_path,
                                partial_orders=partial_orders, heuristic=args.bias,
                                max_time=args.max_time, backtrack_limit=backtrack_limit,
                                ee_only=args.ee_only, collisions=not args.cfree,
-                               disable=args.disable, stiffness=args.stiffness, motions=args.motions)
+                               disable=args.disable, stiffness=args.stiffness, motions=args.motions, **kwargs)
     else:
         raise ValueError(args.algorithm)
     if args.motions:
@@ -155,12 +154,16 @@ def plan_extrusion(args_list, viewer=False, verify=False, verbose=False, watch=F
         if viewer:
             label_nodes(node_points)
         saver = WorldSaver()
+    checker = create_stiffness_checker(extrusion_path, verbose=False) # if stiffness else None
 
     for args in args_list:
         saver.restore()
         with LockRenderer(True):
             start_time = time.time()
-            plan, data = solve_extrusion(robot, obstacles, node_points, element_bodies, extrusion_path, ground_nodes, args)
+            plan, data = None, {}
+            with timeout(args.max_time):
+                plan, data = solve_extrusion(robot, obstacles, node_points, element_bodies, extrusion_path, ground_nodes,
+                                             args, checker=checker)
             runtime = elapsed_time(start_time)
 
         sequence = recover_directed_sequence(plan)

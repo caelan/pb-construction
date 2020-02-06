@@ -52,7 +52,7 @@ def train_parallel(args):
     assert SKIP_PERCENTAGE == 0
     initial_time = time.time()
     problems = sorted(set(enumerate_problems()) - set(EXCLUDE))
-    problems = ['four-frame']
+    #problems = ['four-frame']
     #problems = ['simple_frame', 'topopt-101_tiny', 'topopt-100_S1_03-14-2019_w_layer']
     #algorithms = ALGORITHMS
     algorithms = list(ALGORITHMS)
@@ -61,16 +61,18 @@ def train_parallel(args):
             if algorithm in algorithms:
                 algorithms.remove(algorithm)
     algorithms = ['regression']
-    #heuristics = HEURISTICS
-    heuristics = ['z']
+    heuristics = HEURISTICS
+    #heuristics = ['z']
+    seeds = list(range(args.num))
 
     print('Problems ({}): {}'.format(len(problems), problems))
     #problems = [path for path in problems if 'simple_frame' in path]
     print('Algorithms ({}): {}'.format(len(algorithms), algorithms))
     print('Heuristics ({}): {}'.format(len(heuristics), heuristics))
-    configurations = [[Configuration(*c)] for c in product(
-        range(args.num), problems, algorithms, heuristics, [args.max_time],
-        [args.cfree], [args.disable], [args.stiffness], [args.motions], [args.ee_only])]
+    configurations = [[Configuration(seed, problem, algorithm, heuristic, args.max_time, args.cfree,
+                                     args.disable, args.stiffness, args.motions, args.ee_only)
+                       for seed, algorithm, heuristic in product(seeds, algorithms, heuristics)]
+                      for problem in problems]
     print('Configurations: {}'.format(len(configurations)))
 
     serial = is_darwin()

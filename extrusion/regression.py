@@ -77,80 +77,79 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
     plan = None
     min_remaining = len(all_elements)
     num_evaluated = max_backtrack = extrusion_failures = transit_failures = stiffness_failures = 0
-    with timeout(max_time):
-        while queue and (elapsed_time(start_time) < max_time) and check_memory(): #max_memory):
-            priority, printed, element, current_conf = heapq.heappop(queue)
-            num_remaining = len(printed)
-            backtrack = num_remaining - min_remaining
-            max_backtrack = max(max_backtrack, backtrack)
-            if backtrack_limit < backtrack:
-                break # continue
-            num_evaluated += 1
+    while queue and (elapsed_time(start_time) < max_time) and check_memory(): #max_memory):
+        priority, printed, element, current_conf = heapq.heappop(queue)
+        num_remaining = len(printed)
+        backtrack = num_remaining - min_remaining
+        max_backtrack = max(max_backtrack, backtrack)
+        if backtrack_limit < backtrack:
+            break # continue
+        num_evaluated += 1
 
-            print('Iteration: {} | Best: {} | Printed: {} | Element: {} | Index: {} | Time: {:.3f}'.format(
-                num_evaluated, min_remaining, len(printed), element, id_from_element[element], elapsed_time(start_time)))
-            next_printed = printed - {element}
-            #draw_action(node_points, next_printed, element)
-            #if 3 < backtrack + 1:
+        print('Iteration: {} | Best: {} | Printed: {} | Element: {} | Index: {} | Time: {:.3f}'.format(
+            num_evaluated, min_remaining, len(printed), element, id_from_element[element], elapsed_time(start_time)))
+        next_printed = printed - {element}
+        #draw_action(node_points, next_printed, element)
+        #if 3 < backtrack + 1:
+        #    remove_all_debug()
+        #    set_renderer(enable=True)
+        #    draw_model(next_printed, node_points, ground_nodes)
+        #    wait_for_user()
+
+        if (next_printed in visited) or not check_connected(ground_nodes, next_printed):
+            continue
+        if stiffness and not test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker):
+            stiffness_failures += 1
+            continue
+        #if stiffness:
+        # for _ in range(stiffness_attempts): # should be larger than zero
+        #     if plan_stiffness(checker, extrusion_path, element_from_id, node_points, ground_nodes, next_printed) is None:
+        #         break
+        # else:
+        #     continue
+
+        command = sample_extrusion(print_gen_fn, ground_nodes, next_printed, element)
+        if command is None:
+            extrusion_failures += 1
+            continue
+        if motions and not lazy:
+            motion_traj = compute_motion(robot, obstacles, element_bodies, printed,
+                                         command.end_conf, current_conf, collisions=collisions,
+                                         max_time=max_time - elapsed_time(start_time))
+            if motion_traj is None:
+                transit_failures += 1
+                continue
+            command.trajectories.append(motion_traj)
+
+        if num_remaining < min_remaining:
+            min_remaining = num_remaining
+            print('New best: {}'.format(num_remaining))
+            #if has_gui():
+            #    # TODO: change link transparency
             #    remove_all_debug()
-            #    set_renderer(enable=True)
             #    draw_model(next_printed, node_points, ground_nodes)
-            #    wait_for_user()
+            #    wait_for_duration(0.5)
 
-            if (next_printed in visited) or not check_connected(ground_nodes, next_printed):
-                continue
-            if stiffness and not test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker):
-                stiffness_failures += 1
-                continue
-            #if stiffness:
-            # for _ in range(stiffness_attempts): # should be larger than zero
-            #     if plan_stiffness(checker, extrusion_path, element_from_id, node_points, ground_nodes, next_printed) is None:
-            #         break
-            # else:
-            #     continue
-
-            command = sample_extrusion(print_gen_fn, ground_nodes, next_printed, element)
-            if command is None:
-                extrusion_failures += 1
-                continue
+        visited[next_printed] = Node(command, printed) # TODO: be careful when multiple trajs
+        if not next_printed:
+            min_remaining = 0
+            plan = retrace_trajectories(visited, next_printed, reverse=True)
             if motions and not lazy:
-                motion_traj = compute_motion(robot, obstacles, element_bodies, printed,
-                                             command.end_conf, current_conf, collisions=collisions,
+                motion_traj = compute_motion(robot, obstacles, element_bodies, frozenset(),
+                                             initial_conf, plan[0].start_conf, collisions=collisions,
                                              max_time=max_time - elapsed_time(start_time))
                 if motion_traj is None:
+                    plan = None
                     transit_failures += 1
-                    continue
-                command.trajectories.append(motion_traj)
-
-            if num_remaining < min_remaining:
-                min_remaining = num_remaining
-                print('New best: {}'.format(num_remaining))
-                #if has_gui():
-                #    # TODO: change link transparency
-                #    remove_all_debug()
-                #    draw_model(next_printed, node_points, ground_nodes)
-                #    wait_for_duration(0.5)
-
-            visited[next_printed] = Node(command, printed) # TODO: be careful when multiple trajs
-            if not next_printed:
-                min_remaining = 0
-                plan = retrace_trajectories(visited, next_printed, reverse=True)
-                if motions and not lazy:
-                    motion_traj = compute_motion(robot, obstacles, element_bodies, frozenset(),
-                                                 initial_conf, plan[0].start_conf, collisions=collisions,
-                                                 max_time=max_time - elapsed_time(start_time))
-                    if motion_traj is None:
-                        plan = None
-                        transit_failures += 1
-                    else:
-                        plan.insert(0, motion_traj)
-                if motions and lazy:
-                    plan = compute_motions(robot, obstacles, element_bodies, initial_conf, plan,
-                                           collisions=collisions, max_time=max_time - elapsed_time(start_time))
-                break
-                # if plan is not None:
-                #     break
-            add_successors(next_printed, command.start_conf)
+                else:
+                    plan.insert(0, motion_traj)
+            if motions and lazy:
+                plan = compute_motions(robot, obstacles, element_bodies, initial_conf, plan,
+                                       collisions=collisions, max_time=max_time - elapsed_time(start_time))
+            break
+            # if plan is not None:
+            #     break
+        add_successors(next_printed, command.start_conf)
     #del checker
 
     data = {
