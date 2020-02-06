@@ -40,19 +40,6 @@ def check_plan(extrusion_path, planned_elements, verbose=False):
     print('Connected: {} | Stiff: {}'.format(all_connected, all_stiff))
     return all_connected and all_stiff
 
-
-def verify_plan(extrusion_path, planned_elements, use_gui=False, **kwargs):
-    # Path heuristic
-    # Disable shadows
-    if use_gui:
-        connect(use_gui=use_gui)
-        obstacles, robot = load_world()
-    is_valid = check_plan(extrusion_path, planned_elements, **kwargs)
-    if use_gui:
-        reset_simulation()
-        disconnect()
-    return is_valid
-
 ##################################################
 
 def compute_plan_deformation(problem, plan):

@@ -160,14 +160,15 @@ def affine_extrusion(extrusion_path, tform):
 
 ##################################################
 
-def create_elements_bodies(node_points, elements, color=apply_alpha(RED, alpha=1)):
+def create_elements_bodies(node_points, elements, color=apply_alpha(RED, alpha=1),
+                           diameter=ELEMENT_DIAMETER, shrink=ELEMENT_SHRINK):
     # TODO: could scale the whole environment
     # TODO: create a version without shrinking for transit planning
     # URDF_USE_IMPLICIT_CYLINDER
     element_bodies = []
     for (n1, n2) in elements:
         p1, p2 = node_points[n1], node_points[n2]
-        height = max(np.linalg.norm(p2 - p1) - 2*ELEMENT_SHRINK, 0)
+        height = max(np.linalg.norm(p2 - p1) - 2*shrink, 0)
         #if height == 0: # Cannot keep this here
         #    continue
         center = (p1 + p2) / 2
@@ -182,7 +183,7 @@ def create_elements_bodies(node_points, elements, color=apply_alpha(RED, alpha=1
 
         # Much smaller than cylinder
         # Also faster, C_shape 177.398 vs 400
-        body = create_box(ELEMENT_DIAMETER, ELEMENT_DIAMETER, height, color=color, mass=STATIC_MASS)
+        body = create_box(diameter, diameter, height, color=color, mass=STATIC_MASS)
         set_color(body, color)
         set_point(body, center)
         set_quat(body, quat)

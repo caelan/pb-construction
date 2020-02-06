@@ -153,17 +153,11 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
             add_successors(next_printed, command.start_conf)
     #del checker
 
-    max_translation, max_rotation = compute_plan_deformation(extrusion_path, recover_sequence(plan))
     data = {
-        'sequence': recover_directed_sequence(plan),
-        'runtime': elapsed_time(start_time),
-        'memory': get_memory_in_kb(), # May need to update instead
-        'num_elements': len(all_elements),
+        #'memory': get_memory_in_kb(), # May need to update instead
         'num_evaluated': num_evaluated,
         'min_remaining': min_remaining,
         'max_backtrack': max_backtrack,
-        'max_translation': max_translation,
-        'max_rotation': max_rotation,
         'stiffness_failures': stiffness_failures,
         'extrusion_failures': extrusion_failures,
         'transit_failures': transit_failures,
