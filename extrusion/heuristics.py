@@ -118,7 +118,7 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
     joints = get_movable_joints(robot)
     tool_link = link_from_name(robot, TOOL_LINK)
     #initial_conf = get_joint_positions(robot, joints)
-    #initial_pose = get_link_pose(robot, tool_link)
+    initial_pose = get_link_pose(robot, tool_link)
 
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
     elements = frozenset(element_from_id.values())
@@ -127,8 +127,9 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
 
     stiffness_order = None
     if heuristic == 'plan-stiffness':
-        stiffness_plan = plan_stiffness(extrusion_path, element_from_id, node_points,
-                                        ground_nodes, elements, checker=checker, max_backtrack=INF)
+        initial_point = point_from_pose(initial_pose)
+        stiffness_plan = plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, elements,
+                                        initial_position=initial_point, checker=checker, max_backtrack=INF)
         if stiffness_plan is not None:
             stiffness_order = {get_undirected(elements, directed): i for i, directed in enumerate(stiffness_plan)}
 

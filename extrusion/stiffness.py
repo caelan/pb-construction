@@ -18,6 +18,7 @@ from pybullet_tools.utils import HideOutput, INF, elapsed_time, randomize, wait_
 
 TRANS_TOL = 0.0015
 ROT_TOL = INF # 5 * np.pi / 180
+INITIAL_NODE = None
 
 Deformation = namedtuple('Deformation', ['success', 'displacements', 'fixities', 'reactions']) # TODO: get_max_nodal_deformation
 Displacement = namedtuple('Displacement', ['dx', 'dy', 'dz', 'theta_x', 'theta_y', 'theta_z'])
@@ -105,7 +106,6 @@ def test_stiffness(extrusion_path, element_from_id, elements, **kwargs):
 ##################################################
 
 SCALE = 1e3
-INITIAL_NODE = None
 
 def solve_tsp(elements, node_points, initial_point, max_time=5, verbose=False):
     # https://developers.google.com/optimization/routing/tsp
@@ -226,19 +226,27 @@ def compute_spanning_tree(edge_weights):
             heapq.heappush(queue, (edge_weights[edge], edge))
     return tree
 
-def plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, elements,
-                   initial_position=None, checker=None, max_time=INF, max_backtrack=0):
-
-    edge_weights = {(n1, n2): get_distance(node_points[n1], node_points[n2]) for n1, n2 in elements}
-    vertices = {v for e in elements for v in e}
-    components = get_connected_components(vertices, elements)
+def compute_euclidean_tree(node_points, ground_nodes, elements, initial_position=None):
+    point_from_vertex = dict(enumerate(node_points))
+    edges = set(elements)
+    if initial_position is not None:
+        point_from_vertex[INITIAL_NODE] = initial_position
+        edges.update({(INITIAL_NODE, n) for n in ground_nodes})
+    edge_weights = {(n1, n2): get_distance(point_from_vertex[n1], point_from_vertex[n2]) for n1, n2 in edges}
+    components = get_connected_components(point_from_vertex, edge_weights)
     tree = compute_spanning_tree(edge_weights)
     from extrusion.visualization import draw_model
-    draw_model(tree, node_points, ground_nodes)
-    print(len(components), len(node_points), len(tree))
+    draw_model(tree, point_from_vertex, ground_nodes)
+    weight = sum(edge_weights[e] for e in tree)
+    print(len(components), len(point_from_vertex), len(tree), weight)
     wait_for_user()
-    return
+    return weight
 
+##################################################
+
+def plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, elements,
+                   initial_position=None, checker=None, max_time=INF, max_backtrack=0):
+    return compute_euclidean_tree(node_points, ground_nodes, elements, initial_position)
     #return solve_tsp(elements, node_points, initial_position)
     start_time = time.time()
     if checker is None:
