@@ -11,7 +11,8 @@ from itertools import islice, cycle
 from pybullet_tools.utils import get_link_pose, BodySaver, set_point, multiply, set_pose, set_joint_positions, \
     Point, HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, get_aabb, \
     get_distance, get_relative_pose, get_link_subtree, clone_body, randomize, get_movable_joints, get_all_links, get_bodies_in_region, pairwise_link_collision, \
-    set_static, BASE_LINK, add_data_path, INF, load_model, create_plane, set_color, TAN, set_texture, create_box, apply_alpha
+    set_static, BASE_LINK, add_data_path, INF, load_model, create_plane, set_color, TAN, set_texture, create_box, \
+    apply_alpha, point_from_pose, get_max_velocity
 from pddlstream.utils import get_connected_components
 
 KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
@@ -35,8 +36,11 @@ SUPPORT_THETA = np.math.radians(10)  # Support polygon
 USE_FLOOR = True
 
 RESOLUTION = 0.005
-JOINT_WEIGHTS = np.array([0.3078557810844393, 0.443600199302506, 0.23544367607317915,
-                          0.03637161028426032, 0.04644626184081511, 0.015054267683041092])
+# JOINT_WEIGHTS = np.array([0.3078557810844393, 0.443600199302506, 0.23544367607317915,
+#                           0.03637161028426032, 0.04644626184081511, 0.015054267683041092])
+JOINT_WEIGHTS = np.reciprocal([6.28318530718, 5.23598775598, 6.28318530718,
+                               6.6497044501, 6.77187749774, 10.7337748998]) # sec / radian
+
 
 INITIAL_CONF = [0, -np.pi/4, np.pi/4, 0, 0, 0]
 
@@ -68,6 +72,7 @@ def load_world(use_floor=True):
     #side, height = 10, 0.01
     with HideOutput():
         robot = load_pybullet(os.path.join(root_directory, KUKA_PATH), fixed_base=True)
+        #print([get_max_velocity(robot, joint) for joint in get_movable_joints(robot)])
         set_static(robot)
         set_joint_positions(robot, get_movable_joints(robot), INITIAL_CONF)
         lower, _ = get_aabb(robot)
@@ -201,6 +206,15 @@ class Trajectory(object):
                     set_joint_positions(self.robot, self.joints, conf)
                     self.path_from_link[link].append(get_link_pose(self.robot, link))
         return self.path_from_link[link]
+    def get_distance(self):
+        if not self.path:
+            return 0.
+        # TODO: JOINT_WEIGHTS
+        return sum(get_distance(*pair) for pair in zip(self.path[:-1], self.path[1:]))
+    def get_link_distance(self, **kwargs):
+        # TODO: just endpoints
+        link_path = list(map(point_from_pose, self.get_link_path(**kwargs)))
+        return sum(get_distance(*pair) for pair in zip(link_path[:-1], link_path[1:]))
     def __len__(self):
         return len(self.path)
     def reverse(self):
@@ -355,8 +369,7 @@ def get_midpoint(node_points, element):
 ##################################################
 
 def compute_sequence_distance(node_points, directed_elements, start=None):
-    # TODO: initial end-effector position
-    distance = 0
+    distance = 0.
     position = start
     for (n1, n2) in directed_elements:
         if position is not None:

@@ -21,7 +21,7 @@ from extrusion.visualization import label_element, set_extrusion_camera, label_n
 from extrusion.experiment import train_parallel
 from extrusion.motion import compute_motions, validate_trajectories
 from extrusion.stripstream import plan_sequence
-from extrusion.utils import load_world, TOOL_LINK, timeout
+from extrusion.utils import load_world, TOOL_LINK, timeout, compute_sequence_distance
 from extrusion.parsing import load_extrusion, create_elements_bodies, \
     enumerate_problems, get_extrusion_path, affine_extrusion
 from extrusion.stream import get_print_gen_fn
@@ -33,7 +33,7 @@ from extrusion.lookahead import lookahead
 from extrusion.stiffness import plan_stiffness, create_stiffness_checker
 
 from pybullet_tools.utils import connect, disconnect, get_movable_joints, get_joint_positions, LockRenderer, \
-    unit_pose, reset_simulation, draw_pose, apply_alpha, BLACK, Pose, Euler, set_numpy_seed, \
+    unit_pose, reset_simulation, draw_pose, apply_alpha, BLACK, Pose, Euler, has_gui, set_numpy_seed, \
     set_random_seed, INF, wait_for_user, link_from_name, get_link_pose, point_from_pose, WorldSaver, elapsed_time
 
 
@@ -66,7 +66,7 @@ def rotate_problem(problem_path, roll=np.pi):
 
 ##################################################
 
-def solve_extrusion(robot, obstacles, node_points, element_bodies, extrusion_path, ground_nodes, args,
+def solve_extrusion(robot, obstacles, element_from_id, node_points, element_bodies, extrusion_path, ground_nodes, args,
                     partial_orders=[], precompute=False, **kwargs):
     # TODO: could treat ground as partial orders
     backtrack_limit = INF # 0 | INF
@@ -74,18 +74,16 @@ def solve_extrusion(robot, obstacles, node_points, element_bodies, extrusion_pat
     set_numpy_seed(seed)
     set_random_seed(seed)
 
-    initial_conf = get_joint_positions(robot, get_movable_joints(robot))
-    #initial_position = point_from_pose(get_link_pose(robot, link_from_name(robot, TOOL_LINK)))
-    # dump_body(robot)
-    #visualize_stiffness(extrusion_path)
-    # debug_elements(robot, node_points, node_order, elements)
+    # initial_position = point_from_pose(get_link_pose(robot, link_from_name(robot, TOOL_LINK)))
+    # elements = sorted(element_bodies.keys())
     # sequence = plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, elements,
     #                           initial_position=initial_position, max_time=INF, max_backtrack=INF)
-    # if viewer:
+    # if has_gui():
     #     draw_ordered(sequence, node_points)
     #     wait_for_user()
     # return
 
+    initial_conf = get_joint_positions(robot, get_movable_joints(robot))
     pr = cProfile.Profile()
     pr.enable()
     if args.algorithm == 'stripstream':
@@ -141,12 +139,12 @@ def plan_extrusion(args_list, viewer=False, verify=False, verbose=False, watch=F
     #elements, ground_nodes = downsample_nodes(elements, node_points, ground_nodes)
 
     connect(use_gui=viewer, shadows=SHADOWS, color=BACKGROUND_COLOR)
-    with LockRenderer(True):
+    with LockRenderer(lock=True):
         #draw_pose(unit_pose(), length=1.)
         obstacles, robot = load_world()
         #draw_model(elements, node_points, ground_nodes)
         #wait_for_user()
-        color = apply_alpha(BLACK, alpha=1) # 0, 1
+        color = apply_alpha(BLACK, alpha=0) # 0, 1
         #color = None
         element_bodies = dict(zip(elements, create_elements_bodies(
             node_points, elements, color=color)))
@@ -155,15 +153,19 @@ def plan_extrusion(args_list, viewer=False, verify=False, verbose=False, watch=F
             label_nodes(node_points)
         saver = WorldSaver()
     checker = create_stiffness_checker(extrusion_path, verbose=False) # if stiffness else None
+    #visualize_stiffness(extrusion_path)
+    #debug_elements(robot, node_points, node_order, elements)
 
     for args in args_list:
         saver.restore()
-        with LockRenderer(True):
+        #initial_conf = get_joint_positions(robot, get_movable_joints(robot))
+        initial_position = point_from_pose(get_link_pose(robot, link_from_name(robot, TOOL_LINK)))
+        with LockRenderer(lock=not viewer):
             start_time = time.time()
             plan, data = None, {}
             with timeout(args.max_time):
-                plan, data = solve_extrusion(robot, obstacles, node_points, element_bodies, extrusion_path, ground_nodes,
-                                             args, checker=checker)
+                plan, data = solve_extrusion(robot, obstacles, element_from_id, node_points, element_bodies,
+                                             extrusion_path, ground_nodes, args, checker=checker)
             runtime = elapsed_time(start_time)
 
         sequence = recover_directed_sequence(plan)
@@ -183,6 +185,8 @@ def plan_extrusion(args_list, viewer=False, verify=False, verbose=False, watch=F
         data.update({
             'runtime': runtime,
             'num_elements': len(elements),
+            'distance': compute_sequence_distance(node_points, sequence, start=initial_position),
+            # TODO: robot distance
             'sequence': sequence,
             'parameters': get_global_parameters(),
             'problem':  args.problem,
@@ -252,6 +256,5 @@ def main():
 if __name__ == '__main__':
     main()
 
-# TODO: local search to reduce the violation
-# TODO: introduce support structure fixities and then require that they be removed
+# Introduce support scaffolding fixities and then require that they be removed
 # Robot spiderweb printing weaving hook which may slide

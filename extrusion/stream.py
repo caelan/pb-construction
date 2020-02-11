@@ -143,6 +143,7 @@ def solve_ik(end_effector, target_pose, nearby=True):
         conf = sample_tool_ik(robot, target_pose, closest_only=nearby, get_all=False)
     else:
         # TODO: repeat several times
+        # TODO: condition on current config
         if not nearby:
             # randomly sample and set joint conf for the pybullet ik fn
             sample_fn = get_sample_fn(robot, movable_joints)
@@ -185,12 +186,11 @@ def optimize_angle(end_effector, element_pose,
 
 def plan_approach(end_effector, print_traj, collision_fn):
     # TODO: collisions at the ends of elements
-    # TODO: slow down automatically near endpoints
     if APPROACH_DISTANCE == 0:
         return Command([print_traj])
     robot = end_effector.robot
     joints = get_movable_joints(robot)
-    extend_fn = get_extend_fn(robot, joints, resolutions=JOINT_RESOLUTIONS)
+    extend_fn = get_extend_fn(robot, joints, resolutions=0.25*JOINT_RESOLUTIONS)
     tool_link = link_from_name(robot, TOOL_LINK)
     approach_pose = Pose(Point(z=-APPROACH_DISTANCE))
 
