@@ -145,11 +145,11 @@ def draw_element(node_points, element, color=RED):
     return add_line(p1, p2, color=color[:3], width=LINE_WIDTH)
 
 
-def draw_model(elements, node_points, ground_nodes):
+def draw_model(elements, node_points, ground_nodes, color=None):
     handles = []
     with LockRenderer():
         for element in elements:
-            color = BLUE if is_ground(element, ground_nodes) else RED
+            #color = BLUE if is_ground(element, ground_nodes) else RED
             handles.append(draw_element(node_points, element, color=color))
     return handles
 

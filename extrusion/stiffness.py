@@ -6,7 +6,7 @@ import numpy as np
 import math
 
 from collections import namedtuple, defaultdict
-from itertools import product
+from itertools import combinations
 
 from pyconmech import StiffnessChecker
 
@@ -14,7 +14,7 @@ from extrusion.utils import get_extructed_ids, compute_printable_elements, compu
     compute_sequence_distance, compute_printed_nodes, is_printable, get_distance, get_midpoint, \
     compute_printable_directed, get_undirected
 from pddlstream.utils import adjacent_from_edges, get_connected_components
-from pybullet_tools.utils import HideOutput, INF, elapsed_time, randomize, wait_for_user
+from pybullet_tools.utils import HideOutput, INF, elapsed_time, randomize, wait_for_user, BLUE, RED
 
 TRANS_TOL = 0.0015
 ROT_TOL = INF # 5 * np.pi / 180
@@ -227,18 +227,28 @@ def compute_spanning_tree(edge_weights):
     return tree
 
 def compute_euclidean_tree(node_points, ground_nodes, elements, initial_position=None):
+    start_time = time.time()
     point_from_vertex = dict(enumerate(node_points))
     edges = set(elements)
+    for element in elements:
+        n1, n2 = element
+        n3 = len(point_from_vertex)
+        point_from_vertex[n3] = get_midpoint(node_points, element)
+        edges.update({(n1, n3), (n3, n2)}) # Different step size
+
     if initial_position is not None:
         point_from_vertex[INITIAL_NODE] = initial_position
-        edges.update({(INITIAL_NODE, n) for n in ground_nodes})
+        edges.update(set(combinations(ground_nodes | {INITIAL_NODE}, r=2)))
+        #edges.update({(INITIAL_NODE, n) for n in ground_nodes})
     edge_weights = {(n1, n2): get_distance(point_from_vertex[n1], point_from_vertex[n2]) for n1, n2 in edges}
     components = get_connected_components(point_from_vertex, edge_weights)
     tree = compute_spanning_tree(edge_weights)
     from extrusion.visualization import draw_model
-    draw_model(tree, point_from_vertex, ground_nodes)
+    draw_model(tree, point_from_vertex, ground_nodes, color=BLUE)
+    draw_model(edges - tree, point_from_vertex, ground_nodes, color=RED)
+
     weight = sum(edge_weights[e] for e in tree)
-    print(len(components), len(point_from_vertex), len(tree), weight)
+    print(len(components), len(point_from_vertex), len(tree), weight, elapsed_time(start_time))
     wait_for_user()
     return weight
 
