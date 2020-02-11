@@ -6,7 +6,7 @@ import numpy as np
 import math
 
 from collections import namedtuple, defaultdict
-from itertools import combinations
+from itertools import combinations, product
 
 from pyconmech import StiffnessChecker
 
@@ -257,10 +257,35 @@ def compute_euclidean_tree(node_points, ground_nodes, elements, initial_position
     wait_for_user()
     return weight
 
+def compute_component_mst(node_points, ground_nodes, elements, initial_position=None):
+    start_time = time.time()
+    point_from_vertex = dict(enumerate(node_points))
+    vertices = {v for e in elements for v in e}
+    components = get_connected_components(vertices, elements)
+
+    if initial_position is not None:
+        point_from_vertex[INITIAL_NODE] = initial_position
+        components.append([INITIAL_NODE])
+
+    edge_weights = {}
+    for c1, c2 in combinations(range(len(components)), r=2):
+        # TODO: only compute for entry and exit confs?
+        # Only search over grounded nodes per structure?
+        edge_weights[c1, c2] = min(get_distance(point_from_vertex[n1], point_from_vertex[n2])
+                                   for n1, n2 in product(components[c1], components[c2]))
+
+    tree = compute_spanning_tree(edge_weights)
+    weight = sum(edge_weights[e] for e in tree)
+    print(tree, weight, elapsed_time(start_time))
+
+    print(edge_weights)
+
 ##################################################
 
 def plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, elements,
                    initial_position=None, checker=None, max_time=INF, max_backtrack=0):
+    assert compute_component_mst(node_points, ground_nodes, elements, initial_position)
+
     return compute_euclidean_tree(node_points, ground_nodes, elements, initial_position)
     #return solve_tsp(elements, node_points, initial_position)
     start_time = time.time()
