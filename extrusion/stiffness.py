@@ -5,7 +5,7 @@ import time
 import numpy as np
 import math
 
-from collections import namedtuple
+from collections import namedtuple, defaultdict
 from itertools import product
 
 from pyconmech import StiffnessChecker
@@ -13,6 +13,7 @@ from pyconmech import StiffnessChecker
 from extrusion.utils import get_extructed_ids, compute_printable_elements, compute_z_distance, \
     compute_sequence_distance, compute_printed_nodes, is_printable, get_distance, get_midpoint, \
     compute_printable_directed, get_undirected
+from pddlstream.utils import adjacent_from_edges, get_connected_components
 from pybullet_tools.utils import HideOutput, INF, elapsed_time, randomize, wait_for_user
 
 TRANS_TOL = 0.0015
@@ -201,8 +202,43 @@ def solve_tsp(elements, node_points, initial_point, max_time=5, verbose=False):
 
 ##################################################
 
+def compute_spanning_tree(edge_weights):
+    tree = set()
+    connected = set()
+    if not edge_weights:
+        return tree
+    adjacent = defaultdict(set)
+    for e in edge_weights:
+        for v in e:
+            adjacent[v].add(e)
+    root, _ = random.choice(list(edge_weights))
+    queue = []
+    for edge in adjacent[root]:
+        heapq.heappush(queue, (edge_weights[edge], edge))
+    while queue:
+        weight, edge = heapq.heappop(queue)
+        if set(edge) <= connected:
+            continue
+        vertex = edge[0 if edge[0] not in connected else 1]
+        tree.add(edge)
+        connected.update(edge)
+        for edge in adjacent[vertex]:
+            heapq.heappush(queue, (edge_weights[edge], edge))
+    return tree
+
 def plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, elements,
                    initial_position=None, checker=None, max_time=INF, max_backtrack=0):
+
+    edge_weights = {(n1, n2): get_distance(node_points[n1], node_points[n2]) for n1, n2 in elements}
+    vertices = {v for e in elements for v in e}
+    components = get_connected_components(vertices, elements)
+    tree = compute_spanning_tree(edge_weights)
+    from extrusion.visualization import draw_model
+    draw_model(tree, node_points, ground_nodes)
+    print(len(components), len(node_points), len(tree))
+    wait_for_user()
+    return
+
     #return solve_tsp(elements, node_points, initial_position)
     start_time = time.time()
     if checker is None:
@@ -219,9 +255,12 @@ def plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, e
         if not test_stiffness(extrusion_path, element_from_id, printed, checker=checker, verbose=False):
             continue
         if printed == remaining_elements:
+            #from extrusion.visualization import draw_ordered
             distance = compute_sequence_distance(node_points, sequence)
             print('Success! Elements: {}, Distance: {:.2f}m, Time: {:.3f}sec'.format(
                 len(sequence), distance, elapsed_time(start_time)))
+            #draw_ordered(sequence, node_points)
+            #wait_for_user()
             return sequence
         for directed in compute_printable_directed(remaining_elements, ground_nodes, printed):
             node1, node2 = directed

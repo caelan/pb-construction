@@ -149,8 +149,8 @@ def plan_extrusion(args_list, viewer=False, verify=False, verbose=False, watch=F
         element_bodies = dict(zip(elements, create_elements_bodies(
             node_points, elements, color=color)))
         set_extrusion_camera(node_points)
-        if viewer:
-            label_nodes(node_points)
+        #if viewer:
+        #    label_nodes(node_points)
         saver = WorldSaver()
     checker = create_stiffness_checker(extrusion_path, verbose=False) # if stiffness else None
     #visualize_stiffness(extrusion_path)

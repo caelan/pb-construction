@@ -6,14 +6,16 @@ from extrusion.equilibrium import compute_all_reactions, compute_node_reactions
 from extrusion.parsing import load_extrusion
 from extrusion.utils import get_extructed_ids, downselect_elements, compute_z_distance, TOOL_LINK, get_undirected
 from extrusion.stiffness import create_stiffness_checker, force_from_reaction, torque_from_reaction, plan_stiffness
-from pddlstream.utils import adjacent_from_edges
-from pybullet_tools.utils import get_distance, INF, get_joint_positions, get_movable_joints, get_link_pose, link_from_name
+from pddlstream.utils import adjacent_from_edges, hash_or_id
+from pybullet_tools.utils import get_distance, INF, get_joint_positions, get_movable_joints, get_link_pose, \
+    link_from_name, BodySaver, set_joint_positions, point_from_pose
 
 DISTANCE_HEURISTICS = [
     'z',
     'dijkstra',
     #'online-dijkstra',
     'plan-stiffness', # TODO: recategorize
+    'distance',
 ]
 TOPOLOGICAL_HEURISTICS = [
     'length',
@@ -113,9 +115,10 @@ def score_stiffness(extrusion_path, element_from_id, elements, checker=None):
 ##################################################
 
 def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
-    # TODO: penalize disconnected
-    initial_conf = get_joint_positions(robot, get_movable_joints(robot))
-    initial_pose = get_link_pose(robot, link_from_name(robot, TOOL_LINK))
+    joints = get_movable_joints(robot)
+    tool_link = link_from_name(robot, TOOL_LINK)
+    #initial_conf = get_joint_positions(robot, joints)
+    #initial_pose = get_link_pose(robot, tool_link)
 
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
     elements = frozenset(element_from_id.values())
@@ -135,6 +138,7 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
                                                          checker=checker) for element in elements})
     reaction_cache = {}
     distance_cache = {}
+    ee_cache = {}
     # TODO: round values for more tie-breaking opportunities
     # TODO: compute for all elements up front, sort, and bucket for the score (more general than rounding)
 
@@ -167,6 +171,14 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
             # Equivalent to mass if uniform density
             n1, n2 = element
             return get_distance(node_points[n2], node_points[n1])
+        elif heuristic == 'distance':
+            assert conf is not None
+            if hash_or_id(conf) not in ee_cache:
+                with BodySaver(robot):
+                    set_joint_positions(robot, joints, conf)
+                    ee_cache[hash_or_id(conf)] = get_link_pose(robot, tool_link)
+            tool_point = point_from_pose(ee_cache[hash_or_id(conf)])
+            return get_distance(tool_point, node_points[directed[0]])
         elif heuristic == 'z':
             return sign * compute_z_distance(node_points, element)
         elif heuristic == 'dijkstra': # offline

@@ -79,11 +79,11 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
             (not stiffness or test_stiffness(extrusion_path, element_from_id, final_printed, checker=checker)):
         add_successors(final_printed, final_conf)
 
-    if has_gui():
-        sequence = sorted(final_printed, key=lambda e: heuristic_fn(final_printed, e, conf=None), reverse=True)
-        remove_all_debug()
-        draw_ordered(sequence, node_points)
-        wait_for_user()
+    # if has_gui():
+    #     sequence = sorted(final_printed, key=lambda e: heuristic_fn(final_printed, e, conf=None), reverse=True)
+    #     remove_all_debug()
+    #     draw_ordered(sequence, node_points)
+    #     wait_for_user()
 
     plan = None
     min_remaining = len(all_elements)
