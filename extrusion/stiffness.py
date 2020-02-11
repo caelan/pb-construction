@@ -11,7 +11,8 @@ from itertools import product
 from pyconmech import StiffnessChecker
 
 from extrusion.utils import get_extructed_ids, compute_printable_elements, compute_z_distance, \
-    compute_sequence_distance, compute_printed_nodes, is_printable, get_distance, get_midpoint
+    compute_sequence_distance, compute_printed_nodes, is_printable, get_distance, get_midpoint, \
+    compute_printable_directed, get_undirected
 from pybullet_tools.utils import HideOutput, INF, elapsed_time, randomize, wait_for_user
 
 TRANS_TOL = 0.0015
@@ -222,27 +223,23 @@ def plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, e
             print('Success! Elements: {}, Distance: {:.2f}m, Time: {:.3f}sec'.format(
                 len(sequence), distance, elapsed_time(start_time)))
             return sequence
-        nodes = compute_printed_nodes(ground_nodes, printed)
-        #for element in randomize(compute_printable_elements(remaining_elements, ground_nodes, printed)):
-        for element in set(remaining_elements) - printed:
-            for reverse in [True, False]:
-                directed = element[::-1] if reverse else element
-                node1, node2 = directed
-                if node1 in nodes:
-                    new_printed = printed | {element}
-                    new_sequence = sequence + [directed]
-                    num_remaining = len(remaining_elements) - len(new_printed)
-                    min_remaining = min(min_remaining, num_remaining)
-                    # Don't count edge length
-                    distance = get_distance(position, node_points[node1]) if position is not None else None
-                    #distance = compute_sequence_distance(node_points, new_sequence)
-                    #bias = None
-                    #bias = compute_z_distance(node_points, element)
-                    bias = distance
-                    #bias = random.random()
-                    #bias = heuristic_fn(printed, element, conf=None) # TODO: experiment with other biases
-                    priority = (num_remaining, bias, random.random())
-                    heapq.heappush(queue, (priority, new_printed, node_points[node2], new_sequence))
+        for directed in compute_printable_directed(remaining_elements, ground_nodes, printed):
+            node1, node2 = directed
+            element = get_undirected(elements, directed)
+            new_printed = printed | {element}
+            new_sequence = sequence + [directed]
+            num_remaining = len(remaining_elements) - len(new_printed)
+            min_remaining = min(min_remaining, num_remaining)
+            # Don't count edge length
+            distance = get_distance(position, node_points[node1]) if position is not None else None
+            #distance = compute_sequence_distance(node_points, new_sequence)
+            #bias = None
+            #bias = compute_z_distance(node_points, element)
+            bias = distance
+            #bias = random.random()
+            #bias = heuristic_fn(printed, element, conf=None) # TODO: experiment with other biases
+            priority = (num_remaining, bias, random.random())
+            heapq.heappush(queue, (priority, new_printed, node_points[node2], new_sequence))
     print('Failed to find stiffness plan! Elements: {}, Min remaining {}, Time: {:.3f}sec'.format(
         len(remaining_elements), min_remaining, elapsed_time(start_time)))
     return None

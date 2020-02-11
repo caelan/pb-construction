@@ -11,7 +11,7 @@ from pybullet_tools.utils import get_movable_joints, get_joint_positions, multip
     pairwise_link_collision, step_simulation, BASE_LINK
 from extrusion.utils import TOOL_LINK, get_disabled_collisions, get_node_neighbors, \
     PrintTrajectory, retrace_supporters, get_supported_orders, prune_dominated, Command, MotionTrajectory, RESOLUTION, \
-    JOINT_WEIGHTS, EE_LINK, EndEffector, is_ground, is_reversed
+    JOINT_WEIGHTS, EE_LINK, EndEffector, is_ground, is_end, is_reversed, reverse_element
 #from extrusion.run import USE_IKFAST, get_supported_orders, retrace_supporters, SELF_COLLISIONS, USE_CONMECH
 from pddlstream.utils import neighbors_from_orders, irange
 
@@ -339,8 +339,9 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
 
     def gen_fn(node1, element, extruded=[], trajectories=[]): # fluents=[]):
         start_time = time.time()
+        assert not is_reversed(element_bodies, element)
         idle_time = 0
-        reverse = is_reversed(node1, element)
+        reverse = is_end(node1, element)
         if disable or len(extruded) < SKIP_PERCENTAGE*len(element_bodies): # For quick visualization
             path, tool_path = [], []
             traj = PrintTrajectory(end_effector, get_movable_joints(robot), path, tool_path, element, reverse)
@@ -349,7 +350,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
             return
         # TODO: cache the set of considered directions
 
-        n1, n2 = reversed(element) if reverse else element
+        n1, n2 = reverse_element(element) if reverse else element
         delta = node_points[n2] - node_points[n1]
         # if delta[2] < 0:
         #    continue

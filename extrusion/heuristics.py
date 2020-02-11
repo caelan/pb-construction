@@ -138,8 +138,9 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
     # TODO: round values for more tie-breaking opportunities
     # TODO: compute for all elements up front, sort, and bucket for the score (more general than rounding)
 
-    def fn(printed, element, conf):
+    def fn(printed, directed, conf):
         # Queue minimizes the statistic
+        element = get_undirected(elements, directed)
         structure = printed | {element} if forward else printed - {element}
         structure_ids = get_extructed_ids(element_from_id, structure)
         # TODO: build away from the robot (x)

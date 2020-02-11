@@ -11,7 +11,7 @@ from extrusion.heuristics import get_heuristic_fn
 from extrusion.parsing import load_extrusion
 from extrusion.stream import get_print_gen_fn, MAX_DIRECTIONS, MAX_ATTEMPTS
 from extrusion.utils import check_connected, get_id_from_element, PrintTrajectory, JOINT_WEIGHTS, compute_printed_nodes, \
-    compute_printable_elements, roundrobin, timeout
+    compute_printable_elements, roundrobin, timeout, get_undirected
 from extrusion.stiffness import create_stiffness_checker, test_stiffness
 from extrusion.visualization import color_structure
 from extrusion.motion import compute_motion, compute_motions
@@ -184,7 +184,8 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
     num_evaluated = worst_backtrack = num_deadends = stiffness_failures = extrusion_failures= transit_failures = 0
     while queue and (elapsed_time(start_time) < max_time):
         num_evaluated += 1
-        visits, priority, printed, element, current_conf = heapq.heappop(queue)
+        visits, priority, printed, directed, current_conf = heapq.heappop(queue)
+        element = get_undirected(all_elements, directed) # TODO: use the correct direction
         num_remaining = len(all_elements) - len(printed)
         backtrack = num_remaining - min_remaining
         worst_backtrack = max(worst_backtrack, backtrack)

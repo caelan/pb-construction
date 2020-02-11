@@ -6,21 +6,19 @@ import time
 
 from collections import namedtuple
 
-from extrusion.validator import compute_plan_deformation
 from extrusion.heuristics import get_heuristic_fn
 from pybullet_tools.utils import elapsed_time, \
-    LockRenderer, reset_simulation, disconnect, randomize
+    reset_simulation, disconnect, randomize
 from extrusion.parsing import load_extrusion
 from extrusion.visualization import draw_element
 from extrusion.stream import get_print_gen_fn, STEP_SIZE, APPROACH_DISTANCE, MAX_DIRECTIONS, MAX_ATTEMPTS
 from extrusion.utils import check_connected, get_id_from_element, load_world, PrintTrajectory, \
-    compute_printed_nodes, compute_printable_elements, RESOLUTION, timeout
+    RESOLUTION, compute_printable_directed, get_undirected
 from extrusion.stiffness import TRANS_TOL, ROT_TOL, create_stiffness_checker, test_stiffness
 from extrusion.motion import compute_motion, compute_motions
 
 # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
-from pybullet_tools.utils import connect, ClientSaver, wait_for_user, INF, has_gui, remove_all_debug, \
-    get_movable_joints, get_joint_positions
+from pybullet_tools.utils import connect, ClientSaver, wait_for_user, INF, get_movable_joints, get_joint_positions
 from pddlstream.utils import incoming_from_edges
 
 #State = namedtuple('State', ['element', 'printed', 'plan'])
@@ -63,18 +61,6 @@ def recover_directed_sequence(plan):
 
 ##################################################
 
-def sample_extrusion(print_gen_fn, ground_nodes, printed, element):
-    printed_nodes = compute_printed_nodes(ground_nodes, printed)
-    for node in element:
-        # TODO: sample between different orientations if both are feasible
-        if node in printed_nodes:
-            try:
-                command, = next(print_gen_fn(node, element, extruded=printed))
-                return command
-            except StopIteration:
-                pass
-    return None
-
 def display_failure(node_points, extruded_elements, element):
     client = connect(use_gui=True)
     with ClientSaver(client):
@@ -88,16 +74,6 @@ def display_failure(node_points, extruded_elements, element):
         reset_simulation()
         disconnect()
 
-def draw_action(node_points, printed, element):
-    if not has_gui():
-        return []
-    with LockRenderer():
-        remove_all_debug()
-        handles = [draw_element(node_points, element, color=(1, 0, 0))]
-        handles.extend(draw_element(node_points, e, color=(0, 1, 0)) for e in printed)
-    wait_for_user()
-    return handles
-
 ##################################################
 
 def add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn, printed, conf,
@@ -106,15 +82,17 @@ def add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn,
     remaining = all_elements - printed
     num_remaining = len(remaining) - 1
     #assert 0 <= num_remaining
-    bias_from_element = {}
-    for element in randomize(compute_printable_elements(all_elements, ground_nodes, printed)):
+    #bias_from_element = {}
+    # TODO: print ground first
+    for directed in randomize(compute_printable_directed(all_elements, ground_nodes, printed)):
+        element = get_undirected(all_elements, directed)
         if not (incoming_from_element[element] <= printed):
             continue
-        bias = heuristic_fn(printed, element, conf)
+        bias = heuristic_fn(printed, directed, conf)
         priority = (num_remaining, bias, random.random())
         visits = 0
-        heapq.heappush(queue, (visits, priority, printed, element, conf))
-        bias_from_element[element] = bias
+        heapq.heappush(queue, (visits, priority, printed, directed, conf))
+        #bias_from_element[element] = bias
 
     # if visualize and has_gui():
     #     handles = []
@@ -128,7 +106,7 @@ def add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn,
     #     wait_for_user()
 
 def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders=[],
-                heuristic='z', max_time=INF, backtrack_limit=INF,
+                heuristic='z', max_time=INF, backtrack_limit=INF, revisit=False,
                 stiffness=True, motions=True, collisions=True, lazy=False, checker=None, **kwargs):
 
     start_time = time.time()
@@ -158,7 +136,8 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
     num_evaluated = max_backtrack = stiffness_failures = extrusion_failures = transit_failures = 0
     while queue and (elapsed_time(start_time) < max_time):
         num_evaluated += 1
-        visits, _, printed, element, current_conf = heapq.heappop(queue)
+        visits, priority, printed, directed, current_conf = heapq.heappop(queue)
+        element = get_undirected(all_elements, directed)
         num_remaining = len(all_elements) - len(printed)
         backtrack = num_remaining - min_remaining
         max_backtrack = max(max_backtrack, backtrack)
@@ -171,10 +150,11 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
             num_evaluated, min_remaining, len(printed), element, id_from_element[element], elapsed_time(start_time)))
         next_printed = printed | {element}
         assert check_connected(ground_nodes, next_printed)
-        if (next_printed in visited) or (stiffness and not test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker)):
+        if (next_printed in visited) or (stiffness and not test_stiffness(
+                extrusion_path, element_from_id, next_printed, checker=checker)):
             stiffness_failures += 1
             continue
-        command = sample_extrusion(print_gen_fn, ground_nodes, printed, element)
+        command, = next(print_gen_fn(directed[0], element, extruded=printed), (None,))
         if command is None:
             extrusion_failures += 1
             continue
@@ -209,6 +189,8 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
             #     break
         add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn, next_printed, command.end_conf,
                        partial_orders=partial_orders)
+        if revisit:
+            heapq.heappush(queue, (visits + 1, priority, printed, directed, current_conf))
 
     data = {
         'num_evaluated': num_evaluated,

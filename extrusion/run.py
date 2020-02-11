@@ -243,8 +243,12 @@ def main():
     parser.add_argument('-v', '--viewer', action='store_true',
                         help='Enables the viewer during planning')
     args = parser.parse_args()
-    print('Arguments:', args)
+    if args.disable:
+        args.cfree = True
+        args.motions = False
     args.seed = hash(time.time())
+    print('Arguments:', args)
+
     if args.problem == 'all':
         for problem in enumerate_problems():
             args.problem = problem

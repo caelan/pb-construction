@@ -321,19 +321,28 @@ class Command(object):
 
 ##################################################
 
-def is_reversed(node1, element):
+def is_start(node1, element):
     assert node1 in element
-    return node1 != element[0]
+    return node1 == element[0]
 
-def get_directed_element(node1, element):
-    if is_reversed(node1, element):
-        return reversed(element)
-    return element
+def is_end(node2, element):
+    assert node2 in element
+    return node2 == element[1]
 
-def get_undirected(elements, directed):
-    is_reverse = directed not in elements
-    assert (directed in elements) != is_reverse
-    return directed[::-1] if is_reverse else directed
+def reverse_element(element):
+    return element[::-1]
+
+def is_reversed(all_elements, element):
+    assert (element in all_elements) != (reverse_element(element) in all_elements)
+    return element not in all_elements
+
+def get_undirected(all_elements, directed):
+    is_reverse = is_reversed(all_elements, directed)
+    assert (directed in all_elements) != is_reverse
+    return reverse_element(directed) if is_reverse else directed
+
+def get_directions(element):
+    return {element, reverse_element(element)}
 
 def get_other_node(node1, element):
     assert node1 in element
@@ -345,11 +354,11 @@ def is_printable(element, printed_nodes):
 def is_ground(element, ground_nodes):
     return is_printable(element, ground_nodes)
 
-def get_ground_elements(elements, ground_nodes):
-    return frozenset(filter(lambda e: is_ground(e, ground_nodes), elements))
+def get_ground_elements(all_elements, ground_nodes):
+    return frozenset(filter(lambda e: is_ground(e, ground_nodes), all_elements))
 
-def compute_element_distance(node_points, elements):
-    return sum(get_distance(node_points[n1], node_points[n2]) for n1, n2 in elements)
+def compute_element_distance(node_points, all_elements):
+    return sum(get_distance(node_points[n1], node_points[n2]) for n1, n2 in all_elements)
 
 def compute_printed_nodes(ground_nodes, printed):
     return nodes_from_elements(printed) | set(ground_nodes)
@@ -363,12 +372,22 @@ def compute_printable_elements(all_elements, ground_nodes, printed):
     return {element for element in set(all_elements) - set(printed)
             if is_printable(element, nodes)}
 
+def compute_printable_directed(all_elements, ground_nodes, printed):
+    nodes = compute_printed_nodes(ground_nodes, printed)
+    for element in set(all_elements) - printed:
+        for directed in get_directions(element):
+            node1, node2 = directed
+            if node1 in nodes:
+                yield directed
+
 def get_midpoint(node_points, element):
     return np.average([node_points[n] for n in element], axis=0)
 
 ##################################################
 
 def compute_sequence_distance(node_points, directed_elements, start=None):
+    if directed_elements is None:
+        return INF
     distance = 0.
     position = start
     for (n1, n2) in directed_elements:
