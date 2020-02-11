@@ -10,11 +10,10 @@ from itertools import combinations
 
 from pyconmech import StiffnessChecker
 
-from extrusion.utils import get_extructed_ids, compute_printable_elements, compute_z_distance, \
-    compute_sequence_distance, compute_printed_nodes, is_printable, get_distance, get_midpoint, \
-    compute_printable_directed, get_undirected
-from pddlstream.utils import adjacent_from_edges, get_connected_components
-from pybullet_tools.utils import HideOutput, INF, elapsed_time, randomize, wait_for_user, BLUE, RED
+from extrusion.utils import get_extructed_ids, compute_sequence_distance, get_distance, compute_printable_directed, get_undirected, \
+    get_pairs
+from pddlstream.utils import get_connected_components
+from pybullet_tools.utils import HideOutput, INF, elapsed_time, wait_for_user, BLUE, RED
 
 TRANS_TOL = 0.0015
 ROT_TOL = INF # 5 * np.pi / 180
@@ -226,15 +225,21 @@ def compute_spanning_tree(edge_weights):
             heapq.heappush(queue, (edge_weights[edge], edge))
     return tree
 
+
 def compute_euclidean_tree(node_points, ground_nodes, elements, initial_position=None):
+    # remove printed elements from the tree
     start_time = time.time()
     point_from_vertex = dict(enumerate(node_points))
     edges = set(elements)
     for element in elements:
         n1, n2 = element
-        n3 = len(point_from_vertex)
-        point_from_vertex[n3] = get_midpoint(node_points, element)
-        edges.update({(n1, n3), (n3, n2)}) # Different step size
+        path = [n1]
+        for t in np.linspace(0, 1, num=3, endpoint=True)[1:-1]:
+            n3 = len(point_from_vertex)
+            point_from_vertex[n3] = t*node_points[n1] + (1-t)*node_points[n2]
+            path.append(n3)
+        path.append(n2)
+        edges.update(get_pairs(path))
 
     if initial_position is not None:
         point_from_vertex[INITIAL_NODE] = initial_position
