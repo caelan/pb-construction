@@ -237,8 +237,8 @@ def plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, e
                     #distance = compute_sequence_distance(node_points, new_sequence)
                     #bias = None
                     #bias = compute_z_distance(node_points, element)
-                    #bias = distance
-                    bias = random.random()
+                    bias = distance
+                    #bias = random.random()
                     #bias = heuristic_fn(printed, element, conf=None) # TODO: experiment with other biases
                     priority = (num_remaining, bias, random.random())
                     heapq.heappush(queue, (priority, new_printed, node_points[node2], new_sequence))
