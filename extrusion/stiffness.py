@@ -122,7 +122,7 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, max_time=30, v
     assert initial_point is not None
     start_time = time.time()
     nodes = {node for element in elements for node in element}
-    point_from_node, edges = embed_graph(elements, node_points, ground_nodes, initial_point, num=1)
+    point_from_node, edges = embed_graph(elements, node_points, ground_nodes, initial_point, num=2)
     edges.update({pair for pair in product(nodes, repeat=2)})
 
     node_from_index = list(point_from_node)
@@ -193,6 +193,7 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, max_time=30, v
     #order.append(node_from_index[manager.IndexToNode(index)])
     start = order.index(INITIAL_NODE)
     order = order[start:] + order[:start] + [INITIAL_NODE]
+    # TODO: penalize downwards printing directions by z or phi
 
     print(order)
     draw_ordered(get_pairs(order), point_from_node)
@@ -300,7 +301,7 @@ def plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, e
                    initial_position=None, checker=None, max_time=INF, max_backtrack=0):
     #assert compute_component_mst(node_points, ground_nodes, elements, initial_position)
     #return compute_euclidean_tree(node_points, ground_nodes, elements, initial_position)
-    assert solve_tsp(elements, node_points, initial_position)
+    #assert solve_tsp(elements, ground_nodes, node_points, initial_position)
     start_time = time.time()
     if checker is None:
         checker = create_stiffness_checker(extrusion_path)
@@ -331,11 +332,11 @@ def plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, e
             num_remaining = len(remaining_elements) - len(new_printed)
             min_remaining = min(min_remaining, num_remaining)
             # Don't count edge length
-            #distance = get_distance(position, node_points[node1]) if position is not None else None
+            distance = get_distance(position, node_points[node1]) if position is not None else None
             #distance = compute_sequence_distance(node_points, new_sequence)
             #bias = None
-            bias = compute_z_distance(node_points, element)
-            #bias = distance
+            #bias = compute_z_distance(node_points, element)
+            bias = distance
             #bias = random.random()
             #bias = heuristic_fn(printed, element, conf=None) # TODO: experiment with other biases
             priority = (num_remaining, bias, random.random())

@@ -17,7 +17,7 @@ from collections import namedtuple
 
 from extrusion.progression import progression
 from extrusion.lookahead import lookahead
-from extrusion.heuristics import HEURISTICS
+from extrusion.heuristics import HEURISTICS, DISTANCE_HEURISTICS, COST_HEURISTICS
 from extrusion.parsing import enumerate_problems
 from extrusion.regression import regression
 from extrusion.stream import SKIP_PERCENTAGE
@@ -61,8 +61,8 @@ def train_parallel(args):
             if algorithm in algorithms:
                 algorithms.remove(algorithm)
     algorithms = ['regression']
-    heuristics = HEURISTICS
-    #heuristics = ['z']
+    #heuristics = HEURISTICS
+    heuristics = DISTANCE_HEURISTICS + COST_HEURISTICS
     seeds = list(range(args.num))
 
     print('Problems ({}): {}'.format(len(problems), problems))
