@@ -11,7 +11,7 @@ from itertools import combinations, product
 from pyconmech import StiffnessChecker
 
 from extrusion.utils import get_extructed_ids, compute_sequence_distance, get_distance, compute_printable_directed, get_undirected, \
-    get_pairs, compute_z_distance
+    get_pairs, compute_z_distance, reverse_element
 from pddlstream.utils import get_connected_components
 from pybullet_tools.utils import HideOutput, INF, elapsed_time, wait_for_user, BLUE, RED
 
@@ -114,6 +114,7 @@ def solve_tsp(elements, node_points, initial_point, max_time=5, verbose=False):
     # TODO: time window for skipping elements
     # TODO: Minimum Spanning Tree (MST) bias
     # TODO: time window constraint to ensure connected
+    # TODO: reuse by simply swapping out the first vertex
     from ortools.constraint_solver import routing_enums_pb2
     from ortools.constraint_solver import pywrapcp
     from extrusion.visualization import draw_ordered
@@ -127,6 +128,7 @@ def solve_tsp(elements, node_points, initial_point, max_time=5, verbose=False):
     # for element in elements:
     #     point_from_node[element] = get_midpoint(node_points, element)
     # TODO: include midpoints
+   #point_from_vertex, edges = stuff(elements, node_points, ground_nodes, initial_point)
     node_from_index = [INITIAL_NODE] + sorted(nodes) # + sorted(elements)
     index_from_node = dict(map(reversed, enumerate(node_from_index)))
 
@@ -137,10 +139,14 @@ def solve_tsp(elements, node_points, initial_point, max_time=5, verbose=False):
     #print(solver.ComputeLowerBound())
 
     distance_from_node = {}
-    for n1, n2 in product(point_from_node, repeat=2):
+    for directed in product(point_from_node, repeat=2):
+        n1, n2 = directed
         i1, i2 = index_from_node[n1], index_from_node[n2]
         p1, p2 = point_from_node[n1], point_from_node[n2]
-        distance_from_node[i1, i2] = int(math.ceil(SCALE*get_distance(p1, p2)))
+        distance = get_distance(p1, p2)
+        scale = 1 if {directed, reverse_element(directed)} & elements else 1e1
+        distance_from_node[i1, i2] = int(math.ceil(SCALE*scale*distance))
+        # TODO: directed edges for start and end
 
     # def time_callback(from_index, to_index):
     #     """Returns the travel time between the two nodes."""
@@ -225,10 +231,7 @@ def compute_spanning_tree(edge_weights):
             heapq.heappush(queue, (edge_weights[edge], edge))
     return tree
 
-
-def compute_euclidean_tree(node_points, ground_nodes, elements, initial_position=None):
-    # remove printed elements from the tree
-    start_time = time.time()
+def embed_graph(elements, node_points, ground_nodes, initial_position=None):
     point_from_vertex = dict(enumerate(node_points))
     edges = set(elements)
     for element in elements:
@@ -245,6 +248,12 @@ def compute_euclidean_tree(node_points, ground_nodes, elements, initial_position
         point_from_vertex[INITIAL_NODE] = initial_position
         edges.update(set(combinations(ground_nodes | {INITIAL_NODE}, r=2)))
         #edges.update({(INITIAL_NODE, n) for n in ground_nodes})
+    return point_from_vertex, edges
+
+def compute_euclidean_tree(node_points, ground_nodes, elements, initial_position=None):
+    # remove printed elements from the tree
+    start_time = time.time()
+    point_from_vertex, edges = embed_graph(elements, node_points, ground_nodes, initial_position)
     edge_weights = {(n1, n2): get_distance(point_from_vertex[n1], point_from_vertex[n2]) for n1, n2 in edges}
     components = get_connected_components(point_from_vertex, edge_weights)
     tree = compute_spanning_tree(edge_weights)
@@ -293,7 +302,7 @@ def plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, e
                    initial_position=None, checker=None, max_time=INF, max_backtrack=0):
     #assert compute_component_mst(node_points, ground_nodes, elements, initial_position)
     #return compute_euclidean_tree(node_points, ground_nodes, elements, initial_position)
-    #return solve_tsp(elements, node_points, initial_position)
+    assert solve_tsp(elements, node_points, initial_position)
     start_time = time.time()
     if checker is None:
         checker = create_stiffness_checker(extrusion_path)

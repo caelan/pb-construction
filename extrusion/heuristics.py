@@ -200,7 +200,7 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
             return (len(components), tool_distance)
         elif heuristic == 'mst':
             remaining_distance = compute_component_mst(node_points, ground_nodes, remaining_elements,
-                                                         initial_position=node_points[second_node])
+                                                       initial_position=node_points[second_node])
             #return random.random()
             return tool_distance + remaining_distance
         elif heuristic == 'x':
