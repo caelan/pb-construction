@@ -276,6 +276,21 @@ def get_print_distance(trajectories, teleport=False):
 
 ##################################################
 
+def recover_sequence(plan):
+    if plan is None:
+        return plan
+    return [traj.element for traj in plan if isinstance(traj, PrintTrajectory)]
+
+def recover_directed_sequence(plan):
+    if plan is None:
+        return plan
+    return [traj.directed_element for traj in plan if isinstance(traj, PrintTrajectory)]
+
+def flatten_commands(commands):
+    if commands is None:
+        return None
+    return [traj for command in commands for traj in command.trajectories]
+
 class Command(object):
     def __init__(self, trajectories=[], safe_per_element={}):
         self.trajectories = list(trajectories)
@@ -293,6 +308,14 @@ class Command(object):
     @property
     def end_conf(self):
         return self.trajectories[-1].end_conf
+    @property
+    def elements(self):
+        return recover_sequence(self.trajectories)
+    @property
+    def directed_elements(self):
+        return recover_directed_sequence(self.trajectories)
+    def get_distance(self):
+        return sum(traj.get_distance() for traj in self.trajectories)
     def set_safe(self, element):
         assert self.safe_per_element.get(element, True) is True
         self.safe_per_element[element] = True

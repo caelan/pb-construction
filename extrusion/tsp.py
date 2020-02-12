@@ -9,12 +9,12 @@ import numpy as np
 
 from extrusion.utils import get_pairs, get_midpoint, SUPPORT_THETA, get_undirected, compute_element_distance, reverse_element
 from pddlstream.utils import get_connected_components
-from pybullet_tools.utils import get_distance, elapsed_time, BLACK, wait_for_user, BLUE, RED, get_pitch, INF
+from pybullet_tools.utils import get_distance, elapsed_time, BLACK, wait_for_user, BLUE, RED, get_pitch, INF, angle_between
 from extrusion.stiffness import plan_stiffness
 
 INITIAL_NODE = None
 SCALE = 1e3 # millimeters
-INVALID = 1e1 # meters (just make larger than sum of path)
+INVALID = 1e2 # meters (just make larger than sum of path)
 
 STATUS = """
 ROUTING_NOT_SOLVED: Problem not solved yet.
@@ -95,8 +95,12 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, max_time=30, v
             directed = reverse_element(element) if reverse else element
             node1, node2 = directed
             delta = node_points[node2] - node_points[node1]
-            pitch = get_pitch(delta)
-            if (directed in tree_elements) or (-SUPPORT_THETA <= pitch):
+            #pitch = get_pitch(delta)
+            #upward = -SUPPORT_THETA <= pitch
+            theta = angle_between(delta, [0, 0, -1])
+            upward = theta < (np.pi / 2 - SUPPORT_THETA)
+            #upward = False
+            if (directed in tree_elements) or upward:
                 # Add edges from anything that is roughly the correct cost
                 start = (element, node1)
                 end = (element, node2)

@@ -2,14 +2,14 @@ import heapq
 import random
 import time
 
-from extrusion.progression import Node, retrace_trajectories, recover_sequence, \
-    recover_directed_sequence
+from extrusion.progression import Node, retrace_trajectories
 from extrusion.heuristics import get_heuristic_fn
 from extrusion.motion import compute_motion, compute_motions
 from extrusion.parsing import load_extrusion
 from extrusion.stream import get_print_gen_fn, MAX_DIRECTIONS, MAX_ATTEMPTS
 from extrusion.utils import get_id_from_element, get_ground_elements, is_ground, \
-    check_connected, get_memory_in_kb, check_memory, timeout, get_undirected, get_directions, compute_printed_nodes
+    check_connected, get_memory_in_kb, check_memory, timeout, get_undirected, get_directions, compute_printed_nodes, \
+    recover_sequence, recover_directed_sequence
 from extrusion.stiffness import create_stiffness_checker, test_stiffness, plan_stiffness
 from extrusion.validator import compute_plan_deformation
 from extrusion.visualization import draw_ordered, draw_element

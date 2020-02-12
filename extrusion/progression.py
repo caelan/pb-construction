@@ -12,10 +12,11 @@ from pybullet_tools.utils import elapsed_time, \
 from extrusion.parsing import load_extrusion
 from extrusion.visualization import draw_element
 from extrusion.stream import get_print_gen_fn, STEP_SIZE, APPROACH_DISTANCE, MAX_DIRECTIONS, MAX_ATTEMPTS
-from extrusion.utils import check_connected, get_id_from_element, load_world, PrintTrajectory, \
-    RESOLUTION, compute_printable_directed, get_undirected
+from extrusion.utils import check_connected, get_id_from_element, load_world, RESOLUTION, compute_printable_directed, \
+    get_undirected, flatten_commands
 from extrusion.stiffness import TRANS_TOL, ROT_TOL, create_stiffness_checker, test_stiffness
 from extrusion.motion import compute_motion, compute_motions
+from extrusion.optimize import optimize_commands
 
 # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
 from pybullet_tools.utils import connect, ClientSaver, wait_for_user, INF, get_movable_joints, get_joint_positions
@@ -38,6 +39,8 @@ def get_global_parameters():
         'max_attempts': MAX_ATTEMPTS,
     }
 
+##################################################
+
 def retrace_trajectories(visited, current_state, horizon=INF, reverse=False):
     command, prev_state = visited[current_state]
     if (prev_state is None) or (horizon == 0):
@@ -49,15 +52,14 @@ def retrace_trajectories(visited, current_state, horizon=INF, reverse=False):
     return prior_trajectories + current_trajectories
     # TODO: search over local stability for each node
 
-def recover_sequence(plan):
-    if plan is None:
-        return plan
-    return [traj.element for traj in plan if isinstance(traj, PrintTrajectory)]
-
-def recover_directed_sequence(plan):
-    if plan is None:
-        return plan
-    return [traj.directed_element for traj in plan if isinstance(traj, PrintTrajectory)]
+def retrace_commands(visited, current_state, horizon=INF, reverse=False):
+    command, prev_state = visited[current_state]
+    if (prev_state is None): # or (horizon == 0):
+        return []
+    prior_commands = retrace_commands(visited, prev_state, horizon=horizon-1, reverse=reverse)
+    if reverse:
+        return [command] + prior_commands
+    return prior_commands + [command]
 
 ##################################################
 
@@ -107,7 +109,7 @@ def add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn,
 
 def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders=[],
                 heuristic='z', max_time=INF, backtrack_limit=INF, revisit=False,
-                stiffness=True, motions=True, collisions=True, lazy=False, checker=None, **kwargs):
+                stiffness=True, motions=True, collisions=True, lazy=True, checker=None, **kwargs):
 
     start_time = time.time()
     joints = get_movable_joints(robot)
@@ -171,7 +173,12 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
         visited[next_printed] = Node(command, printed)
         if all_elements <= next_printed:
             min_remaining = 0
-            plan = retrace_trajectories(visited, next_printed)
+            commands = retrace_commands(visited, next_printed)
+            commands = optimize_commands(robot, obstacles, element_bodies, extrusion_path, initial_conf, commands,
+                                         motions=motions, collisions=collisions)
+            plan = flatten_commands(commands)
+            #plan = retrace_trajectories(visited, next_printed)
+            print(plan)
             if motions and not lazy:
                 motion_traj = compute_motion(robot, obstacles, element_bodies, frozenset(),
                                              initial_conf, plan[0].start_conf, collisions=collisions,
