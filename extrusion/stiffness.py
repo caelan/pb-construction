@@ -122,9 +122,17 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, max_time=30, v
     assert initial_point is not None
     start_time = time.time()
     nodes = {node for element in elements for node in element}
-    point_from_node, frame_edges = embed_graph(elements, node_points, ground_nodes, initial_point, num=2)
     transit_edges = {pair for pair in product(nodes, repeat=2)}
-    edges = frame_edges | transit_edges
+    transit_edges.update({(INITIAL_NODE, n): 1. for n in ground_nodes}) # initial -> ground
+    transit_edges.update({(n, INITIAL_NODE): 1. for n in nodes}) # any -> initial
+
+    point_from_node, frame_edges = embed_graph(elements, node_points, initial_point, num=1)
+
+    edge_weights = {pair: PENALTY for pair in product(point_from_node, repeat=2)}
+    for n1, n2 in transit_edges:
+        p1, p2 = point_from_node[n1], point_from_node[n2]
+        edge_weights[n1, n2] = get_distance(p1, p2)
+    edge_weights.update({e: 0. for e in frame_edges}) # frame edges are free
 
     node_from_index = list(point_from_node)
     index_from_node = dict(map(reversed, enumerate(node_from_index)))
@@ -134,20 +142,10 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, max_time=30, v
     #print(solver.GetAllDimensionNames())
     #print(solver.ComputeLowerBound())
 
-    distance_from_node = {}
-    for directed in product(point_from_node, repeat=2):
-        n1, n2 = directed
+    cost_from_index = {}
+    for (n1, n2), weight in edge_weights.items():
         i1, i2 = index_from_node[n1], index_from_node[n2]
-        p1, p2 = point_from_node[n1], point_from_node[n2]
-        distance = get_distance(p1, p2)
-        #if directed in elements:
-        #    scale =
-        if directed in edges:
-            scale = 1
-        else:
-            scale = PENALTY
-        weight = int(math.ceil(SCALE*scale*distance))
-        distance_from_node[i1, i2] = min(weight, distance_from_node.get((i1, i2), INF))
+        cost_from_index[i1, i2] = int(math.ceil(SCALE*weight))
 
     # def time_callback(from_index, to_index):
     #     """Returns the travel time between the two nodes."""
@@ -171,7 +169,7 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, max_time=30, v
     #     time_dimension.CumulVar(manager.NodeToIndex(index))
 
     transit_callback = solver.RegisterTransitCallback(
-        lambda i1, i2: distance_from_node[manager.IndexToNode(i1), manager.IndexToNode(i2)])
+        lambda i1, i2: cost_from_index[manager.IndexToNode(i1), manager.IndexToNode(i2)])
     solver.SetArcCostEvaluatorOfAllVehicles(transit_callback)
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()
     #search_parameters.solution_limit = 1
@@ -189,7 +187,7 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, max_time=30, v
         print('Failure! Duration: {:.3f}s'.format(elapsed_time(start_time)))
         return None
     print('Success! Vertices: {} | Edges: {} | Objective: {:.3f}, Duration: {:.3f}s'.format(
-        len(node_from_index), len(edges), assignment.ObjectiveValue() / SCALE, elapsed_time(start_time)))
+        len(node_from_index), len(edge_weights), assignment.ObjectiveValue() / SCALE, elapsed_time(start_time)))
     index = solver.Start(0)
     order = []
     while not solver.IsEnd(index):
@@ -204,10 +202,10 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, max_time=30, v
     # TODO: penalize downwards printing directions by z or phi
 
     # TODO: visualize by weight
-    tour = get_pairs(order)
+    tour_pairs = get_pairs(order) + get_pairs(list(reversed(order)))
     #draw_model(elements, point_from_node, ground_nodes, color=BLACK)
-    draw_model(frame_edges - set(tour), point_from_node, ground_nodes, color=BLACK)
-    draw_ordered(tour, point_from_node)
+    draw_model(frame_edges - set(tour_pairs), point_from_node, ground_nodes, color=BLACK)
+    draw_ordered(tour_pairs, point_from_node)
     wait_for_user()
 
     return order
@@ -238,9 +236,13 @@ def compute_spanning_tree(edge_weights):
             heapq.heappush(queue, (edge_weights[edge], edge))
     return tree
 
-def embed_graph(elements, node_points, ground_nodes, initial_position=None, num=1):
+def embed_graph(elements, node_points, initial_position=None, num=1):
     point_from_vertex = dict(enumerate(node_points))
-    edges = set()
+
+    if initial_position is not None:
+        point_from_vertex[INITIAL_NODE] = initial_position
+
+    frame_edges = set()
     for element in elements:
         n1, n2 = element
         path = [n1]
@@ -249,15 +251,10 @@ def embed_graph(elements, node_points, ground_nodes, initial_position=None, num=
             point_from_vertex[n3] = t*node_points[n1] + (1-t)*node_points[n2]
             path.append(n3)
         path.append(n2)
-        edges.update(get_pairs(path))
-        edges.update(get_pairs(list(reversed(path))))
+        for directed in get_pairs(path) + get_pairs(list(reversed(path))):
+            frame_edges.add(directed)
 
-    if initial_position is not None:
-        point_from_vertex[INITIAL_NODE] = initial_position
-        #edges.update(set(combinations(ground_nodes | {INITIAL_NODE}, r=2)))
-        edges.update({(INITIAL_NODE, n) for n in ground_nodes})
-        edges.update({(n, INITIAL_NODE) for n in point_from_vertex})
-    return point_from_vertex, edges
+    return point_from_vertex, frame_edges
 
 def compute_euclidean_tree(node_points, ground_nodes, elements, initial_position=None):
     # remove printed elements from the tree
@@ -312,7 +309,7 @@ def plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, e
                    initial_position=None, checker=None, max_time=INF, max_backtrack=0):
     #assert compute_component_mst(node_points, ground_nodes, elements, initial_position)
     #return compute_euclidean_tree(node_points, ground_nodes, elements, initial_position)
-    #assert solve_tsp(elements, ground_nodes, node_points, initial_position)
+    assert solve_tsp(elements, ground_nodes, node_points, initial_position)
     start_time = time.time()
     if checker is None:
         checker = create_stiffness_checker(extrusion_path)
