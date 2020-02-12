@@ -7,7 +7,7 @@ from extrusion.parsing import load_extrusion
 from extrusion.utils import get_extructed_ids, downselect_elements, compute_z_distance, TOOL_LINK, get_undirected, \
     reverse_element, get_midpoint
 from extrusion.stiffness import create_stiffness_checker, force_from_reaction, torque_from_reaction, plan_stiffness
-from extrusion.tsp import compute_component_mst
+from extrusion.tsp import compute_component_mst, solve_tsp
 from pddlstream.utils import adjacent_from_edges, hash_or_id, get_connected_components
 from pybullet_tools.utils import get_distance, INF, get_joint_positions, get_movable_joints, get_link_pose, \
     link_from_name, BodySaver, set_joint_positions, point_from_pose, get_pitch
@@ -21,6 +21,7 @@ DISTANCE_HEURISTICS = [
 COST_HEURISTICS = [
     'distance',
     'mst',
+    'tsp',
     'components',
 ]
 TOPOLOGICAL_HEURISTICS = [
@@ -198,6 +199,8 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
             components = get_connected_components(vertices, remaining_elements)
             #print('Components: {} | Distance: {:.3f}'.format(len(components), tool_distance))
             return (len(components), tool_distance)
+        elif heuristic == 'tsp':
+            assert solve_tsp(all_elements, ground_nodes, node_points, tool_point)
         elif heuristic == 'mst':
             remaining_distance = compute_component_mst(node_points, ground_nodes, remaining_elements,
                                                        initial_position=node_points[second_node])

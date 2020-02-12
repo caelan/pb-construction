@@ -8,8 +8,8 @@ from collections import namedtuple
 
 from pyconmech import StiffnessChecker
 
-from extrusion.tsp import solve_tsp
-from extrusion.utils import get_extructed_ids, compute_sequence_distance, get_distance, compute_printable_directed, get_undirected
+from extrusion.utils import get_extructed_ids, compute_sequence_distance, get_distance, \
+    compute_printable_directed, get_undirected, compute_z_distance
 from pybullet_tools.utils import HideOutput, INF, elapsed_time
 
 TRANS_TOL = 0.0015
@@ -101,12 +101,9 @@ def test_stiffness(extrusion_path, element_from_id, elements, **kwargs):
 ##################################################
 
 def plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, elements,
-                   initial_position=None, checker=None, max_time=INF, max_backtrack=0):
-    #assert compute_component_mst(node_points, ground_nodes, elements, initial_position)
-    #return compute_euclidean_tree(node_points, ground_nodes, elements, initial_position)
-    assert solve_tsp(elements, ground_nodes, node_points, initial_position)
+                   initial_position=None, checker=None, stiffness=True, max_time=INF, max_backtrack=0):
     start_time = time.time()
-    if checker is None:
+    if stiffness and checker is None:
         checker = create_stiffness_checker(extrusion_path)
     remaining_elements = frozenset(elements)
     min_remaining = len(remaining_elements)
@@ -117,7 +114,7 @@ def plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, e
         backtrack = num_remaining - min_remaining
         if max_backtrack < backtrack:
             break # continue
-        if not test_stiffness(extrusion_path, element_from_id, printed, checker=checker, verbose=False):
+        if stiffness and not test_stiffness(extrusion_path, element_from_id, printed, checker=checker, verbose=False):
             continue
         if printed == remaining_elements:
             #from extrusion.visualization import draw_ordered
@@ -138,8 +135,8 @@ def plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, e
             distance = get_distance(position, node_points[node1]) if position is not None else None
             #distance = compute_sequence_distance(node_points, new_sequence)
             #bias = None
-            #bias = compute_z_distance(node_points, element)
-            bias = distance
+            bias = compute_z_distance(node_points, element)
+            #bias = distance
             #bias = random.random()
             #bias = heuristic_fn(printed, element, conf=None) # TODO: experiment with other biases
             priority = (num_remaining, bias, random.random())

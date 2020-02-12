@@ -7,27 +7,58 @@ from itertools import product, combinations
 
 import numpy as np
 
-from extrusion.utils import get_pairs, get_midpoint
+from extrusion.utils import get_pairs, get_midpoint, SUPPORT_THETA, get_undirected
 from pddlstream.utils import get_connected_components
-from pybullet_tools.utils import get_distance, elapsed_time, BLACK, wait_for_user, BLUE, RED
+from pybullet_tools.utils import get_distance, elapsed_time, BLACK, wait_for_user, BLUE, RED, get_pitch, INF
+from extrusion.stiffness import plan_stiffness
 
 INITIAL_NODE = None
-SCALE = 1e3
-INVALID = 1e3
+SCALE = 1e3 # millimeters
+INVALID = 1e1 # meters (just make larger than sum of path)
+
+STATUS = """
+ROUTING_NOT_SOLVED: Problem not solved yet.
+ROUTING_SUCCESS: Problem solved successfully.
+ROUTING_FAIL: No solution found to the problem.
+ROUTING_FAIL_TIMEOUT: Time limit reached before finding a solution.
+ROUTING_INVALID: Model, model parameters, or flags are not valid.
+""".strip().split('\n')
+print(STATUS)
 
 ##################################################
+
+def print_solution(manager, routing, solution):
+    """Prints solution on console."""
+    max_route_distance = 0
+    vehicle_id = 0
+    #for vehicle_id in range(data['num_vehicles']):
+    index = routing.Start(vehicle_id)
+    plan_output = 'Route for vehicle {}:\n'.format(vehicle_id)
+    route_distance = 0
+    while not routing.IsEnd(index):
+        plan_output += ' {} -> '.format(manager.IndexToNode(index))
+        previous_index = index
+        index = solution.Value(routing.NextVar(index))
+        route_distance += routing.GetArcCostForVehicle(
+            previous_index, index, vehicle_id)
+    plan_output += '{}\n'.format(manager.IndexToNode(index))
+    plan_output += 'Distance of the route: {}m\n'.format(route_distance)
+    print(plan_output)
+    max_route_distance = max(route_distance, max_route_distance)
+    print('Maximum of the route distances: {}m'.format(max_route_distance))
+
 
 def solve_tsp(elements, ground_nodes, node_points, initial_point, max_time=30, verbose=False):
     # https://developers.google.com/optimization/routing/tsp
     # https://developers.google.com/optimization/reference/constraint_solver/routing/RoutingModel
+    # http://www.math.uwaterloo.ca/tsp/concorde.html
     # AddDisjunction
     # TODO: pick up and delivery
     # TODO: time window for skipping elements
     # TODO: Minimum Spanning Tree (MST) bias
     # TODO: time window constraint to ensure connected
     # TODO: reuse by simply swapping out the first vertex
-    from ortools.constraint_solver import routing_enums_pb2
-    from ortools.constraint_solver import pywrapcp
+    from ortools.constraint_solver import routing_enums_pb2, pywrapcp
     from extrusion.visualization import draw_ordered, draw_model
     assert initial_point is not None
     start_time = time.time()
@@ -46,14 +77,21 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, max_time=30, v
             frame_nodes.add(end)
             keys_from_node[node].add(end)
             for direction in {(end, mid), (mid, end)}:
+                # TODO: compute supporters from Dijkstra
+                start, end = direction
+                #delta = point_from_vertex[end] - point_from_vertex[start]
+                #pitch = get_pitch(delta)
+                #if -SUPPORT_THETA <= pitch:
                 extrusion_edges.add(direction)
+    # TODO: always keep edges on the minimum cost tree
+
     for node in keys_from_node:
         for edge in product(keys_from_node[node], repeat=2):
             extrusion_edges.add(edge)
 
     transit_edges = {pair for pair in product(frame_nodes, repeat=2)}
     transit_edges.update({(INITIAL_NODE, key) for node in ground_nodes for key in keys_from_node[node]}) # initial -> ground
-    transit_edges.update({(key, INITIAL_NODE) for key in point_from_vertex}) # any -> initial
+    transit_edges.update({(key, INITIAL_NODE) for key in frame_nodes}) # any -> initial
 
     key_from_index = list({k for pair in extrusion_edges | transit_edges for k in pair})
     edge_weights = {pair: INVALID for pair in product(key_from_index, repeat=2)}
@@ -62,17 +100,47 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, max_time=30, v
         edge_weights[k1, k2] = get_distance(p1, p2)
     edge_weights.update({e: 0. for e in extrusion_edges}) # frame edges are free
 
-    index_from_node = dict(map(reversed, enumerate(key_from_index)))
-    num_vehicles, depot = 1, 0
+    index_from_key = dict(map(reversed, enumerate(key_from_index)))
+    num_vehicles, depot = 1, index_from_key[INITIAL_NODE]
+    print('Initial vertex: {}'.format(depot))
     manager = pywrapcp.RoutingIndexManager(len(key_from_index), num_vehicles, depot)
+                                           #[depot], [depot])
     solver = pywrapcp.RoutingModel(manager)
-    #print(solver.GetAllDimensionNames())
-    #print(solver.ComputeLowerBound())
 
     cost_from_index = {}
     for (k1, k2), weight in edge_weights.items():
-        i1, i2 = index_from_node[k1], index_from_node[k2]
-        cost_from_index[i1, i2] = int(math.ceil(SCALE*weight))
+        i1, i2 = index_from_key[k1], index_from_key[k2]
+        cost_from_index[i1, i2] = int(math.ceil(SCALE * weight))
+    solver.SetArcCostEvaluatorOfAllVehicles(solver.RegisterTransitCallback(
+        lambda i1, i2: cost_from_index[manager.IndexToNode(i1), manager.IndexToNode(i2)]))  # from -> to
+
+    sequence = plan_stiffness(None, None, node_points, ground_nodes, elements,
+                              initial_position=initial_point, stiffness=False, max_backtrack=INF)
+    initial_order = []
+    #initial_order = [INITIAL_NODE] # Start and end automatically included
+    for directed in sequence:
+        node1, node2 = directed
+        element = get_undirected(elements, directed)
+        initial_order.extend([
+            (element, node1),
+            (element, element),
+            (element, node2),
+        ])
+    #initial_order.append(INITIAL_NODE)
+    initial_route = [index_from_key[key] for key in initial_order]
+    #index = initial_route.index(0)
+    #initial_route = initial_route[index:] + initial_route[:index] + [0]
+
+    initial_solution = solver.ReadAssignmentFromRoutes([initial_route], ignore_inactive_indices=True)
+    assert initial_solution is not None
+    #print_solution(manager, solver, initial_solution)
+    #print(solver.GetAllDimensionNames())
+    #print(solver.ComputeLowerBound())
+
+    total = initial_solution.ObjectiveValue() / SCALE
+    invalid = int(total / INVALID)
+    print('Initial solution | Vertices: {} | Edges: {} | Invalid: {} | Objective: {:.3f} | Duration: {:.3f}s'.format(
+        len(key_from_index), len(edge_weights), invalid, total, elapsed_time(start_time)))
 
     # def time_callback(from_index, to_index):
     #     """Returns the travel time between the two nodes."""
@@ -92,29 +160,28 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, max_time=30, v
     #     step)
     #
     # time_dimension = solver.GetDimensionOrDie(step)
-    # for node, index in index_from_node.items():
+    # for node, index in index_from_key.items():
     #     time_dimension.CumulVar(manager.NodeToIndex(index))
 
-    transit_callback = solver.RegisterTransitCallback(
-        lambda i1, i2: cost_from_index[manager.IndexToNode(i1), manager.IndexToNode(i2)])
-    solver.SetArcCostEvaluatorOfAllVehicles(transit_callback)
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()
     #search_parameters.solution_limit = 1
     search_parameters.time_limit.seconds = int(max_time)
     search_parameters.log_search = verbose
-    search_parameters.first_solution_strategy = (
-        routing_enums_pb2.FirstSolutionStrategy.AUTOMATIC) # AUTOMATIC | PATH_CHEAPEST_ARC
-    search_parameters.local_search_metaheuristic = (
-        routing_enums_pb2.LocalSearchMetaheuristic.AUTOMATIC) # AUTOMATIC | GUIDED_LOCAL_SEARCH
-    assignment = solver.SolveWithParameters(search_parameters)
-    #initial_solution = solver.ReadAssignmentFromRoutes(data['initial_routes'], True)
+    #search_parameters.first_solution_strategy = (
+    #    routing_enums_pb2.FirstSolutionStrategy.AUTOMATIC) # AUTOMATIC | PATH_CHEAPEST_ARC
+    #search_parameters.local_search_metaheuristic = (
+    #    routing_enums_pb2.LocalSearchMetaheuristic.AUTOMATIC) # AUTOMATIC | GUIDED_LOCAL_SEARCH
+    #solution = solver.SolveWithParameters(search_parameters)
+    solution = solver.SolveFromAssignmentWithParameters(initial_solution, search_parameters)
+    #print_solution(manager, solver, solution)
 
-    #print('Status: {}'.format(solver.status()))
-    if not assignment:
+    print('Status: {}'.format(solver.status()))
+    print(STATUS[solver.status()])
+    if not solution:
         print('Failure! Duration: {:.3f}s'.format(elapsed_time(start_time)))
         return None
 
-    total = assignment.ObjectiveValue() / SCALE
+    total = solution.ObjectiveValue() / SCALE
     invalid = int(total / INVALID)
     print('Success! Vertices: {} | Edges: {} | Invalid: {} | Objective: {:.3f} | Duration: {:.3f}s'.format(
         len(key_from_index), len(edge_weights), invalid, total, elapsed_time(start_time)))
@@ -123,13 +190,14 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, max_time=30, v
     while not solver.IsEnd(index):
         order.append(key_from_index[manager.IndexToNode(index)])
         #previous_index = index
-        index = assignment.Value(solver.NextVar(index))
+        index = solution.Value(solver.NextVar(index))
         #route_distance += solver.GetArcCostForVehicle(previous_index, index, 0)
-    #order.append(key_from_index[manager.IndexToNode(index)])
-    start = order.index(INITIAL_NODE)
-    order = order[start:] + order[:start] + [INITIAL_NODE]
-    print(order)
-    # TODO: penalize downwards printing directions by z or phi
+    order.append(key_from_index[manager.IndexToNode(index)])
+
+    #start = order.index(INITIAL_NODE)
+    #print(start, index_from_key[INITIAL_NODE])
+    #order = order[start:] + order[:start] + [INITIAL_NODE]
+    #print(order)
 
     # TODO: visualize by weight
     tour_pairs = get_pairs(order) + get_pairs(list(reversed(order)))
