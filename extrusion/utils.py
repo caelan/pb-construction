@@ -376,8 +376,10 @@ def is_ground(element, ground_nodes):
 def get_ground_elements(all_elements, ground_nodes):
     return frozenset(filter(lambda e: is_ground(e, ground_nodes), all_elements))
 
-def compute_element_distance(node_points, all_elements):
-    return sum(get_distance(node_points[n1], node_points[n2]) for n1, n2 in all_elements)
+def compute_element_distance(node_points, elements):
+    if not elements:
+        return 0.
+    return sum(get_distance(node_points[n1], node_points[n2]) for n1, n2 in elements)
 
 def compute_printed_nodes(ground_nodes, printed):
     return nodes_from_elements(printed) | set(ground_nodes)

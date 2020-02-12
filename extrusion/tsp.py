@@ -7,7 +7,7 @@ from itertools import product, combinations
 
 import numpy as np
 
-from extrusion.utils import get_pairs, get_midpoint, SUPPORT_THETA, get_undirected
+from extrusion.utils import get_pairs, get_midpoint, SUPPORT_THETA, get_undirected, compute_element_distance
 from pddlstream.utils import get_connected_components
 from pybullet_tools.utils import get_distance, elapsed_time, BLACK, wait_for_user, BLUE, RED, get_pitch, INF
 from extrusion.stiffness import plan_stiffness
@@ -23,7 +23,6 @@ ROUTING_FAIL: No solution found to the problem.
 ROUTING_FAIL_TIMEOUT: Time limit reached before finding a solution.
 ROUTING_INVALID: Model, model parameters, or flags are not valid.
 """.strip().split('\n')
-print(STATUS)
 
 ##################################################
 
@@ -60,6 +59,7 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, max_time=30, v
     # TODO: reuse by simply swapping out the first vertex
     from ortools.constraint_solver import routing_enums_pb2, pywrapcp
     from extrusion.visualization import draw_ordered, draw_model
+    from extrusion.heuristics import compute_distance_from_node
     assert initial_point is not None
     start_time = time.time()
 
@@ -77,6 +77,7 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, max_time=30, v
             frame_nodes.add(end)
             keys_from_node[node].add(end)
             for direction in {(end, mid), (mid, end)}:
+                # Add edges from anything that is roughly the correct cost
                 # TODO: compute supporters from Dijkstra
                 start, end = direction
                 #delta = point_from_vertex[end] - point_from_vertex[start]
@@ -114,8 +115,19 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, max_time=30, v
     solver.SetArcCostEvaluatorOfAllVehicles(solver.RegisterTransitCallback(
         lambda i1, i2: cost_from_index[manager.IndexToNode(i1), manager.IndexToNode(i2)]))  # from -> to
 
-    sequence = plan_stiffness(None, None, node_points, ground_nodes, elements,
-                              initial_position=initial_point, stiffness=False, max_backtrack=INF)
+    # sequence = plan_stiffness(None, None, node_points, ground_nodes, elements,
+    #                           initial_position=initial_point, stiffness=False, max_backtrack=INF)
+
+    node_from_vertex = compute_distance_from_node(elements, node_points, ground_nodes)
+    cost_from_edge = {}
+    for edge in elements:
+        n1, n2 = edge
+        if node_from_vertex[n1].cost <= node_from_vertex[n2].cost:
+            cost_from_edge[n1, n2] = node_from_vertex[n1].cost
+        else:
+            cost_from_edge[n2, n1] = node_from_vertex[n2].cost
+    sequence = sorted(cost_from_edge, key=lambda e: cost_from_edge[e])
+
     initial_order = []
     #initial_order = [INITIAL_NODE] # Start and end automatically included
     for directed in sequence:
@@ -137,10 +149,11 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, max_time=30, v
     #print(solver.GetAllDimensionNames())
     #print(solver.ComputeLowerBound())
 
+    total_distance = compute_element_distance(node_points, elements)
     total = initial_solution.ObjectiveValue() / SCALE
     invalid = int(total / INVALID)
-    print('Initial solution | Vertices: {} | Edges: {} | Invalid: {} | Objective: {:.3f} | Duration: {:.3f}s'.format(
-        len(key_from_index), len(edge_weights), invalid, total, elapsed_time(start_time)))
+    print('Initial solution | Vertices: {} | Edges: {} | Structure: {:.3f} | Invalid: {} | Cost: {:.3f} | Duration: {:.3f}s'.format(
+        len(key_from_index), len(edge_weights), total_distance, invalid, total, elapsed_time(start_time)))
 
     # def time_callback(from_index, to_index):
     #     """Returns the travel time between the two nodes."""
@@ -183,8 +196,8 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, max_time=30, v
 
     total = solution.ObjectiveValue() / SCALE
     invalid = int(total / INVALID)
-    print('Success! Vertices: {} | Edges: {} | Invalid: {} | Objective: {:.3f} | Duration: {:.3f}s'.format(
-        len(key_from_index), len(edge_weights), invalid, total, elapsed_time(start_time)))
+    print('Initial solution | Vertices: {} | Edges: {} | Structure: {:.3f} | Invalid: {} | Cost: {:.3f} | Duration: {:.3f}s'.format(
+        len(key_from_index), len(edge_weights), total_distance, invalid, total, elapsed_time(start_time)))
     index = solver.Start(0)
     order = []
     while not solver.IsEnd(index):
