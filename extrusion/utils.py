@@ -268,7 +268,6 @@ def get_print_distance(trajectories, teleport=False):
         return INF
     distance = 0.
     for trajectory in trajectories:
-        print(trajectory)
         if teleport and isinstance(trajectory, MotionTrajectory):
             distance += get_cspace_distance(trajectory.robot, trajectory.path[0], trajectory.path[-1])
         else:

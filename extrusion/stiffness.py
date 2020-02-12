@@ -257,11 +257,11 @@ def compute_euclidean_tree(node_points, ground_nodes, elements, initial_position
     wait_for_user()
     return weight
 
-def compute_component_mst(node_points, ground_nodes, elements, initial_position=None):
+def compute_component_mst(node_points, ground_nodes, unprinted, initial_position=None):
     start_time = time.time()
     point_from_vertex = dict(enumerate(node_points))
-    vertices = {v for e in elements for v in e}
-    components = get_connected_components(vertices, elements)
+    vertices = {v for e in unprinted for v in e}
+    components = get_connected_components(vertices, unprinted)
 
     entry_nodes = set(ground_nodes)
     if initial_position is not None:
@@ -271,15 +271,20 @@ def compute_component_mst(node_points, ground_nodes, elements, initial_position=
 
     edge_weights = {}
     for c1, c2 in combinations(range(len(components)), r=2):
-        nodes1 = set(components[c1]) & entry_nodes
-        nodes2 = set(components[c2]) & entry_nodes
+        # TODO: directed edges from all points to entry nodes
+        nodes1 = set(components[c1])
+        nodes2 = set(components[c2])
+        if (c1 == [INITIAL_NODE]) or (c2 == [INITIAL_NODE]):
+            nodes1 &= entry_nodes
+            nodes2 &= entry_nodes
         edge_weights[c1, c2] = min(get_distance(point_from_vertex[n1], point_from_vertex[n2])
                                    for n1, n2 in product(nodes1, nodes2))
 
     tree = compute_spanning_tree(edge_weights)
     weight = sum(edge_weights[e] for e in tree)
-    print(tree, weight, elapsed_time(start_time))
-    print(edge_weights)
+    print('Elements: {} | Components: {} | Tree: {} | Weight: {}: Time: {:.3f} '.format(
+        len(unprinted), len(components), tree, weight, elapsed_time(start_time)))
+    return weight
 
 ##################################################
 

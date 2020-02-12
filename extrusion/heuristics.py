@@ -5,7 +5,8 @@ import numpy as np
 from extrusion.equilibrium import compute_all_reactions, compute_node_reactions
 from extrusion.parsing import load_extrusion
 from extrusion.utils import get_extructed_ids, downselect_elements, compute_z_distance, TOOL_LINK, get_undirected
-from extrusion.stiffness import create_stiffness_checker, force_from_reaction, torque_from_reaction, plan_stiffness
+from extrusion.stiffness import create_stiffness_checker, force_from_reaction, torque_from_reaction, plan_stiffness, \
+    compute_component_mst
 from pddlstream.utils import adjacent_from_edges, hash_or_id
 from pybullet_tools.utils import get_distance, INF, get_joint_positions, get_movable_joints, get_link_pose, \
     link_from_name, BodySaver, set_joint_positions, point_from_pose
@@ -15,7 +16,10 @@ DISTANCE_HEURISTICS = [
     'dijkstra',
     #'online-dijkstra',
     'plan-stiffness', # TODO: recategorize
+]
+COST_HEURISTICS = [
     'distance',
+    'mst',
 ]
 TOPOLOGICAL_HEURISTICS = [
     'length',
@@ -29,7 +33,7 @@ STIFFNESS_HEURISTICS = [
     'forces',
     'fixed-forces',
 ]
-HEURISTICS = ['none'] + DISTANCE_HEURISTICS
+HEURISTICS = ['none'] + DISTANCE_HEURISTICS + COST_HEURISTICS
 
 ##################################################
 
@@ -121,42 +125,52 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
     initial_pose = get_link_pose(robot, tool_link)
 
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
-    elements = frozenset(element_from_id.values())
-    distance_from_node = compute_distance_from_node(elements, node_points, ground_nodes)
+    all_elements = frozenset(element_from_id.values())
+    distance_from_node = compute_distance_from_node(all_elements, node_points, ground_nodes)
     sign = +1 if forward else -1
 
     stiffness_order = None
     if heuristic == 'plan-stiffness':
         initial_point = point_from_pose(initial_pose)
-        stiffness_plan = plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, elements,
+        stiffness_plan = plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, all_elements,
                                         initial_position=initial_point, checker=checker, max_backtrack=INF)
         if stiffness_plan is not None:
-            stiffness_order = {get_undirected(elements, directed): i for i, directed in enumerate(stiffness_plan)}
+            stiffness_order = {get_undirected(all_elements, directed): i for i, directed in enumerate(stiffness_plan)}
 
     stiffness_cache = {}
     if heuristic in ('fixed-stiffness', 'relative-stiffness'):
-        stiffness_cache.update({element: score_stiffness(extrusion_path, element_from_id, elements - {element},
-                                                         checker=checker) for element in elements})
+        stiffness_cache.update({element: score_stiffness(extrusion_path, element_from_id, all_elements - {element},
+                                                         checker=checker) for element in all_elements})
     reaction_cache = {}
     distance_cache = {}
     ee_cache = {}
     # TODO: round values for more tie-breaking opportunities
-    # TODO: compute for all elements up front, sort, and bucket for the score (more general than rounding)
+    # TODO: compute for all all_elements up front, sort, and bucket for the score (more general than rounding)
 
     def fn(printed, directed, conf):
         # Queue minimizes the statistic
-        element = get_undirected(elements, directed)
+        element = get_undirected(all_elements, directed)
         structure = printed | {element} if forward else printed - {element}
         structure_ids = get_extructed_ids(element_from_id, structure)
         # TODO: build away from the robot (x)
-        # TODO: order elements by angle
+        # TODO: order all_elements by angle
 
         normalizer = 1
         #normalizer = len(structure)
-        #normalizer = compute_element_distance(node_points, elements)
+        #normalizer = compute_element_distance(node_points, all_elements)
 
         reduce_op = sum # sum | max | average
         reaction_fn = force_from_reaction  # force_from_reaction | torque_from_reaction
+
+        tool_distance = 0.
+        if heuristic in ['distance', 'mst']:
+            assert conf is not None
+            if hash_or_id(conf) not in ee_cache:
+                with BodySaver(robot):
+                    set_joint_positions(robot, joints, conf)
+                    ee_cache[hash_or_id(conf)] = get_link_pose(robot, tool_link)
+            tool_point = point_from_pose(ee_cache[hash_or_id(conf)])
+            tool_distance = get_distance(tool_point, node_points[directed[0]] )
 
         if heuristic == 'none':
             return 0
@@ -173,13 +187,11 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
             n1, n2 = element
             return get_distance(node_points[n2], node_points[n1])
         elif heuristic == 'distance':
-            assert conf is not None
-            if hash_or_id(conf) not in ee_cache:
-                with BodySaver(robot):
-                    set_joint_positions(robot, joints, conf)
-                    ee_cache[hash_or_id(conf)] = get_link_pose(robot, tool_link)
-            tool_point = point_from_pose(ee_cache[hash_or_id(conf)])
-            return get_distance(tool_point, node_points[directed[0]])
+            return tool_distance
+        elif heuristic == 'mst':
+            # TODO: add element distance
+            return tool_distance + compute_component_mst(node_points, ground_nodes, all_elements - printed,
+                                                         initial_position=node_points[directed[1]])
         elif heuristic == 'z':
             return sign * compute_z_distance(node_points, element)
         elif heuristic == 'dijkstra': # offline
@@ -197,10 +209,10 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
             nodal_loads = checker.get_nodal_loads(existing_ids=structure_ids, dof_flattened=False) # get_self_weight_loads
             return reduce_op(np.linalg.norm(force_from_reaction(reaction)) for reaction in nodal_loads.values())
         elif heuristic == 'fixed-forces':
-            #printed = elements # disable to use most up-to-date
+            #printed = all_elements # disable to use most up-to-date
             # TODO: relative to the load introduced
             if printed not in reaction_cache:
-                reaction_cache[printed] = compute_all_reactions(extrusion_path, elements, checker=checker)
+                reaction_cache[printed] = compute_all_reactions(extrusion_path, all_elements, checker=checker)
             force = reduce_op(np.linalg.norm(reaction_fn(reaction)) for reaction in reaction_cache[printed].reactions[element])
             return force / normalizer
         elif heuristic == 'forces':
@@ -217,7 +229,7 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
             # TODO: add different variations
             # TODO: normalize by initial stiffness, length, or degree
             # Most unstable or least unstable first
-            # Gets faster with fewer elements
+            # Gets faster with fewer all_elements
             #old_stiffness = score_stiffness(extrusion_path, element_from_id, printed, checker=checker)
             stiffness = score_stiffness(extrusion_path, element_from_id, structure, checker=checker) # lower is better
             return stiffness / normalizer
