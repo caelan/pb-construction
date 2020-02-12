@@ -7,13 +7,13 @@ from itertools import product, combinations
 
 import numpy as np
 
-from extrusion.utils import get_pairs
+from extrusion.utils import get_pairs, get_midpoint
 from pddlstream.utils import get_connected_components
 from pybullet_tools.utils import get_distance, elapsed_time, BLACK, wait_for_user, BLUE, RED
 
 INITIAL_NODE = None
 SCALE = 1e3
-PENALTY = 1e3
+INVALID = 1e3
 
 ##################################################
 
@@ -31,30 +31,47 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, max_time=30, v
     from extrusion.visualization import draw_ordered, draw_model
     assert initial_point is not None
     start_time = time.time()
-    nodes = {node for element in elements for node in element}
-    transit_edges = {pair for pair in product(nodes, repeat=2)}
-    transit_edges.update({(INITIAL_NODE, n): 1. for n in ground_nodes}) # initial -> ground
-    transit_edges.update({(n, INITIAL_NODE): 1. for n in nodes}) # any -> initial
 
-    point_from_node, frame_edges = embed_graph(elements, node_points, initial_point, num=1)
+    extrusion_edges = set()
+    point_from_vertex = {INITIAL_NODE: initial_point}
+    frame_nodes = set()
 
-    edge_weights = {pair: PENALTY for pair in product(point_from_node, repeat=2)}
-    for n1, n2 in transit_edges:
-        p1, p2 = point_from_node[n1], point_from_node[n2]
-        edge_weights[n1, n2] = get_distance(p1, p2)
-    edge_weights.update({e: 0. for e in frame_edges}) # frame edges are free
+    keys_from_node = defaultdict(set)
+    for element in elements:
+        mid = (element, element)
+        point_from_vertex[mid] = get_midpoint(node_points, element)
+        for node in element:
+            end = (element, node)
+            point_from_vertex[end] = node_points[node]
+            frame_nodes.add(end)
+            keys_from_node[node].add(end)
+            for direction in {(end, mid), (mid, end)}:
+                extrusion_edges.add(direction)
+    for node in keys_from_node:
+        for edge in product(keys_from_node[node], repeat=2):
+            extrusion_edges.add(edge)
 
-    node_from_index = list(point_from_node)
-    index_from_node = dict(map(reversed, enumerate(node_from_index)))
+    transit_edges = {pair for pair in product(frame_nodes, repeat=2)}
+    transit_edges.update({(INITIAL_NODE, key) for node in ground_nodes for key in keys_from_node[node]}) # initial -> ground
+    transit_edges.update({(key, INITIAL_NODE) for key in point_from_vertex}) # any -> initial
+
+    key_from_index = list({k for pair in extrusion_edges | transit_edges for k in pair})
+    edge_weights = {pair: INVALID for pair in product(key_from_index, repeat=2)}
+    for k1, k2 in transit_edges:
+        p1, p2 = point_from_vertex[k1], point_from_vertex[k2]
+        edge_weights[k1, k2] = get_distance(p1, p2)
+    edge_weights.update({e: 0. for e in extrusion_edges}) # frame edges are free
+
+    index_from_node = dict(map(reversed, enumerate(key_from_index)))
     num_vehicles, depot = 1, 0
-    manager = pywrapcp.RoutingIndexManager(len(node_from_index), num_vehicles, depot)
+    manager = pywrapcp.RoutingIndexManager(len(key_from_index), num_vehicles, depot)
     solver = pywrapcp.RoutingModel(manager)
     #print(solver.GetAllDimensionNames())
     #print(solver.ComputeLowerBound())
 
     cost_from_index = {}
-    for (n1, n2), weight in edge_weights.items():
-        i1, i2 = index_from_node[n1], index_from_node[n2]
+    for (k1, k2), weight in edge_weights.items():
+        i1, i2 = index_from_node[k1], index_from_node[k2]
         cost_from_index[i1, i2] = int(math.ceil(SCALE*weight))
 
     # def time_callback(from_index, to_index):
@@ -96,16 +113,19 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, max_time=30, v
     if not assignment:
         print('Failure! Duration: {:.3f}s'.format(elapsed_time(start_time)))
         return None
-    print('Success! Vertices: {} | Edges: {} | Objective: {:.3f}, Duration: {:.3f}s'.format(
-        len(node_from_index), len(edge_weights), assignment.ObjectiveValue() / SCALE, elapsed_time(start_time)))
+
+    total = assignment.ObjectiveValue() / SCALE
+    invalid = int(total / INVALID)
+    print('Success! Vertices: {} | Edges: {} | Invalid: {} | Objective: {:.3f} | Duration: {:.3f}s'.format(
+        len(key_from_index), len(edge_weights), invalid, total, elapsed_time(start_time)))
     index = solver.Start(0)
     order = []
     while not solver.IsEnd(index):
-        order.append(node_from_index[manager.IndexToNode(index)])
+        order.append(key_from_index[manager.IndexToNode(index)])
         #previous_index = index
         index = assignment.Value(solver.NextVar(index))
         #route_distance += solver.GetArcCostForVehicle(previous_index, index, 0)
-    #order.append(node_from_index[manager.IndexToNode(index)])
+    #order.append(key_from_index[manager.IndexToNode(index)])
     start = order.index(INITIAL_NODE)
     order = order[start:] + order[:start] + [INITIAL_NODE]
     print(order)
@@ -113,9 +133,9 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, max_time=30, v
 
     # TODO: visualize by weight
     tour_pairs = get_pairs(order) + get_pairs(list(reversed(order)))
-    #draw_model(elements, point_from_node, ground_nodes, color=BLACK)
-    draw_model(frame_edges - set(tour_pairs), point_from_node, ground_nodes, color=BLACK)
-    draw_ordered(tour_pairs, point_from_node)
+
+    draw_model(extrusion_edges - set(tour_pairs), point_from_vertex, ground_nodes, color=BLACK)
+    draw_ordered(tour_pairs, point_from_vertex)
     wait_for_user()
 
     return order
