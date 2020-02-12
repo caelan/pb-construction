@@ -6,8 +6,8 @@ from extrusion.equilibrium import compute_all_reactions, compute_node_reactions
 from extrusion.parsing import load_extrusion
 from extrusion.utils import get_extructed_ids, downselect_elements, compute_z_distance, TOOL_LINK, get_undirected, \
     reverse_element, get_midpoint
-from extrusion.stiffness import create_stiffness_checker, force_from_reaction, torque_from_reaction, plan_stiffness, \
-    compute_component_mst
+from extrusion.stiffness import create_stiffness_checker, force_from_reaction, torque_from_reaction, plan_stiffness
+from extrusion.tsp import compute_component_mst
 from pddlstream.utils import adjacent_from_edges, hash_or_id, get_connected_components
 from pybullet_tools.utils import get_distance, INF, get_joint_positions, get_movable_joints, get_link_pose, \
     link_from_name, BodySaver, set_joint_positions, point_from_pose, get_pitch
