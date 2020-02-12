@@ -4,12 +4,13 @@ import numpy as np
 
 from extrusion.equilibrium import compute_all_reactions, compute_node_reactions
 from extrusion.parsing import load_extrusion
-from extrusion.utils import get_extructed_ids, downselect_elements, compute_z_distance, TOOL_LINK, get_undirected, reverse_element
+from extrusion.utils import get_extructed_ids, downselect_elements, compute_z_distance, TOOL_LINK, get_undirected, \
+    reverse_element, get_midpoint
 from extrusion.stiffness import create_stiffness_checker, force_from_reaction, torque_from_reaction, plan_stiffness, \
     compute_component_mst
-from pddlstream.utils import adjacent_from_edges, hash_or_id
+from pddlstream.utils import adjacent_from_edges, hash_or_id, get_connected_components
 from pybullet_tools.utils import get_distance, INF, get_joint_positions, get_movable_joints, get_link_pose, \
-    link_from_name, BodySaver, set_joint_positions, point_from_pose
+    link_from_name, BodySaver, set_joint_positions, point_from_pose, get_pitch
 
 DISTANCE_HEURISTICS = [
     'z',
@@ -20,6 +21,7 @@ DISTANCE_HEURISTICS = [
 COST_HEURISTICS = [
     'distance',
     'mst',
+    'components',
 ]
 TOPOLOGICAL_HEURISTICS = [
     'length',
@@ -150,10 +152,10 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
     def fn(printed, directed, conf):
         # Queue minimizes the statistic
         element = get_undirected(all_elements, directed)
+        n1, n2 = directed
+
         structure = printed | {element} if forward else printed - {element}
         structure_ids = get_extructed_ids(element_from_id, structure)
-        # TODO: build away from the robot (x)
-        # TODO: order all_elements by angle
 
         normalizer = 1
         #normalizer = len(structure)
@@ -163,7 +165,7 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
         reaction_fn = force_from_reaction  # force_from_reaction | torque_from_reaction
 
         tool_distance = 0.
-        if heuristic in ['distance', 'mst']:
+        if heuristic in COST_HEURISTICS:
             assert conf is not None
             if hash_or_id(conf) not in ee_cache:
                 with BodySaver(robot):
@@ -172,7 +174,9 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
             tool_point = point_from_pose(ee_cache[hash_or_id(conf)])
             first_node, second_node = directed if forward else reverse_element(directed)
             tool_distance = get_distance(tool_point, node_points[first_node])
+            remaining_elements = all_elements - printed if forward else printed - {element}
 
+        # TODO: weighted average to balance cost and bias
         if heuristic == 'none':
             return 0
         if heuristic == 'random':
@@ -180,25 +184,33 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
         elif heuristic == 'degree':
             # TODO: other graph statistics
             #printed_nodes = {n for e in printed for n in e}
-            #n1, n2 = element
             #node = n1 if n2 in printed_nodes else n2
             #if node in ground_nodes:
             #    return 0
             raise NotImplementedError()
         elif heuristic == 'length':
             # Equivalent to mass if uniform density
-            n1, n2 = element
             return get_distance(node_points[n2], node_points[n1])
         elif heuristic == 'distance':
             return tool_distance
+        elif heuristic == 'components':
+            vertices = {v for e in remaining_elements for v in e}
+            components = get_connected_components(vertices, remaining_elements)
+            #print('Components: {} | Distance: {:.3f}'.format(len(components), tool_distance))
+            return (len(components), tool_distance)
         elif heuristic == 'mst':
-            remaining_elements = all_elements - printed if forward else printed - {element}
             remaining_distance = compute_component_mst(node_points, ground_nodes, remaining_elements,
                                                          initial_position=node_points[second_node])
             #return random.random()
             return tool_distance + remaining_distance
+        elif heuristic == 'x':
+            return sign * get_midpoint(node_points, element)[0]
         elif heuristic == 'z':
             return sign * compute_z_distance(node_points, element)
+        elif heuristic == 'pitch':
+            #delta = node_points[second_node] - node_points[first_node]
+            delta = node_points[n2] - node_points[n1]
+            return get_pitch(delta)
         elif heuristic == 'dijkstra': # offline
             # TODO: sum of all element path distances
             return sign*np.average([distance_from_node[node] for node in element]) # min, max, average
