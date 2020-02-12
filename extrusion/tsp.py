@@ -7,7 +7,7 @@ from itertools import product, combinations
 
 import numpy as np
 
-from extrusion.utils import get_pairs, get_midpoint, SUPPORT_THETA, get_undirected, compute_element_distance
+from extrusion.utils import get_pairs, get_midpoint, SUPPORT_THETA, get_undirected, compute_element_distance, reverse_element
 from pddlstream.utils import get_connected_components
 from pybullet_tools.utils import get_distance, elapsed_time, BLACK, wait_for_user, BLUE, RED, get_pitch, INF
 from extrusion.stiffness import plan_stiffness
@@ -63,6 +63,20 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, max_time=30, v
     assert initial_point is not None
     start_time = time.time()
 
+    node_from_vertex = compute_distance_from_node(elements, node_points, ground_nodes)
+    cost_from_edge = {}
+    for edge in elements:
+        n1, n2 = edge
+        if node_from_vertex[n1].cost <= node_from_vertex[n2].cost:
+            cost_from_edge[n1, n2] = node_from_vertex[n1].cost
+        else:
+            cost_from_edge[n2, n1] = node_from_vertex[n2].cost
+    sequence = sorted(cost_from_edge, key=lambda e: cost_from_edge[e])
+    tree_elements = set(sequence)
+    print(len(elements), len(tree_elements))
+    #draw_ordered(sequence, node_points)
+    #wait_for_user()
+
     extrusion_edges = set()
     point_from_vertex = {INITIAL_NODE: initial_point}
     frame_nodes = set()
@@ -72,19 +86,21 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, max_time=30, v
         mid = (element, element)
         point_from_vertex[mid] = get_midpoint(node_points, element)
         for node in element:
-            end = (element, node)
-            point_from_vertex[end] = node_points[node]
-            frame_nodes.add(end)
-            keys_from_node[node].add(end)
-            for direction in {(end, mid), (mid, end)}:
+            key = (element, node)
+            point_from_vertex[key] = node_points[node]
+            frame_nodes.add(key)
+            keys_from_node[node].add(key)
+
+        for reverse in [True, False]:
+            directed = reverse_element(element) if reverse else element
+            node1, node2 = directed
+            delta = node_points[node2] - node_points[node1]
+            pitch = get_pitch(delta)
+            if (directed in tree_elements) or (-SUPPORT_THETA <= pitch):
                 # Add edges from anything that is roughly the correct cost
-                # TODO: compute supporters from Dijkstra
-                start, end = direction
-                #delta = point_from_vertex[end] - point_from_vertex[start]
-                #pitch = get_pitch(delta)
-                #if -SUPPORT_THETA <= pitch:
-                extrusion_edges.add(direction)
-    # TODO: always keep edges on the minimum cost tree
+                start = (element, node1)
+                end = (element, node2)
+                extrusion_edges.update({(start, mid), (mid, end)})
 
     for node in keys_from_node:
         for edge in product(keys_from_node[node], repeat=2):
@@ -117,16 +133,6 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, max_time=30, v
 
     # sequence = plan_stiffness(None, None, node_points, ground_nodes, elements,
     #                           initial_position=initial_point, stiffness=False, max_backtrack=INF)
-
-    node_from_vertex = compute_distance_from_node(elements, node_points, ground_nodes)
-    cost_from_edge = {}
-    for edge in elements:
-        n1, n2 = edge
-        if node_from_vertex[n1].cost <= node_from_vertex[n2].cost:
-            cost_from_edge[n1, n2] = node_from_vertex[n1].cost
-        else:
-            cost_from_edge[n2, n1] = node_from_vertex[n2].cost
-    sequence = sorted(cost_from_edge, key=lambda e: cost_from_edge[e])
 
     initial_order = []
     #initial_order = [INITIAL_NODE] # Start and end automatically included
