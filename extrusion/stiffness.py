@@ -105,8 +105,9 @@ def test_stiffness(extrusion_path, element_from_id, elements, **kwargs):
 ##################################################
 
 SCALE = 1e3
+PENALTY = 1e3
 
-def solve_tsp(elements, node_points, initial_point, max_time=5, verbose=False):
+def solve_tsp(elements, ground_nodes, node_points, initial_point, max_time=30, verbose=False):
     # https://developers.google.com/optimization/routing/tsp
     # https://developers.google.com/optimization/reference/constraint_solver/routing/RoutingModel
     # AddDisjunction
@@ -120,18 +121,12 @@ def solve_tsp(elements, node_points, initial_point, max_time=5, verbose=False):
     from extrusion.visualization import draw_ordered
     assert initial_point is not None
     start_time = time.time()
-
-    #nodes = set(range(len(node_points)))
     nodes = {node for element in elements for node in element}
-    point_from_node = dict(enumerate(node_points))
-    point_from_node[INITIAL_NODE] = initial_point
-    # for element in elements:
-    #     point_from_node[element] = get_midpoint(node_points, element)
-    # TODO: include midpoints
-   #point_from_vertex, edges = stuff(elements, node_points, ground_nodes, initial_point)
-    node_from_index = [INITIAL_NODE] + sorted(nodes) # + sorted(elements)
-    index_from_node = dict(map(reversed, enumerate(node_from_index)))
+    point_from_node, edges = embed_graph(elements, node_points, ground_nodes, initial_point, num=1)
+    edges.update({pair for pair in product(nodes, repeat=2)})
 
+    node_from_index = list(point_from_node)
+    index_from_node = dict(map(reversed, enumerate(node_from_index)))
     num_vehicles, depot = 1, 0
     manager = pywrapcp.RoutingIndexManager(len(node_from_index), num_vehicles, depot)
     solver = pywrapcp.RoutingModel(manager)
@@ -144,9 +139,8 @@ def solve_tsp(elements, node_points, initial_point, max_time=5, verbose=False):
         i1, i2 = index_from_node[n1], index_from_node[n2]
         p1, p2 = point_from_node[n1], point_from_node[n2]
         distance = get_distance(p1, p2)
-        scale = 1 if {directed, reverse_element(directed)} & elements else 1e1
+        scale = 1 if directed in edges else PENALTY
         distance_from_node[i1, i2] = int(math.ceil(SCALE*scale*distance))
-        # TODO: directed edges for start and end
 
     # def time_callback(from_index, to_index):
     #     """Returns the travel time between the two nodes."""
@@ -196,11 +190,12 @@ def solve_tsp(elements, node_points, initial_point, max_time=5, verbose=False):
         #previous_index = index
         index = assignment.Value(solver.NextVar(index))
         #route_distance += solver.GetArcCostForVehicle(previous_index, index, 0)
-    order.append(node_from_index[manager.IndexToNode(index)])
+    #order.append(node_from_index[manager.IndexToNode(index)])
+    start = order.index(INITIAL_NODE)
+    order = order[start:] + order[:start] + [INITIAL_NODE]
 
     print(order)
-    edges = list(zip(order[:-1], order[1:]))
-    draw_ordered(edges, point_from_node)
+    draw_ordered(get_pairs(order), point_from_node)
     wait_for_user()
 
     return order
@@ -231,27 +226,30 @@ def compute_spanning_tree(edge_weights):
             heapq.heappush(queue, (edge_weights[edge], edge))
     return tree
 
-def embed_graph(elements, node_points, ground_nodes, initial_position=None):
+def embed_graph(elements, node_points, ground_nodes, initial_position=None, num=1):
     point_from_vertex = dict(enumerate(node_points))
-    edges = set(elements)
+    edges = set()
     for element in elements:
         n1, n2 = element
         path = [n1]
-        for t in np.linspace(0, 1, num=3, endpoint=True)[1:-1]:
+        for t in np.linspace(0, 1, num=2+num, endpoint=True)[1:-1]:
             n3 = len(point_from_vertex)
             point_from_vertex[n3] = t*node_points[n1] + (1-t)*node_points[n2]
             path.append(n3)
         path.append(n2)
         edges.update(get_pairs(path))
+        edges.update(reversed(list(get_pairs(path))))
 
     if initial_position is not None:
         point_from_vertex[INITIAL_NODE] = initial_position
-        edges.update(set(combinations(ground_nodes | {INITIAL_NODE}, r=2)))
-        #edges.update({(INITIAL_NODE, n) for n in ground_nodes})
+        #edges.update(set(combinations(ground_nodes | {INITIAL_NODE}, r=2)))
+        edges.update({(INITIAL_NODE, n) for n in ground_nodes})
+        edges.update({(n, INITIAL_NODE) for n in point_from_vertex})
     return point_from_vertex, edges
 
 def compute_euclidean_tree(node_points, ground_nodes, elements, initial_position=None):
     # remove printed elements from the tree
+    # TODO: directed version
     start_time = time.time()
     point_from_vertex, edges = embed_graph(elements, node_points, ground_nodes, initial_position)
     edge_weights = {(n1, n2): get_distance(point_from_vertex[n1], point_from_vertex[n2]) for n1, n2 in edges}

@@ -51,7 +51,7 @@ GROUND_COLOR = 0.8*np.ones(3)
 ##################################################
 
 def get_pairs(sequence):
-    return zip(sequence[:-1], sequence[1:])
+    return list(zip(sequence[:-1], sequence[1:]))
 
 # https://docs.python.org/3.1/library/itertools.html#recipes
 def roundrobin(*iterables):
