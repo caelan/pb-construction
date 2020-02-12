@@ -12,7 +12,7 @@ from pybullet_tools.utils import get_link_pose, BodySaver, set_point, multiply, 
     Point, HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, get_aabb, \
     get_distance, get_relative_pose, get_link_subtree, clone_body, randomize, get_movable_joints, get_all_links, get_bodies_in_region, pairwise_link_collision, \
     set_static, BASE_LINK, add_data_path, INF, load_model, create_plane, set_color, TAN, set_texture, create_box, \
-    apply_alpha, point_from_pose, get_max_velocity
+    apply_alpha, point_from_pose, get_max_velocity, get_distance_fn
 from pddlstream.utils import get_connected_components
 
 KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
@@ -138,6 +138,12 @@ def get_custom_limits(robot):
     return {joint_from_name(robot, joint): limits
             for joint, limits in CUSTOM_LIMITS.items()}
 
+def get_cspace_distance(robot, q1, q2):
+    #return get_distance(q1, q2)
+    joints = get_movable_joints(robot)
+    distance_fn = get_distance_fn(robot, joints, weights=JOINT_WEIGHTS)
+    return distance_fn(q1, q2)
+
 ##################################################
 
 class EndEffector(object):
@@ -212,12 +218,11 @@ class Trajectory(object):
     def get_distance(self):
         if not self.path:
             return 0.
-        # TODO: JOINT_WEIGHTS
-        return sum(get_distance(*pair) for pair in zip(self.path[:-1], self.path[1:]))
+        return sum(get_cspace_distance(self.robot, *pair) for pair in get_pairs(self.path))
     def get_link_distance(self, **kwargs):
         # TODO: just endpoints
         link_path = list(map(point_from_pose, self.get_link_path(**kwargs)))
-        return sum(get_distance(*pair) for pair in zip(link_path[:-1], link_path[1:]))
+        return sum(get_distance(*pair) for pair in get_pairs(link_path))
     def __len__(self):
         return len(self.path)
     def reverse(self):
@@ -256,7 +261,19 @@ class PrintTrajectory(Trajectory): # TODO: add element body?
         return self.__class__(self.end_effector, self.joints, self.path[::-1],
                               self.tool_path[::-1], self.element, not self.is_reverse)
     def __repr__(self):
-        return '{}->{}'.format(self.n1, self.n2)
+        return 'p({}->{})'.format(self.n1, self.n2)
+
+def get_print_distance(trajectories, teleport=False):
+    if trajectories is None:
+        return INF
+    distance = 0.
+    for trajectory in trajectories:
+        print(trajectory)
+        if teleport and isinstance(trajectory, MotionTrajectory):
+            distance += get_cspace_distance(trajectory.robot, trajectory.path[0], trajectory.path[-1])
+        else:
+            distance += trajectory.get_distance()
+    return distance
 
 ##################################################
 

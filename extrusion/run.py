@@ -21,7 +21,7 @@ from extrusion.visualization import label_element, set_extrusion_camera, label_n
 from extrusion.experiment import train_parallel
 from extrusion.motion import compute_motions, validate_trajectories
 from extrusion.stripstream import plan_sequence
-from extrusion.utils import load_world, TOOL_LINK, timeout, compute_sequence_distance
+from extrusion.utils import load_world, TOOL_LINK, timeout, compute_sequence_distance, get_print_distance
 from extrusion.parsing import load_extrusion, create_elements_bodies, \
     enumerate_problems, get_extrusion_path, affine_extrusion
 from extrusion.stream import get_print_gen_fn
@@ -185,8 +185,9 @@ def plan_extrusion(args_list, viewer=False, verify=False, verbose=False, watch=F
         data.update({
             'runtime': runtime,
             'num_elements': len(elements),
-            'distance': compute_sequence_distance(node_points, sequence, start=initial_position),
-            # TODO: robot distance
+            'ee_distance': compute_sequence_distance(node_points, sequence, start=initial_position),
+            'print_distance': get_print_distance(plan, teleport=True),
+            'distance': get_print_distance(plan, teleport=False),
             'sequence': sequence,
             'parameters': get_global_parameters(),
             'problem':  args.problem,

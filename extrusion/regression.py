@@ -10,7 +10,7 @@ from extrusion.parsing import load_extrusion
 from extrusion.stream import get_print_gen_fn, MAX_DIRECTIONS, MAX_ATTEMPTS
 from extrusion.utils import get_id_from_element, get_ground_elements, is_ground, \
     check_connected, get_memory_in_kb, check_memory, timeout, get_undirected, get_directions, compute_printed_nodes
-from extrusion.stiffness import create_stiffness_checker, test_stiffness
+from extrusion.stiffness import create_stiffness_checker, test_stiffness, plan_stiffness
 from extrusion.validator import compute_plan_deformation
 from extrusion.visualization import draw_ordered, draw_element
 from pddlstream.utils import outgoing_from_edges
@@ -30,7 +30,7 @@ def draw_action(node_points, printed, element):
 ##################################################
 
 def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=[],
-               heuristic='z', max_time=INF, max_memory=INF, backtrack_limit=INF, revisit=False, # stiffness_attempts=1,
+               heuristic='z', max_time=INF, max_memory=INF, backtrack_limit=INF, revisit=False, stiffness_attempts=1,
                collisions=True, stiffness=True, motions=True, lazy=False, checker=None, **kwargs):
     # Focused has the benefit of reusing prior work
     # Greedy has the benefit of conditioning on previous choices
@@ -116,11 +116,11 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         if stiffness and not test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker):
             stiffness_failures += 1
             continue
-        #if stiffness:
-        # for _ in range(stiffness_attempts): # should be larger than zero
-        #     if plan_stiffness(checker, extrusion_path, element_from_id, node_points, ground_nodes, next_printed) is None:
-        #         break
-        # else:
+        # TODO: stronger condition for this procedure
+        # if plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, next_printed,
+        #                   checker=checker, max_backtrack=0) is None:
+        #     # TODO: reuse stiffness plans
+        #     print('Failed stiffness plan') # TODO: require just a short horizon
         #     continue
         command, = next(print_gen_fn(directed[0], element, extruded=next_printed), (None,))
         if command is None:
