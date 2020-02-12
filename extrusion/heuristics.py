@@ -2,12 +2,14 @@ import heapq
 import random
 import numpy as np
 
+from collections import namedtuple
+
 from extrusion.equilibrium import compute_all_reactions, compute_node_reactions
 from extrusion.parsing import load_extrusion
 from extrusion.utils import get_extructed_ids, downselect_elements, compute_z_distance, TOOL_LINK, get_undirected, \
     reverse_element, get_midpoint
-from extrusion.stiffness import create_stiffness_checker, force_from_reaction, torque_from_reaction, plan_stiffness, \
-    compute_component_mst
+from extrusion.stiffness import create_stiffness_checker, force_from_reaction, torque_from_reaction, plan_stiffness
+from extrusion.tsp import compute_component_mst, solve_tsp
 from pddlstream.utils import adjacent_from_edges, hash_or_id, get_connected_components
 from pybullet_tools.utils import get_distance, INF, get_joint_positions, get_movable_joints, get_link_pose, \
     link_from_name, BodySaver, set_joint_positions, point_from_pose, get_pitch
@@ -21,6 +23,7 @@ DISTANCE_HEURISTICS = [
 COST_HEURISTICS = [
     'distance',
     'mst',
+    'tsp',
     'components',
 ]
 TOPOLOGICAL_HEURISTICS = [
@@ -39,6 +42,8 @@ HEURISTICS = ['none'] + DISTANCE_HEURISTICS + COST_HEURISTICS
 
 ##################################################
 
+Node = namedtuple('Node', ['edge', 'vertex', 'cost'])
+
 def compute_distance_from_node(elements, node_points, ground_nodes):
     #incoming_supporters, _ = neighbors_from_orders(get_supported_orders(
     #    element_from_id.values(), node_points))
@@ -47,28 +52,29 @@ def compute_distance_from_node(elements, node_points, ground_nodes):
                   for edge in elements}
     edge_costs.update({edge[::-1]: distance for edge, distance in edge_costs.items()})
 
-    cost_from_node = {}
+    node_from_state = {}
     queue = []
     cost = 0
-    for node in ground_nodes:
-        cost_from_node[node] = cost
-        heapq.heappush(queue, (cost, node))
+    for vertex in ground_nodes:
+        node_from_state[vertex] = Node(None, None, cost)
+        heapq.heappush(queue, (cost, vertex))
     while queue:
-        cost1, node1 = heapq.heappop(queue)
-        if cost_from_node[node1] < cost1:
+        cost1, vertex1 = heapq.heappop(queue)
+        if node_from_state[vertex1].cost < cost1:
             continue
-        for node2 in neighbors[node1]:
-            cost2 = cost1 + edge_costs[node1, node2]
-            if cost2 < cost_from_node.get(node2, INF):
-                cost_from_node[node2] = cost2
-                heapq.heappush(queue, (cost2, node2))
-    return cost_from_node
+        for vertex2 in neighbors[vertex1]:
+            edge = (vertex1, vertex2)
+            cost2 = cost1 + edge_costs[edge]
+            if (vertex2 not in node_from_state) or (cost2 < node_from_state[vertex2].cost):
+                node_from_state[vertex2] = Node(edge, vertex1, cost2)
+                heapq.heappush(queue, (cost2, vertex2))
+    return node_from_state
 
 def downsample_structure(elements, node_points, ground_nodes, num=None):
     if num is None:
         return elements
     cost_from_nodes = compute_distance_from_node(elements, node_points, ground_nodes)
-    selected_nodes = sorted(cost_from_nodes, key=lambda n: cost_from_nodes[0])[:num]
+    selected_nodes = sorted(cost_from_nodes, key=lambda n: cost_from_nodes[0])[:num] # TODO: bug
     return downselect_elements(elements, selected_nodes)
 
 ##################################################
@@ -198,6 +204,8 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
             components = get_connected_components(vertices, remaining_elements)
             #print('Components: {} | Distance: {:.3f}'.format(len(components), tool_distance))
             return (len(components), tool_distance)
+        elif heuristic == 'tsp':
+            assert solve_tsp(all_elements, ground_nodes, node_points, tool_point)
         elif heuristic == 'mst':
             remaining_distance = compute_component_mst(node_points, ground_nodes, remaining_elements,
                                                        initial_position=node_points[second_node])
@@ -213,11 +221,13 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
             return get_pitch(delta)
         elif heuristic == 'dijkstra': # offline
             # TODO: sum of all element path distances
-            return sign*np.average([distance_from_node[node] for node in element]) # min, max, average
+            return sign*np.average([distance_from_node[node].cost for node in element]) # min, max, average
         elif heuristic == 'online-dijkstra':
             if printed not in distance_cache:
                 distance_cache[printed] = compute_distance_from_node(printed, node_points, ground_nodes)
-            return sign*min(distance_cache[printed].get(node, INF) for node in element)
+            return sign*min(distance_cache[printed][node].cost
+                            if node in distance_cache[printed] else INF
+                            for node in element)
         elif heuristic == 'plan-stiffness':
             if stiffness_order is None:
                 return None

@@ -21,11 +21,12 @@ from extrusion.visualization import label_element, set_extrusion_camera, label_n
 from extrusion.experiment import train_parallel
 from extrusion.motion import compute_motions, validate_trajectories
 from extrusion.stripstream import plan_sequence
-from extrusion.utils import load_world, TOOL_LINK, timeout, compute_sequence_distance, get_print_distance
+from extrusion.utils import load_world, TOOL_LINK, timeout, compute_sequence_distance, get_print_distance, \
+    recover_sequence, recover_directed_sequence
 from extrusion.parsing import load_extrusion, create_elements_bodies, \
     enumerate_problems, get_extrusion_path, affine_extrusion
 from extrusion.stream import get_print_gen_fn
-from extrusion.progression import progression, recover_directed_sequence, recover_sequence, get_global_parameters
+from extrusion.progression import progression, get_global_parameters
 from extrusion.regression import regression
 from extrusion.heuristics import HEURISTICS
 from extrusion.validator import check_plan, compute_plan_deformation
