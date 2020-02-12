@@ -258,6 +258,7 @@ def compute_euclidean_tree(node_points, ground_nodes, elements, initial_position
     return weight
 
 def compute_component_mst(node_points, ground_nodes, unprinted, initial_position=None):
+    # Weighted A*
     start_time = time.time()
     point_from_vertex = dict(enumerate(node_points))
     vertices = {v for e in unprinted for v in e}

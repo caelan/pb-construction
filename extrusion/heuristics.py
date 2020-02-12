@@ -1,10 +1,10 @@
 import heapq
-
+import random
 import numpy as np
 
 from extrusion.equilibrium import compute_all_reactions, compute_node_reactions
 from extrusion.parsing import load_extrusion
-from extrusion.utils import get_extructed_ids, downselect_elements, compute_z_distance, TOOL_LINK, get_undirected
+from extrusion.utils import get_extructed_ids, downselect_elements, compute_z_distance, TOOL_LINK, get_undirected, reverse_element
 from extrusion.stiffness import create_stiffness_checker, force_from_reaction, torque_from_reaction, plan_stiffness, \
     compute_component_mst
 from pddlstream.utils import adjacent_from_edges, hash_or_id
@@ -170,10 +170,13 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
                     set_joint_positions(robot, joints, conf)
                     ee_cache[hash_or_id(conf)] = get_link_pose(robot, tool_link)
             tool_point = point_from_pose(ee_cache[hash_or_id(conf)])
-            tool_distance = get_distance(tool_point, node_points[directed[0]] )
+            first_node, second_node = directed if forward else reverse_element(directed)
+            tool_distance = get_distance(tool_point, node_points[first_node])
 
         if heuristic == 'none':
             return 0
+        if heuristic == 'random':
+            return random.random()
         elif heuristic == 'degree':
             # TODO: other graph statistics
             #printed_nodes = {n for e in printed for n in e}
@@ -189,9 +192,11 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
         elif heuristic == 'distance':
             return tool_distance
         elif heuristic == 'mst':
-            # TODO: add element distance
-            return tool_distance + compute_component_mst(node_points, ground_nodes, all_elements - printed,
-                                                         initial_position=node_points[directed[1]])
+            remaining_elements = all_elements - printed if forward else printed - {element}
+            remaining_distance = compute_component_mst(node_points, ground_nodes, remaining_elements,
+                                                         initial_position=node_points[second_node])
+            #return random.random()
+            return tool_distance + remaining_distance
         elif heuristic == 'z':
             return sign * compute_z_distance(node_points, element)
         elif heuristic == 'dijkstra': # offline
