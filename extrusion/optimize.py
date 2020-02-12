@@ -13,16 +13,12 @@ from pybullet_tools.utils import elapsed_time
 #State = namedtuple('State', ['element', 'printed', 'plan'])
 Node = namedtuple('Node', ['action', 'state'])
 
-
-# TODO: local optimization
-# TODO: local search to reduce the violation
 # TODO: sample configuration that connects adjacent ones
 
 def get_command_distance(robot, initial_conf, commands, index, new_command):
     assert 0 <= index <= len(commands) - 1
     last_conf = initial_conf if index == 0 else commands[index - 1].end_conf
     next_conf = initial_conf if index == len(commands) - 1 else commands[index + 1].start_conf
-    print(new_command)
     return get_cspace_distance(robot, last_conf, new_command.start_conf) + \
            new_command.get_distance() + \
            get_cspace_distance(robot, new_command.end_conf, next_conf)
@@ -49,6 +45,8 @@ def optimize_commands(robot, obstacles, element_bodies, extrusion_path, initial_
 
     total_distance = sum(get_command_distance(robot, initial_conf, commands, index, command)
                          for index, command in enumerate(commands))
+    # TODO: bias sampling towards far apart relative to neighoors
+    # TODO: bias IK solutions to be the best of several
 
     iterations = extrusion_failures = 0
     while (iterations < max_iterations) and (elapsed_time(start_time) < max_time):

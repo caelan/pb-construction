@@ -54,7 +54,7 @@ def retrace_trajectories(visited, current_state, horizon=INF, reverse=False):
 
 def retrace_commands(visited, current_state, horizon=INF, reverse=False):
     command, prev_state = visited[current_state]
-    if (prev_state is None): # or (horizon == 0):
+    if (prev_state is None): # or (horizon == 0): # TODO: why horizon
         return []
     prior_commands = retrace_commands(visited, prev_state, horizon=horizon-1, reverse=reverse)
     if reverse:
