@@ -174,8 +174,8 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
         if all_elements <= next_printed:
             min_remaining = 0
             commands = retrace_commands(visited, next_printed)
-            commands = optimize_commands(robot, obstacles, element_bodies, extrusion_path, initial_conf, commands,
-                                         motions=motions, collisions=collisions)
+            #commands = optimize_commands(robot, obstacles, element_bodies, extrusion_path, initial_conf, commands,
+            #                             motions=motions, collisions=collisions)
             plan = flatten_commands(commands)
             #plan = retrace_trajectories(visited, next_printed)
             print(plan)

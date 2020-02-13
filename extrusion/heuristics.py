@@ -10,7 +10,7 @@ from extrusion.utils import get_extructed_ids, downselect_elements, compute_z_di
     reverse_element, get_midpoint
 from extrusion.stiffness import create_stiffness_checker, force_from_reaction, torque_from_reaction, plan_stiffness
 from extrusion.tsp import compute_component_mst, solve_tsp
-from pddlstream.utils import adjacent_from_edges, hash_or_id, get_connected_components
+from pddlstream.utils import adjacent_from_edges, hash_or_id, get_connected_components, outgoing_from_edges
 from pybullet_tools.utils import get_distance, INF, get_joint_positions, get_movable_joints, get_link_pose, \
     link_from_name, BodySaver, set_joint_positions, point_from_pose, get_pitch
 
@@ -22,9 +22,10 @@ DISTANCE_HEURISTICS = [
 ]
 COST_HEURISTICS = [
     'distance',
-    'mst',
-    'tsp',
-    'components',
+    'layered-distance',
+    #'mst',
+    #'tsp',
+    #'components',
 ]
 TOPOLOGICAL_HEURISTICS = [
     'length',
@@ -44,6 +45,27 @@ HEURISTICS = ['none'] + DISTANCE_HEURISTICS + COST_HEURISTICS
 
 Node = namedtuple('Node', ['edge', 'vertex', 'cost'])
 
+def dijkstra(source_vertices, successor_fn, cost_fn=lambda v1, v2: 1):
+    node_from_vertex = {}
+    queue = []
+    for vertex in source_vertices:
+        cost = 0
+        node_from_vertex[vertex] = Node(None, None, cost)
+        heapq.heappush(queue, (cost, vertex))
+    while queue:
+        cost1, vertex1 = heapq.heappop(queue)
+        if node_from_vertex[vertex1].cost < cost1:
+            continue
+        for vertex2 in successor_fn(vertex1):
+            edge = (vertex1, vertex2)
+            cost2 = cost1 + cost_fn(*edge)
+            if (vertex2 not in node_from_vertex) or (cost2 < node_from_vertex[vertex2].cost):
+                node_from_vertex[vertex2] = Node(edge, vertex1, cost2)
+                heapq.heappush(queue, (cost2, vertex2))
+    return node_from_vertex
+
+##################################################
+
 def compute_distance_from_node(elements, node_points, ground_nodes):
     #incoming_supporters, _ = neighbors_from_orders(get_supported_orders(
     #    element_from_id.values(), node_points))
@@ -51,24 +73,19 @@ def compute_distance_from_node(elements, node_points, ground_nodes):
     edge_costs = {edge: get_distance(node_points[edge[0]], node_points[edge[1]])
                   for edge in elements}
     edge_costs.update({edge[::-1]: distance for edge, distance in edge_costs.items()})
+    successor_fn = lambda v: neighbors[v]
+    cost_fn = lambda v1, v2: edge_costs[v1, v2]
+    return dijkstra(ground_nodes, successor_fn, cost_fn)
 
-    node_from_state = {}
-    queue = []
-    cost = 0
-    for vertex in ground_nodes:
-        node_from_state[vertex] = Node(None, None, cost)
-        heapq.heappush(queue, (cost, vertex))
-    while queue:
-        cost1, vertex1 = heapq.heappop(queue)
-        if node_from_state[vertex1].cost < cost1:
-            continue
-        for vertex2 in neighbors[vertex1]:
-            edge = (vertex1, vertex2)
-            cost2 = cost1 + edge_costs[edge]
-            if (vertex2 not in node_from_state) or (cost2 < node_from_state[vertex2].cost):
-                node_from_state[vertex2] = Node(edge, vertex1, cost2)
-                heapq.heappush(queue, (cost2, vertex2))
-    return node_from_state
+def compute_layer_from_element(elements, node_points, ground_nodes):
+    # TODO: rigid partial orders derived from this
+    node_from_vertex = compute_distance_from_node(elements, node_points, ground_nodes)
+    partial_orders = {(node.vertex, vertex) for vertex, node in node_from_vertex.items() if node.vertex is not None}
+    successors_from_vertex = outgoing_from_edges(partial_orders)
+    successor_fn = lambda v: successors_from_vertex[v]
+    layer_from_vertex = {vertex: node.cost for vertex, node in dijkstra(ground_nodes, successor_fn).items()}
+    layer_from_edge = {e: min(layer_from_vertex[v] for v in e) for e in elements}
+    return layer_from_edge
 
 def downsample_structure(elements, node_points, ground_nodes, num=None):
     if num is None:
@@ -134,8 +151,10 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
 
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
     all_elements = frozenset(element_from_id.values())
-    distance_from_node = compute_distance_from_node(all_elements, node_points, ground_nodes)
     sign = +1 if forward else -1
+
+    distance_from_node = compute_distance_from_node(all_elements, node_points, ground_nodes)
+    layer_from_edge = compute_layer_from_element(all_elements, node_points, ground_nodes)
 
     stiffness_order = None
     if heuristic == 'plan-stiffness':
@@ -149,6 +168,7 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
     if heuristic in ('fixed-stiffness', 'relative-stiffness'):
         stiffness_cache.update({element: score_stiffness(extrusion_path, element_from_id, all_elements - {element},
                                                          checker=checker) for element in all_elements})
+
     reaction_cache = {}
     distance_cache = {}
     ee_cache = {}
@@ -199,6 +219,8 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
             return get_distance(node_points[n2], node_points[n1])
         elif heuristic == 'distance':
             return tool_distance
+        elif heuristic == 'layered-distance':
+            return (sign*layer_from_edge[element], tool_distance)
         elif heuristic == 'components':
             vertices = {v for e in remaining_elements for v in e}
             components = get_connected_components(vertices, remaining_elements)
@@ -209,7 +231,6 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
         elif heuristic == 'mst':
             remaining_distance = compute_component_mst(node_points, ground_nodes, remaining_elements,
                                                        initial_position=node_points[second_node])
-            #return random.random()
             return tool_distance + remaining_distance
         elif heuristic == 'x':
             return sign * get_midpoint(node_points, element)[0]
