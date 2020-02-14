@@ -77,13 +77,16 @@ def compute_distance_from_node(elements, node_points, ground_nodes):
     cost_fn = lambda v1, v2: edge_costs[v1, v2]
     return dijkstra(ground_nodes, successor_fn, cost_fn)
 
-def compute_layer_from_element(elements, node_points, ground_nodes):
-    # TODO: rigid partial orders derived from this
+def compute_layer_from_vertex(elements, node_points, ground_nodes):
     node_from_vertex = compute_distance_from_node(elements, node_points, ground_nodes)
     partial_orders = {(node.vertex, vertex) for vertex, node in node_from_vertex.items() if node.vertex is not None}
     successors_from_vertex = outgoing_from_edges(partial_orders)
     successor_fn = lambda v: successors_from_vertex[v]
-    layer_from_vertex = {vertex: node.cost for vertex, node in dijkstra(ground_nodes, successor_fn).items()}
+    return {vertex: node.cost for vertex, node in dijkstra(ground_nodes, successor_fn).items()}
+
+def compute_layer_from_element(elements, node_points, ground_nodes):
+    # TODO: rigid partial orders derived from this
+    layer_from_vertex = compute_layer_from_vertex(elements, node_points, ground_nodes)
     layer_from_edge = {e: min(layer_from_vertex[v] for v in e) for e in elements}
     return layer_from_edge
 

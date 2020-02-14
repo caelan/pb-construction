@@ -70,20 +70,20 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, max_time=30, v
     # TODO: reuse by simply swapping out the first vertex
     from ortools.constraint_solver import routing_enums_pb2, pywrapcp
     from extrusion.visualization import draw_ordered, draw_model
-    from extrusion.heuristics import compute_distance_from_node, compute_layer_from_element
+    from extrusion.heuristics import compute_distance_from_node, compute_layer_from_vertex
     assert initial_point is not None
     start_time = time.time()
     total_distance = compute_element_distance(node_points, elements)
 
     # TODO: only connect same and above layers
-    node_from_vertex = compute_distance_from_node(elements, node_points, ground_nodes)
+    level_from_node = compute_layer_from_vertex(elements, node_points, ground_nodes)
     cost_from_edge = {}
     for edge in elements: # TODO: might be redundant given compute_layer_from_element
         n1, n2 = edge
-        if node_from_vertex[n1].cost <= node_from_vertex[n2].cost:
-            cost_from_edge[n1, n2] = node_from_vertex[n1].cost
+        if level_from_node[n1] <= level_from_node[n2]:
+            cost_from_edge[n1, n2] = level_from_node[n1]
         else:
-            cost_from_edge[n2, n1] = node_from_vertex[n2].cost
+            cost_from_edge[n2, n1] = level_from_node[n2]
     tree_elements = set(cost_from_edge)
     #sequence = sorted(tree_elements, key=lambda e: cost_from_edge[e])
     # TODO: directionality
@@ -119,10 +119,10 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, max_time=30, v
             delta = node_points[node2] - node_points[node1]
             #pitch = get_pitch(delta)
             #upward = -SUPPORT_THETA <= pitch
-            theta = angle_between(delta, [0, 0, -1])
-            upward = theta < (np.pi / 2 - SUPPORT_THETA)
-            #upward = False
-            if (directed in tree_elements): # or upward:
+            # theta = angle_between(delta, [0, 0, -1])
+            # upward = theta < (np.pi / 2 - SUPPORT_THETA)
+            #if (directed in tree_elements): # or upward:
+            if directed in cost_from_edge:
                 # Add edges from anything that is roughly the correct cost
                 start = (element, node1)
                 end = (element, node2)
