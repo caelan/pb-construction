@@ -31,12 +31,19 @@ ATTRIBUTES = SCORES + ['valid', 'safe', 'num_evaluated', 'min_remaining',
 
 ##################################################
 
+# TODO: solve TSP to figure out how far away from optimal
+
 def score_result(result):
-    return '{{success={:.3f}, runtime={:.0f}, valid={:.3f}, safe={:.3f}, evaluated={:.0f}, ' \
-           'remaining={:.1f}, backtrack={:.1f}, transit_failures={:.1f}, max_trans={:.3E}, max_rot={:.3E}}}'.format(
-            result[SUCCESS], result.get(RUNTIME, 0), result.get('valid', 0), result.get('safe', 0),
+    # return '{{success={:.3f}, runtime={:.0f}, valid={:.3f}, safe={:.3f}, evaluated={:.0f}, ' \
+    #        'remaining={:.1f}, backtrack={:.1f}, transit_failures={:.1f}, max_trans={:.3E}, max_rot={:.3E}}}'.format(
+    #         result[SUCCESS], result.get(RUNTIME, 0), result.get('valid', 0), result.get('safe', 0),
+    #         result.get('num_evaluated', 0), result.get('min_remaining', 0), result.get('max_backtrack', 0),
+    #         result.get('transit_fails', 0), result.get('max_translation', 0), result.get('max_rotation', 0))
+    return '{{success={:.3f}, cost={:.3f}, runtime={:.0f}, evaluated={:.0f}, ' \
+           'remaining={:.1f}, backtrack={:.1f}, max_trans={:.3E}}}'.format(
+            result[SUCCESS], result.get('ee_distance', INF), result.get(RUNTIME, 0),
             result.get('num_evaluated', 0), result.get('min_remaining', 0), result.get('max_backtrack', 0),
-            result.get('transit_fails', 0), result.get('max_translation', 0), result.get('max_rotation', 0))
+            result.get('max_translation', 0))
 
 
 def is_number(value):
@@ -116,7 +123,7 @@ def load_experiment(filename, overall=False, failed_runtimes=True):
                         accumulated_result.setdefault(name, []).append(value)
             mean_result = {name: round(np.average(values), 3) for name, values in accumulated_result.items()}
             key = {field: value for field, value in config._asdict().items()
-                   if (value is not None) and (2 <= len(value_per_field[field]))}
+                   if (value is not None) and (field in ['algorithm', 'bias'] or (2 <= len(value_per_field[field])))}
             all_results[frozenset(key.items())] = {name: values for name, values in accumulated_result.items() if name in SCORES}
             score = score_result(mean_result)
             print('{}) {} ({}): {}'.format(c_idx, str_from_object(key), len(results), str_from_object(score)))
