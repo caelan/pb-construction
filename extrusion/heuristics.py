@@ -162,12 +162,13 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
     distance_from_node = compute_distance_from_node(all_elements, node_points, ground_nodes)
     layer_from_edge = compute_layer_from_element(all_elements, node_points, ground_nodes)
 
-    order = None
+    plan = None
     if heuristic == 'tsp':
         plan, _ = solve_tsp(all_elements, ground_nodes, node_points, initial_point, initial_point, visualize=False)
     elif heuristic == 'plan-stiffness':
         plan = plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, all_elements,
                                         initial_position=initial_point, checker=checker, max_backtrack=INF)
+    order = None
     if plan is not None:
         order = {get_undirected(all_elements, directed): i for i, directed in enumerate(plan)}
 
