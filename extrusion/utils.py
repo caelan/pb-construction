@@ -114,7 +114,6 @@ def get_node_neighbors(elements):
     return node_neighbors
 
 def nodes_from_elements(elements):
-    # TODO: always include ground nodes
     return {n for e in elements for n in e}
 
 def get_element_neighbors(elements):

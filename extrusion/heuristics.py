@@ -7,7 +7,7 @@ from collections import namedtuple
 from extrusion.equilibrium import compute_all_reactions, compute_node_reactions
 from extrusion.parsing import load_extrusion
 from extrusion.utils import get_extructed_ids, downselect_elements, compute_z_distance, TOOL_LINK, get_undirected, \
-    reverse_element, get_midpoint
+    reverse_element, get_midpoint, nodes_from_elements
 from extrusion.stiffness import create_stiffness_checker, force_from_reaction, torque_from_reaction, plan_stiffness
 from extrusion.tsp import compute_component_mst, solve_tsp
 from pddlstream.utils import adjacent_from_edges, hash_or_id, get_connected_components, outgoing_from_edges
@@ -24,7 +24,7 @@ COST_HEURISTICS = [
     'distance',
     'layered-distance',
     #'mst',
-    #'tsp',
+    'tsp',
     #'components',
 ]
 TOPOLOGICAL_HEURISTICS = [
@@ -69,13 +69,14 @@ def dijkstra(source_vertices, successor_fn, cost_fn=lambda v1, v2: 1):
 def compute_distance_from_node(elements, node_points, ground_nodes):
     #incoming_supporters, _ = neighbors_from_orders(get_supported_orders(
     #    element_from_id.values(), node_points))
+    nodes = nodes_from_elements(elements)
     neighbors = adjacent_from_edges(elements)
     edge_costs = {edge: get_distance(node_points[edge[0]], node_points[edge[1]])
                   for edge in elements}
     edge_costs.update({edge[::-1]: distance for edge, distance in edge_costs.items()})
     successor_fn = lambda v: neighbors[v]
     cost_fn = lambda v1, v2: edge_costs[v1, v2]
-    return dijkstra(ground_nodes, successor_fn, cost_fn)
+    return dijkstra(ground_nodes & nodes, successor_fn, cost_fn)
 
 def compute_layer_from_vertex(elements, node_points, ground_nodes):
     node_from_vertex = compute_distance_from_node(elements, node_points, ground_nodes)
@@ -151,6 +152,7 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
     tool_link = link_from_name(robot, TOOL_LINK)
     #initial_conf = get_joint_positions(robot, joints)
     initial_pose = get_link_pose(robot, tool_link)
+    initial_point = point_from_pose(initial_pose)
 
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
     all_elements = frozenset(element_from_id.values())
@@ -161,7 +163,6 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
 
     stiffness_order = None
     if heuristic == 'plan-stiffness':
-        initial_point = point_from_pose(initial_pose)
         stiffness_plan = plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, all_elements,
                                         initial_position=initial_point, checker=checker, max_backtrack=INF)
         if stiffness_plan is not None:
@@ -230,7 +231,16 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
             #print('Components: {} | Distance: {:.3f}'.format(len(components), tool_distance))
             return (len(components), tool_distance)
         elif heuristic == 'tsp':
-            assert solve_tsp(all_elements, ground_nodes, node_points, tool_point)
+            # TODO: score based on current distance from the plan in the tour
+            #assert solve_tsp(all_elements, ground_nodes, node_points, tool_point, initial_point)
+            if forward:
+                order, remaining_distance = solve_tsp(all_elements-structure, ground_nodes,
+                                                      node_points, node_points[second_node], initial_point, visualize=False)
+            else:
+                order, remaining_distance = solve_tsp(structure, ground_nodes,
+                                                      node_points, initial_point, node_points[second_node], visualize=False)
+            total = tool_distance + remaining_distance
+            return total
         elif heuristic == 'mst':
             remaining_distance = compute_component_mst(node_points, ground_nodes, remaining_elements,
                                                        initial_position=node_points[second_node])
