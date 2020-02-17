@@ -70,13 +70,14 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, max_time=30, v
     # TODO: reuse by simply swapping out the first vertex
     from ortools.constraint_solver import routing_enums_pb2, pywrapcp
     from extrusion.visualization import draw_ordered, draw_model
-    from extrusion.heuristics import compute_distance_from_node, compute_layer_from_vertex
+    from extrusion.heuristics import compute_distance_from_node, compute_layer_from_vertex, compute_z_distance
     assert initial_point is not None
     start_time = time.time()
     total_distance = compute_element_distance(node_points, elements)
 
-    # TODO: only connect same and above layers
     level_from_node = compute_layer_from_vertex(elements, node_points, ground_nodes)
+    max_level = max(level_from_node.values())
+    print('Max level:', max_level)
     cost_from_edge = {}
     for edge in elements: # TODO: might be redundant given compute_layer_from_element
         n1, n2 = edge
@@ -86,13 +87,15 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, max_time=30, v
             cost_from_edge[n2, n1] = level_from_node[n2]
     tree_elements = set(cost_from_edge)
     #sequence = sorted(tree_elements, key=lambda e: cost_from_edge[e])
-    # TODO: directionality
 
     point = initial_point
     sequence = []
     remaining_elements = set(tree_elements)
     while remaining_elements:
-        directed = min(remaining_elements, key=lambda d: (cost_from_edge[d], get_distance(point, node_points[d[0]])))
+        #key_fn = lambda d: (cost_from_edge[d], random.random())
+        #key_fn = lambda d: (cost_from_edge[d], compute_z_distance(node_points, d))
+        key_fn = lambda d: (cost_from_edge[d], get_distance(point, node_points[d[0]]))
+        directed = min(remaining_elements, key=key_fn)
         remaining_elements.remove(directed)
         sequence.append(directed)
         point = node_points[directed[1]]
@@ -132,9 +135,23 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, max_time=30, v
         for edge in product(keys_from_node[node], repeat=2):
             extrusion_edges.add(edge)
 
-    transit_edges = {pair for pair in product(frame_nodes, repeat=2)}
-    transit_edges.update({(INITIAL_NODE, key) for node in ground_nodes for key in keys_from_node[node]}) # initial -> ground
-    transit_edges.update({(key, INITIAL_NODE) for key in frame_nodes}) # any -> initial
+    # Connect v2 to v1 if v2 is the same level
+    # Traversing an edge might move to a prior level (but at most one)
+    transit_edges = set()
+    for edge in product(frame_nodes, repeat=2):
+        key1, key2 = edge
+        _, node1 = key1
+        _, node2 = key2
+        if abs(level_from_node[node2] - level_from_node[node1]) <= 1:
+        #if level_from_node[node1] in [level_from_node[node2], level_from_node[node2]-1:
+            # TODO: use the directionality
+            transit_edges.add(edge)
+    for key in frame_nodes:
+        _, node = key
+        if level_from_node[node] == 0:
+            transit_edges.add((INITIAL_NODE, key))
+        if level_from_node[node] == max_level:
+            transit_edges.add((key, INITIAL_NODE))
 
     key_from_index = list({k for pair in extrusion_edges | transit_edges for k in pair})
     edge_weights = {pair: INVALID for pair in product(key_from_index, repeat=2)}
