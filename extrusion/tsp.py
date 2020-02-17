@@ -7,7 +7,8 @@ from itertools import product, combinations
 
 import numpy as np
 
-from extrusion.utils import get_pairs, get_midpoint, SUPPORT_THETA, get_undirected, compute_element_distance, reverse_element
+from extrusion.utils import get_pairs, get_midpoint, SUPPORT_THETA, get_undirected, compute_element_distance, \
+    reverse_element, nodes_from_elements, is_start, is_end
 from pddlstream.utils import get_connected_components
 from pybullet_tools.utils import get_distance, elapsed_time, BLACK, wait_for_user, BLUE, RED, get_pitch, INF, angle_between, remove_all_debug
 from extrusion.stiffness import plan_stiffness
@@ -62,6 +63,8 @@ def greedily_plan(elements, node_points, ground_nodes, initial_point):
     from extrusion.heuristics import compute_distance_from_node, compute_layer_from_vertex, compute_z_distance
     level_from_node = compute_layer_from_vertex(elements, node_points, ground_nodes)
     cost_from_edge = {}
+    if not all(node in level_from_node for node in nodes_from_elements(elements)):
+        return level_from_node, cost_from_edge, None # Disconnected
     for edge in elements:  # TODO: might be redundant given compute_layer_from_element
         n1, n2 = edge
         if level_from_node[n1] <= level_from_node[n2]:
@@ -108,6 +111,8 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, final_point,
     total_distance = compute_element_distance(node_points, elements)
 
     level_from_node, cost_from_edge, sequence = greedily_plan(elements, node_points, ground_nodes, initial_point)
+    if sequence is None:
+        return None, INF
     extrusion_edges = set()
     point_from_vertex = {INITIAL_NODE: initial_point, FINAL_NODE: final_point}
     frame_nodes = set()
@@ -250,7 +255,19 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, final_point,
         #draw_model(extrusion_edges - set(tour_pairs), point_from_vertex, ground_nodes, color=BLACK)
         draw_ordered(ordered_pairs, point_from_vertex)
         wait_for_user()
-    return order, cost
+
+    printed = set()
+    sequence = []
+    for key1, key2 in ordered_pairs[1:-2]:
+        element1, node1 = key1
+        element2, node2 = key2
+        if (element1 == element2) and (element1 not in printed) and (node1 in level_from_node):
+            directed = reverse_element(element1) if is_end(node1, element1) else element1
+            printed.add(element1)
+            sequence.append(directed)
+    if elements != printed:
+        return None, INF
+    return sequence, cost
 
 ##################################################
 

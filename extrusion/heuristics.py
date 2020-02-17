@@ -25,6 +25,7 @@ COST_HEURISTICS = [
     'layered-distance',
     #'mst',
     'tsp',
+    #'online-tsp',
     #'components',
 ]
 TOPOLOGICAL_HEURISTICS = [
@@ -161,12 +162,14 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
     distance_from_node = compute_distance_from_node(all_elements, node_points, ground_nodes)
     layer_from_edge = compute_layer_from_element(all_elements, node_points, ground_nodes)
 
-    stiffness_order = None
-    if heuristic == 'plan-stiffness':
-        stiffness_plan = plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, all_elements,
+    order = None
+    if heuristic == 'tsp':
+        plan, _ = solve_tsp(all_elements, ground_nodes, node_points, initial_point, initial_point, visualize=False)
+    elif heuristic == 'plan-stiffness':
+        plan = plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, all_elements,
                                         initial_position=initial_point, checker=checker, max_backtrack=INF)
-        if stiffness_plan is not None:
-            stiffness_order = {get_undirected(all_elements, directed): i for i, directed in enumerate(stiffness_plan)}
+    if plan is not None:
+        order = {get_undirected(all_elements, directed): i for i, directed in enumerate(plan)}
 
     stiffness_cache = {}
     if heuristic in ('fixed-stiffness', 'relative-stiffness'):
@@ -231,13 +234,15 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
             #print('Components: {} | Distance: {:.3f}'.format(len(components), tool_distance))
             return (len(components), tool_distance)
         elif heuristic == 'tsp':
+            # TODO: layer_from_edge[element]
             # TODO: score based on current distance from the plan in the tour
-            #assert solve_tsp(all_elements, ground_nodes, node_points, tool_point, initial_point)
+            return (sign*order[element], tool_distance)
+        elif heuristic == 'online-tsp':
             if forward:
-                order, remaining_distance = solve_tsp(all_elements-structure, ground_nodes,
+                _, remaining_distance = solve_tsp(all_elements-structure, ground_nodes,
                                                       node_points, node_points[second_node], initial_point, visualize=False)
             else:
-                order, remaining_distance = solve_tsp(structure, ground_nodes,
+                _, remaining_distance = solve_tsp(structure, ground_nodes,
                                                       node_points, initial_point, node_points[second_node], visualize=False)
             total = tool_distance + remaining_distance
             return total
@@ -263,9 +268,9 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
                             if node in distance_cache[printed] else INF
                             for node in element)
         elif heuristic == 'plan-stiffness':
-            if stiffness_order is None:
+            if order is None:
                 return None
-            return sign*stiffness_order[element]
+            return sign*order[element]
         elif heuristic == 'load':
             nodal_loads = checker.get_nodal_loads(existing_ids=structure_ids, dof_flattened=False) # get_self_weight_loads
             return reduce_op(np.linalg.norm(force_from_reaction(reaction)) for reaction in nodal_loads.values())
