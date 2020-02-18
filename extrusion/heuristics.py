@@ -237,6 +237,8 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
         elif heuristic == 'tsp':
             # TODO: layer_from_edge[element]
             # TODO: score based on current distance from the plan in the tour
+            if order is None:
+                return (INF, tool_distance)
             return (sign*order[element], tool_distance)
         elif heuristic == 'online-tsp':
             if forward:
