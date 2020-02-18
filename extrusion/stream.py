@@ -77,14 +77,14 @@ def get_grasp_pose(translation, direction, angle, reverse, offset=1e-3):
                     Pose(point=Point(z=translation)),
                     Pose(euler=Euler(roll=(1-reverse) * np.pi)))
 
-##################################################
-
 def compute_tool_path(element_pose, translation_path, direction, angle, reverse):
     tool_path = []
     for translation in translation_path:
         grasp_pose = get_grasp_pose(translation, direction, angle, reverse)
         tool_path.append(multiply(element_pose, invert(grasp_pose)))
     return tool_path
+
+##################################################
 
 def tool_path_collision(end_effector, element_pose, translation_path, direction, angle, reverse, obstacles):
     # TODO: allow sampling in the full sphere by checking collision with an element while sliding

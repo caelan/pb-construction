@@ -10,6 +10,8 @@ from extrusion.utils import get_cspace_distance
 from pybullet_tools.utils import INF
 from pybullet_tools.utils import elapsed_time
 
+OPTIMIZE = False
+
 #State = namedtuple('State', ['element', 'printed', 'plan'])
 Node = namedtuple('Node', ['action', 'state'])
 

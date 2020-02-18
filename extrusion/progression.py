@@ -16,7 +16,7 @@ from extrusion.utils import check_connected, get_id_from_element, load_world, RE
     get_undirected, flatten_commands
 from extrusion.stiffness import TRANS_TOL, ROT_TOL, create_stiffness_checker, test_stiffness
 from extrusion.motion import compute_motion, compute_motions
-from extrusion.optimize import optimize_commands
+from extrusion.optimize import OPTIMIZE, optimize_commands
 
 # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
 from pybullet_tools.utils import connect, ClientSaver, wait_for_user, INF, get_movable_joints, get_joint_positions
@@ -174,11 +174,10 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
         if all_elements <= next_printed:
             min_remaining = 0
             commands = retrace_commands(visited, next_printed)
-            #commands = optimize_commands(robot, obstacles, element_bodies, extrusion_path, initial_conf, commands,
-            #                             motions=motions, collisions=collisions)
+            if OPTIMIZE:
+                commands = optimize_commands(robot, obstacles, element_bodies, extrusion_path, initial_conf, commands,
+                                             motions=motions, collisions=collisions)
             plan = flatten_commands(commands)
-            #plan = retrace_trajectories(visited, next_printed)
-            print(plan)
             if motions and not lazy:
                 motion_traj = compute_motion(robot, obstacles, element_bodies, frozenset(),
                                              initial_conf, plan[0].start_conf, collisions=collisions,

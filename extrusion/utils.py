@@ -4,9 +4,11 @@ import os
 import numpy as np
 import math
 import traceback
+import signal
 
 from collections import defaultdict, deque
 from itertools import islice, cycle
+from contextlib import contextmanager
 
 from pybullet_tools.utils import get_link_pose, BodySaver, set_point, multiply, set_pose, set_joint_positions, \
     Point, HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, get_aabb, \
@@ -583,23 +585,19 @@ def check_memory(max_memory=MAX_MEMORY):
 
 ##################################################
 
-# https://www.jujens.eu/posts/en/2018/Jun/02/python-timeout-function/
-# https://code-maven.com/python-timeout
-# https://pypi.org/project/func-timeout/
-# https://pypi.org/project/timeout-decorator/
-# https://eli.thegreenplace.net/2011/08/22/how-not-to-set-a-timeout-on-a-computation-in-python
-# https://docs.python.org/3/library/signal.html
-# https://docs.python.org/3/library/contextlib.html
-# https://stackoverflow.com/a/22348885
-
-import signal
-from contextlib import contextmanager
-
 def raise_timeout(signum, frame):
     raise TimeoutError()
 
 @contextmanager
 def timeout(duration):
+    # https://www.jujens.eu/posts/en/2018/Jun/02/python-timeout-function/
+    # https://code-maven.com/python-timeout
+    # https://pypi.org/project/func-timeout/
+    # https://pypi.org/project/timeout-decorator/
+    # https://eli.thegreenplace.net/2011/08/22/how-not-to-set-a-timeout-on-a-computation-in-python
+    # https://docs.python.org/3/library/signal.html
+    # https://docs.python.org/3/library/contextlib.html
+    # https://stackoverflow.com/a/22348885
     assert 0 < duration
     if duration == INF:
         yield

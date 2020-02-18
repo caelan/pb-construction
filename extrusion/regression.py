@@ -2,21 +2,21 @@ import heapq
 import random
 import time
 
-from extrusion.progression import Node, retrace_trajectories, retrace_commands
+from extrusion.progression import Node, retrace_commands
 from extrusion.heuristics import get_heuristic_fn, get_tool_position
 from extrusion.motion import compute_motion, compute_motions
 from extrusion.parsing import load_extrusion
 from extrusion.stream import get_print_gen_fn, MAX_DIRECTIONS, MAX_ATTEMPTS
 from extrusion.utils import get_id_from_element, get_ground_elements, is_ground, \
-    check_connected, get_memory_in_kb, check_memory, timeout, get_undirected, get_directions, compute_printed_nodes, \
-    recover_sequence, recover_directed_sequence, flatten_commands
-from extrusion.stiffness import create_stiffness_checker, test_stiffness, plan_stiffness
-from extrusion.validator import compute_plan_deformation
-from extrusion.visualization import draw_ordered, draw_element
+    check_connected, check_memory, get_undirected, get_directions, compute_printed_nodes, \
+    flatten_commands
+from extrusion.stiffness import create_stiffness_checker, test_stiffness
+from extrusion.visualization import draw_element
 from pddlstream.utils import outgoing_from_edges
-from pybullet_tools.utils import INF, get_movable_joints, get_joint_positions, randomize, has_gui, \
+from pybullet_tools.utils import INF, randomize, has_gui, \
     remove_all_debug, wait_for_user, elapsed_time, implies, LockRenderer, get_configuration
-from extrusion.optimize import optimize_commands
+from extrusion.optimize import optimize_commands, OPTIMIZE
+
 
 def draw_action(node_points, printed, element):
     if not has_gui():
@@ -149,12 +149,11 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         visited[next_printed] = Node(command, printed) # TODO: be careful when multiple trajs
         if not next_printed:
             min_remaining = 0
-            #plan = retrace_trajectories(visited, next_printed, reverse=True)
             commands = retrace_commands(visited, next_printed, reverse=True)
-            #commands = optimize_commands(robot, obstacles, element_bodies, extrusion_path, initial_conf, commands,
-            #                             motions=motions, collisions=collisions)
+            if OPTIMIZE:
+                commands = optimize_commands(robot, obstacles, element_bodies, extrusion_path, initial_conf, commands,
+                                             motions=motions, collisions=collisions)
             plan = flatten_commands(commands)
-
             if motions and not lazy:
                 motion_traj = compute_motion(robot, obstacles, element_bodies, frozenset(),
                                              initial_conf, plan[0].start_conf, collisions=collisions,
