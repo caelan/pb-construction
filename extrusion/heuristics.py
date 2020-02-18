@@ -169,7 +169,7 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
 
     plan = None
     if heuristic == 'tsp':
-        plan, _ = solve_tsp(all_elements, ground_nodes, node_points, initial_point, initial_point, visualize=True)
+        plan, _ = solve_tsp(all_elements, ground_nodes, node_points, initial_point, initial_point, visualize=False)
     elif heuristic == 'plan-stiffness':
         plan = plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, all_elements,
                                         initial_position=initial_point, checker=checker, max_backtrack=INF)

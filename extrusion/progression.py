@@ -6,9 +6,8 @@ import time
 
 from collections import namedtuple
 
-from extrusion.heuristics import get_heuristic_fn
-from pybullet_tools.utils import elapsed_time, \
-    reset_simulation, disconnect, randomize
+from extrusion.heuristics import get_heuristic_fn, get_tool_position
+from pybullet_tools.utils import elapsed_time, reset_simulation, disconnect, randomize, get_configuration
 from extrusion.parsing import load_extrusion
 from extrusion.visualization import draw_element
 from extrusion.stream import get_print_gen_fn, STEP_SIZE, APPROACH_DISTANCE, MAX_DIRECTIONS, MAX_ATTEMPTS
@@ -78,8 +77,8 @@ def display_failure(node_points, extruded_elements, element):
 
 ##################################################
 
-def add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn, printed, conf,
-                   partial_orders=[], visualize=False):
+def add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn,
+                   printed, position, conf, partial_orders=[], visualize=False):
     incoming_from_element = incoming_from_edges(partial_orders)
     remaining = all_elements - printed
     num_remaining = len(remaining) - 1
@@ -90,7 +89,7 @@ def add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn,
         element = get_undirected(all_elements, directed)
         if not (incoming_from_element[element] <= printed):
             continue
-        bias = heuristic_fn(printed, directed, None, conf) # TODO: add position
+        bias = heuristic_fn(printed, directed, position, conf)
         priority = (num_remaining, bias, random.random())
         visits = 0
         heapq.heappush(queue, (visits, priority, printed, directed, conf))
@@ -112,8 +111,8 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
                 stiffness=True, motions=True, collisions=True, lazy=True, checker=None, **kwargs):
 
     start_time = time.time()
-    joints = get_movable_joints(robot)
-    initial_conf = get_joint_positions(robot, joints)
+    initial_conf = get_configuration(robot)
+    initial_position = get_tool_position(robot)
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
     if checker is None:
         checker = create_stiffness_checker(extrusion_path, verbose=False)
@@ -130,8 +129,8 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
     visited = {initial_printed: Node(None, None)}
     if check_connected(ground_nodes, all_elements) and \
             test_stiffness(extrusion_path, element_from_id, all_elements):
-        add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn, initial_printed, initial_conf,
-                       partial_orders=partial_orders)
+        add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn,
+                       initial_printed, initial_position, initial_conf, partial_orders=partial_orders)
 
     plan = None
     min_remaining = len(all_elements)
@@ -156,7 +155,8 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
                 extrusion_path, element_from_id, next_printed, checker=checker)):
             stiffness_failures += 1
             continue
-        command, = next(print_gen_fn(directed[0], element, extruded=printed), (None,))
+        node1, node2 = directed
+        command, = next(print_gen_fn(node1, element, extruded=printed), (None,))
         if command is None:
             extrusion_failures += 1
             continue
@@ -193,8 +193,8 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
             break
             # if plan is not None:
             #     break
-        add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn, next_printed, command.end_conf,
-                       partial_orders=partial_orders)
+        add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn,
+                       next_printed, node_points[node2], command.end_conf, partial_orders=partial_orders)
         if revisit:
             heapq.heappush(queue, (visits + 1, priority, printed, directed, current_conf))
 

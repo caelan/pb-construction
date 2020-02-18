@@ -225,7 +225,7 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, final_point,
     if visualize:
         remove_all_debug()
         draw_ordered(ordered_pairs, point_from_vertex)
-        wait_for_user()
+        wait_for_user() # TODO: pause only if viewer
     start_time = time.time()
 
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()
