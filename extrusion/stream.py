@@ -3,6 +3,7 @@ import random
 import time
 
 from itertools import cycle
+from itertools import islice
 
 from pybullet_tools.utils import get_movable_joints, get_joint_positions, multiply, invert, \
     set_joint_positions, inverse_kinematics, get_link_pose, get_distance, point_from_pose, wrap_angle, get_sample_fn, \
@@ -218,8 +219,71 @@ def plan_approach(end_effector, print_traj, collision_fn):
     final_traj = MotionTrajectory(robot, joints, final_path)
     return Command([initial_traj, print_traj, final_traj])
 
-def compute_direction_path(end_effector, length, reverse, element_bodies, element, direction,
-                           obstacles, collision_fn, num_angles=1, ee_only=False):
+##################################################
+
+class ToolTrajectory(object):
+    def __init__(self, extrusion, direction, angle):
+        self.extrusion = extrusion
+        self.direction = direction
+        self.angle = angle
+        self.tool_path = compute_tool_path(self.extrusion.element_pose, self.extrusion.translation_path,
+                                           direction, angle, self.extrusion.reverse)
+        self.safe_from_body = {}
+        self.trajectories = []
+    def is_safe(self, obstacles):
+        checked_bodies = set(self.safe_from_body) & set(obstacles)
+        if any(not self.safe_from_body[e] for e in checked_bodies):
+            return False
+        unchecked_bodies = randomize(set(obstacles) - checked_bodies)
+        if not unchecked_bodies:
+            return True
+        for tool_pose in randomize(self.tool_path):
+            self.extrusion.end_effector.set_pose(tool_pose)
+            tool_aabb = get_aabb(self.extrusion.end_effector.body) # TODO: cache nearby_bodies
+            nearby_bodies = {b for b, _ in get_bodies_in_region(tool_aabb) if b in unchecked_bodies}
+            for body in nearby_bodies:
+                if pairwise_collision(self.extrusion.end_effector.body, body):
+                    self.safe_from_body[body] = False
+                    return False
+        return True
+    def __iter__(self):
+        return [self.extrusion, self.direction, self.angle, self.tool_path]
+
+class Extrusion(object):
+    def __init__(self, end_effector, element_bodies, node_points, ground_nodes, element, reverse, max_directions=INF):
+        # TODO: more directions for ground collisions
+        self.end_effector = end_effector
+        self.element = element
+        self.reverse = reverse
+        self.max_directions = max_directions
+        self.element_pose = get_pose(element_bodies[element])
+        n1, n2 = element
+        length = get_distance(node_points[n1], node_points[n2])
+        self.translation_path = np.append(np.arange(-length / 2, length / 2, STEP_SIZE), [length / 2])
+        if ORTHOGONAL_GROUND and is_ground(element, ground_nodes):
+            # TODO: orthogonal to the ground
+            self.direction_generator = cycle([Pose(euler=Euler(roll=0, pitch=0))])
+        else:
+            self.direction_generator = get_direction_generator(use_halton=False)
+        self.trajectories = []
+    @property
+    def directed(self):
+        return reverse_element(self.element) if self.reverse else self.element
+    def sample_direction(self):
+        angle = wrap_angle(random.uniform(0, 2*np.pi)) # TODO: halton generator
+        direction = next(self.direction_generator)
+        trajectory = ToolTrajectory(self, direction, angle)
+        self.trajectories.append(trajectory)
+        return trajectory
+    def generator(self):
+        for direction in self.trajectories:
+            yield direction
+        while len(self.trajectories) < self.max_directions:
+            yield self.sample_direction()
+
+##################################################
+
+def compute_direction_path(tool_traj, collision_fn, ee_only=False):
     """
     :param robot:
     :param length: element's length
@@ -231,23 +295,20 @@ def compute_direction_path(end_effector, length, reverse, element_bodies, elemen
     are accounted in the collision fn
     :return: feasible PrintTrajectory if found, None otherwise
     """
-    robot = end_effector.robot
-    #angle_step_size = np.math.radians(0.25) # np.pi / 128
-    #angle_deltas = [-angle_step_size, 0, angle_step_size]
-    angle_deltas = [0]
-    translation_path = np.append(np.arange(-length / 2, length / 2, STEP_SIZE), [length / 2])
-    element_pose = get_pose(element_bodies[element])
+    direction = tool_traj.direction
+    initial_angles = [tool_traj.angle]
+    tool_path = tool_traj.tool_path
+    extrusion = tool_traj.extrusion
 
-    #initial_angles = [wrap_angle(angle) for angle in np.linspace(0, 2*np.pi, num_angles, endpoint=False)]
-    initial_angles = list(map(wrap_angle, np.random.uniform(0, 2*np.pi, num_angles))) # TODO: halton
-    initial_angles = [angle for angle in initial_angles if not tool_path_collision(
-        end_effector, element_pose, translation_path, direction, angle, reverse, obstacles)]
-    if not initial_angles:
-        return None
+    element = extrusion.element
+    reverse = extrusion.reverse
+    element_pose = extrusion.element_pose
+    translation_path = extrusion.translation_path
+
+    end_effector = extrusion.end_effector
+    robot = end_effector.robot
 
     if ee_only:
-        initial_angle = random.choice(initial_angles)
-        tool_path = compute_tool_path(element_pose, translation_path, direction, initial_angle, reverse)
         robot_path = []
         print_traj = PrintTrajectory(end_effector, get_movable_joints(robot), robot_path, tool_path, element, reverse)
         # TODO: plan_approach
@@ -260,6 +321,10 @@ def compute_direction_path(end_effector, length, reverse, element_bodies, elemen
         return None
     # TODO: constrain maximum conf displacement
     # TODO: alternating minimization for just position and also orientation
+    #angle_step_size = np.math.radians(0.25) # np.pi / 128
+    #angle_deltas = [-angle_step_size, 0, angle_step_size]
+    angle_deltas = [0]
+
     current_angle = initial_angle
     robot_path = [current_conf]
     for translation in translation_path[1:]:
@@ -322,7 +387,7 @@ def get_element_collision_fn(robot, obstacles):
 SKIP_PERCENTAGE = 0.0 # 0.0 | 0.95
 
 def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground_nodes,
-                     precompute_collisions=False, supports=False, # bidirectional=False,
+                     precompute_collisions=False, supports=False,
                      collisions=True, disable=False, ee_only=False, allow_failures=False,
                      max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS, max_time=INF, **kwargs):
     # TODO: print on full sphere and just check for collisions with the printed element
@@ -336,6 +401,9 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
     end_effector = EndEffector(robot, ee_link=link_from_name(robot, EE_LINK),
                                tool_link=link_from_name(robot, TOOL_LINK),
                                visual=False, collision=True)
+    extrusions = {reverse_element(element) if reverse else element:
+                      Extrusion(end_effector, element_bodies, node_points, ground_nodes, element, reverse)
+                  for element in element_bodies for reverse in [False, True]}
 
     def gen_fn(node1, element, extruded=[], trajectories=[]): # fluents=[]):
         start_time = time.time()
@@ -348,13 +416,10 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
             command = Command([traj])
             yield (command,)
             return
-        # TODO: cache the set of considered directions
+        directed = reverse_element(element) if reverse else element
+        extrusion = extrusions[directed]
 
         n1, n2 = reverse_element(element) if reverse else element
-        delta = node_points[n2] - node_points[n1]
-        # if delta[2] < 0:
-        #    continue
-        length = np.linalg.norm(delta)  # 5cm
         neighboring_elements = node_neighbors[n1] & node_neighbors[n2]
 
         #supporters = {e for e in node_neighbors[n1] if element_supports(e, n1, node_points)}
@@ -365,30 +430,22 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
         element_obstacles = {element_bodies[e] for e in supporters + list(extruded)}
         obstacles = set(fixed_obstacles) | element_obstacles
         if not collisions:
-            #obstacles = set()
-            obstacles = set(fixed_obstacles)
+            obstacles = set()
+            #obstacles = set(fixed_obstacles)
 
         elements_order = [e for e in element_bodies if (e != element) and (element_bodies[e] not in obstacles)]
         collision_fn = get_element_collision_fn(robot, obstacles)
 
-        if ORTHOGONAL_GROUND and is_ground(element, ground_nodes):
-            # TODO: orthogonal to the ground
-            direction_generator = cycle([Pose(euler=Euler(roll=0, pitch=0))])
-        else:
-            direction_generator = get_direction_generator(use_halton=False)
         trajectories = list(trajectories)
         for num in irange(INF):
-            for attempt in irange(max_directions):
-                direction = next(direction_generator)
+            for attempt, tool_traj in enumerate(islice(extrusion.generator(), max_directions)):
+                #tool_traj.safe_from_body = {} # Disables caching
+                if not tool_traj.is_safe(obstacles):
+                    continue
                 for _ in range(max_attempts):
                     if max_time <= elapsed_time(start_time):
                         return
-                    #if bidirectional:
-                    #    reverse = random.choice([False, True])
-                    #n1, n2 = reversed(element) if reverse else element
-                    command = compute_direction_path(end_effector, length, reverse, element_bodies, element,
-                                                     direction, obstacles, collision_fn,
-                                                     ee_only=ee_only, **kwargs)
+                    command = compute_direction_path(tool_traj, collision_fn, ee_only=ee_only, **kwargs)
                     if command is None:
                         continue
 
