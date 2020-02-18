@@ -8,7 +8,7 @@ from itertools import product, combinations
 import numpy as np
 
 from extrusion.utils import get_pairs, get_midpoint, SUPPORT_THETA, get_undirected, compute_element_distance, \
-    reverse_element, nodes_from_elements, is_start, is_end
+    reverse_element, nodes_from_elements, is_start, is_end, get_other_node
 from pddlstream.utils import get_connected_components
 from pybullet_tools.utils import get_distance, elapsed_time, BLACK, wait_for_user, BLUE, RED, get_pitch, INF, angle_between, remove_all_debug
 from extrusion.stiffness import plan_stiffness
@@ -16,7 +16,7 @@ from extrusion.stiffness import plan_stiffness
 INITIAL_NODE = 'initial'
 FINAL_NODE = 'final'
 SCALE = 1e3 # millimeters
-INVALID = 1e2 # meters (just make larger than sum of path)
+INVALID = 1e3 # meters (just make larger than sum of path)
 
 STATUS = """
 ROUTING_NOT_SOLVED: Problem not solved yet.
@@ -79,7 +79,7 @@ def greedily_plan(elements, node_points, ground_nodes, initial_point):
     remaining_elements = set(tree_elements)
     while remaining_elements:
         # key_fn = lambda d: (cost_from_edge[d], random.random())
-        # key_fn = lambda d: (cost_from_edge[d], compute_z_distance(node_points, d))
+        #key_fn = lambda d: (cost_from_edge[d], compute_z_distance(node_points, d))
         key_fn = lambda d: (cost_from_edge[d], get_distance(point, node_points[d[0]]))
         directed = min(remaining_elements, key=key_fn)
         remaining_elements.remove(directed)
@@ -146,16 +146,20 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, final_point,
     for node in keys_from_node:
         for edge in product(keys_from_node[node], repeat=2):
             extrusion_edges.add(edge)
+    # Key thing is partial order on buckets of elements to adhere to height
 
     # Connect v2 to v1 if v2 is the same level
     # Traversing an edge might move to a prior level (but at most one)
     transit_edges = set()
-    for edge in product(frame_nodes, repeat=2):
-        key1, key2 = edge
-        _, node1 = key1
+    for directed in product(frame_nodes, repeat=2):
+        key1, key2 = directed
+        element1, node1 = key1
+        #level1 = min(level_from_node[n] for n in element1)
+        level1 = level_from_node[get_other_node(node1, element1)]
         _, node2 = key2
-        if abs(level_from_node[node2] - level_from_node[node1]) <= 1:
-            transit_edges.add(edge)
+        level2 = level_from_node[node2]
+        if level2 in [level1, level1+1]:
+            transit_edges.add(directed)
     for key in frame_nodes:
         _, node = key
         if level_from_node[node] == 0:
@@ -220,6 +224,7 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, final_point,
         invalid, objective, cost, elapsed_time(start_time)))
     if visualize:
         remove_all_debug()
+        draw_ordered(ordered_pairs, point_from_vertex)
         wait_for_user()
     start_time = time.time()
 

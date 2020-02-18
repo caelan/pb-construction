@@ -3,7 +3,7 @@ import random
 import time
 
 from extrusion.progression import Node, retrace_trajectories, retrace_commands
-from extrusion.heuristics import get_heuristic_fn
+from extrusion.heuristics import get_heuristic_fn, get_tool_position
 from extrusion.motion import compute_motion, compute_motions
 from extrusion.parsing import load_extrusion
 from extrusion.stream import get_print_gen_fn, MAX_DIRECTIONS, MAX_ATTEMPTS
@@ -15,7 +15,7 @@ from extrusion.validator import compute_plan_deformation
 from extrusion.visualization import draw_ordered, draw_element
 from pddlstream.utils import outgoing_from_edges
 from pybullet_tools.utils import INF, get_movable_joints, get_joint_positions, randomize, has_gui, \
-    remove_all_debug, wait_for_user, elapsed_time, implies, LockRenderer
+    remove_all_debug, wait_for_user, elapsed_time, implies, LockRenderer, get_configuration
 from extrusion.optimize import optimize_commands
 
 def draw_action(node_points, printed, element):
@@ -44,8 +44,8 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
     # TODO: focus branching factor on most stable regions
 
     start_time = time.time()
-    joints = get_movable_joints(robot)
-    initial_conf = get_joint_positions(robot, joints)
+    initial_conf = get_configuration(robot)
+    initial_position = get_tool_position(robot)
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
     id_from_element = get_id_from_element(element_from_id)
     all_elements = frozenset(element_bodies)
@@ -58,13 +58,9 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
                                     collisions=collisions, **kwargs)
     heuristic_fn = get_heuristic_fn(robot, extrusion_path, heuristic, checker=checker, forward=False)
 
-    final_conf = initial_conf # TODO: allow choice of config
-    final_printed = all_elements
     queue = []
-    visited = {final_printed: Node(None, None)}
-
     outgoing_from_element = outgoing_from_edges(partial_orders)
-    def add_successors(printed, conf):
+    def add_successors(printed, position, conf):
         only_ground = printed <= ground_elements
         num_remaining = len(printed) - 1
         #assert 0 <= num_remaining
@@ -72,13 +68,17 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
             if not (outgoing_from_element[element] & printed) and implies(is_ground(element, ground_nodes), only_ground):
                 for directed in get_directions(element):
                     visits = 0
-                    bias = heuristic_fn(printed, directed, conf)
+                    bias = heuristic_fn(printed, directed, position, conf)
                     priority = (num_remaining, bias, random.random())
                     heapq.heappush(queue, (visits, priority, printed, directed, conf))
 
+    final_conf = initial_conf # TODO: allow choice of final config
+    final_position = initial_position
+    final_printed = all_elements
+    visited = {final_printed: Node(None, None)}
     if check_connected(ground_nodes, final_printed) and \
             (not stiffness or test_stiffness(extrusion_path, element_from_id, final_printed, checker=checker)):
-        add_successors(final_printed, final_conf)
+        add_successors(final_printed, final_position, final_conf)
 
     # if has_gui():
     #     sequence = sorted(final_printed, key=lambda e: heuristic_fn(final_printed, e, conf=None), reverse=True)
@@ -111,7 +111,8 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         #    draw_model(next_printed, node_points, ground_nodes)
         #    wait_for_user()
 
-        if (next_printed in visited) or (directed[0] not in next_nodes) or not check_connected(ground_nodes, next_printed):
+        node1, node2 = directed
+        if (next_printed in visited) or (node1 not in next_nodes) or not check_connected(ground_nodes, next_printed):
             continue
         # TODO: stiffness plan lazily here possibly with reuse
         if stiffness and not test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker):
@@ -120,10 +121,10 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         # TODO: stronger condition for this procedure
         # if plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, next_printed,
         #                   checker=checker, max_backtrack=0) is None:
-        #     # TODO: reuse stiffness plans
+        #     # TODO: cache and reuse prior stiffness plans
         #     print('Failed stiffness plan') # TODO: require just a short horizon
         #     continue
-        command, = next(print_gen_fn(directed[0], element, extruded=next_printed), (None,))
+        command, = next(print_gen_fn(node1, element, extruded=next_printed), (None,))
         if command is None:
             extrusion_failures += 1
             continue
@@ -169,7 +170,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
             break
             # if plan is not None:
             #     break
-        add_successors(next_printed, command.start_conf)
+        add_successors(next_printed, node_points[node1], command.start_conf)
         if revisit:
             heapq.heappush(queue, (visits + 1, priority, printed, directed, current_conf))
     #del checker

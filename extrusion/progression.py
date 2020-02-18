@@ -90,7 +90,7 @@ def add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn,
         element = get_undirected(all_elements, directed)
         if not (incoming_from_element[element] <= printed):
             continue
-        bias = heuristic_fn(printed, directed, conf)
+        bias = heuristic_fn(printed, directed, None, conf) # TODO: add position
         priority = (num_remaining, bias, random.random())
         visits = 0
         heapq.heappush(queue, (visits, priority, printed, directed, conf))

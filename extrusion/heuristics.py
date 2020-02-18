@@ -12,7 +12,7 @@ from extrusion.stiffness import create_stiffness_checker, force_from_reaction, t
 from extrusion.tsp import compute_component_mst, solve_tsp
 from pddlstream.utils import adjacent_from_edges, hash_or_id, get_connected_components, outgoing_from_edges
 from pybullet_tools.utils import get_distance, INF, get_joint_positions, get_movable_joints, get_link_pose, \
-    link_from_name, BodySaver, set_joint_positions, point_from_pose, get_pitch
+    link_from_name, BodySaver, set_joint_positions, point_from_pose, get_pitch, set_configuration
 
 DISTANCE_HEURISTICS = [
     'z',
@@ -74,6 +74,8 @@ def compute_distance_from_node(elements, node_points, ground_nodes):
     neighbors = adjacent_from_edges(elements)
     edge_costs = {edge: get_distance(node_points[edge[0]], node_points[edge[1]])
                   for edge in elements}
+    #edge_costs = {edge: np.abs(node_points[edge[1]] - node_points[edge[0]])[2]
+    #              for edge in elements}
     edge_costs.update({edge[::-1]: distance for edge, distance in edge_costs.items()})
     successor_fn = lambda v: neighbors[v]
     cost_fn = lambda v1, v2: edge_costs[v1, v2]
@@ -148,12 +150,15 @@ def score_stiffness(extrusion_path, element_from_id, elements, checker=None):
 
 ##################################################
 
-def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
-    joints = get_movable_joints(robot)
+def get_tool_position(robot):
     tool_link = link_from_name(robot, TOOL_LINK)
     #initial_conf = get_joint_positions(robot, joints)
     initial_pose = get_link_pose(robot, tool_link)
-    initial_point = point_from_pose(initial_pose)
+    return point_from_pose(initial_pose)
+
+def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
+
+    initial_point = get_tool_position(robot)
 
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
     all_elements = frozenset(element_from_id.values())
@@ -164,7 +169,7 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
 
     plan = None
     if heuristic == 'tsp':
-        plan, _ = solve_tsp(all_elements, ground_nodes, node_points, initial_point, initial_point, visualize=False)
+        plan, _ = solve_tsp(all_elements, ground_nodes, node_points, initial_point, initial_point, visualize=True)
     elif heuristic == 'plan-stiffness':
         plan = plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, all_elements,
                                         initial_position=initial_point, checker=checker, max_backtrack=INF)
@@ -183,7 +188,7 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
     # TODO: round values for more tie-breaking opportunities
     # TODO: compute for all all_elements up front, sort, and bucket for the score (more general than rounding)
 
-    def fn(printed, directed, conf):
+    def fn(printed, directed, position, conf):
         # Queue minimizes the statistic
         element = get_undirected(all_elements, directed)
         n1, n2 = directed
@@ -198,17 +203,19 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
         reduce_op = sum # sum | max | average
         reaction_fn = force_from_reaction  # force_from_reaction | torque_from_reaction
 
+        first_node, second_node = directed if forward else reverse_element(directed)
+        remaining_elements = all_elements - printed if forward else printed - {element}
+
+        tool_point = position
         tool_distance = 0.
         if heuristic in COST_HEURISTICS:
-            assert conf is not None
-            if hash_or_id(conf) not in ee_cache:
-                with BodySaver(robot):
-                    set_joint_positions(robot, joints, conf)
-                    ee_cache[hash_or_id(conf)] = get_link_pose(robot, tool_link)
-            tool_point = point_from_pose(ee_cache[hash_or_id(conf)])
-            first_node, second_node = directed if forward else reverse_element(directed)
+            if conf is not None:
+                if hash_or_id(conf) not in ee_cache:
+                    with BodySaver(robot):
+                        set_configuration(robot, conf)
+                        ee_cache[hash_or_id(conf)] = get_tool_position(robot)
+                tool_point = ee_cache[hash_or_id(conf)]
             tool_distance = get_distance(tool_point, node_points[first_node])
-            remaining_elements = all_elements - printed if forward else printed - {element}
 
         # TODO: weighted average to balance cost and bias
         if heuristic == 'none':
