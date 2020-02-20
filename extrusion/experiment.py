@@ -45,9 +45,13 @@ EXCLUDE = [
 EXPERIMENTS_DIR = 'experiments/'
 DATE_FORMAT = '%y-%m-%d_%H-%M-%S'
 
+def chunks(sequence, n=1):
+    for i in range(0, len(sequence), n):
+        yield sequence[i:i + n]
+
 ##################################################
 
-def train_parallel(args):
+def train_parallel(args, n=1):
     from extrusion.run import plan_extrusion
     assert SKIP_PERCENTAGE == 0
     initial_time = time.time()
@@ -64,20 +68,22 @@ def train_parallel(args):
     #heuristics = HEURISTICS
     heuristics = DISTANCE_HEURISTICS + COST_HEURISTICS
     seeds = list(range(args.num))
+    groups = list(chunks(seeds, n=n))
 
     print('Problems ({}): {}'.format(len(problems), problems))
     #problems = [path for path in problems if 'simple_frame' in path]
     print('Algorithms ({}): {}'.format(len(algorithms), algorithms))
     print('Heuristics ({}): {}'.format(len(heuristics), heuristics))
-    configurations = [[Configuration(seed, problem, algorithm, heuristic, args.max_time, args.cfree,
+    jobs = [[Configuration(seed, problem, algorithm, heuristic, args.max_time, args.cfree,
                                      args.disable, args.stiffness, args.motions, args.ee_only)
-                       for seed, algorithm, heuristic in product(seeds, algorithms, heuristics)]
-                      for problem in problems]
-    print('Configurations: {}'.format(len(configurations)))
+                       for seed, algorithm, heuristic in product(group, algorithms, heuristics)]
+                      for problem, group in product(problems, groups)]
+    # TODO: print the size per job
+    print('Jobs: {}'.format(len(jobs)))
 
     serial = is_darwin()
     available_cores = cpu_count()
-    num_cores = max(1, min(1 if serial else available_cores - 4, len(configurations)))
+    num_cores = max(1, min(1 if serial else available_cores - 4, len(jobs)))
     print('Max Cores:', available_cores)
     print('Serial:', serial)
     print('Using Cores:', num_cores)
@@ -90,7 +96,7 @@ def train_parallel(args):
     start_time = time.time()
     timeouts = 0
     pool = Pool(processes=num_cores)  # , initializer=mute)
-    generator = pool.imap_unordered(plan_extrusion, configurations, chunksize=1)
+    generator = pool.imap_unordered(plan_extrusion, jobs, chunksize=1)
     results = []
     while True:
         last_time = time.time()
@@ -98,7 +104,7 @@ def train_parallel(args):
             for config, data in generator.next(): # timeout=2 * args.max_time)
                 results.append((config, data))
                 print('{}/{} completed | {:.3f} seconds | timeouts: {} | {}'.format(
-                    len(results), len(configurations), elapsed_time(start_time), timeouts,
+                    len(results), len(jobs), elapsed_time(start_time), timeouts,
                     datetime.datetime.now().strftime(DATE_FORMAT)))
                 print(config, data)
             if results:
