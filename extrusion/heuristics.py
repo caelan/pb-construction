@@ -7,7 +7,8 @@ from collections import namedtuple
 from extrusion.equilibrium import compute_all_reactions, compute_node_reactions
 from extrusion.parsing import load_extrusion
 from extrusion.utils import get_extructed_ids, downselect_elements, compute_z_distance, TOOL_LINK, get_undirected, \
-    reverse_element, get_midpoint, nodes_from_elements, compute_printed_nodes, compute_transit_distance
+    reverse_element, get_midpoint, nodes_from_elements, compute_printed_nodes, compute_transit_distance, \
+    compute_sequence_distance, compute_element_distance
 from extrusion.stiffness import create_stiffness_checker, force_from_reaction, torque_from_reaction, plan_stiffness
 from extrusion.tsp import compute_component_mst, solve_tsp
 from pddlstream.utils import adjacent_from_edges, hash_or_id, get_connected_components, outgoing_from_edges
@@ -261,15 +262,19 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
                 #assert element in remaining
                 #printed_nodes = compute_printed_nodes(ground_nodes, printed) if forward else ground_nodes
                 tsp_cache[printed] = solve_tsp(all_elements, ground_nodes, node_points, printed, tool_point, initial_point,
-                                               layers=True, max_time=30, visualize=False, verbose=True)
+                                               bidirectional=False, layers=True, max_time=30, visualize=True, verbose=True)
+                #print(tsp_cache[printed])
                 #last_plan[:] = plan
             plan, cost = tsp_cache[printed]
+            #plan = [...]
+            #plan = plan[len(printed):]
             if plan is None:
                 #return tool_distance
                 return (layer, INF)
             transit = compute_transit_distance(node_points, plan, start=tool_point, end=initial_point)
             assert forward
-            #return plan[0] != directed # No info if the best isn't possible
+            first = plan[0] == directed
+            #return not first # No info if the best isn't possible
             index = None
             for i, directed2 in enumerate(plan):
                 undirected2 = get_undirected(all_elements, directed2)
@@ -277,11 +282,15 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
                     assert index is None
                     index = i
             assert index is not None
+            # Could also break ties by other in the plan
+            # Two plans might have the same cost but the swap might be detrimental
             new_plan = [directed] + plan[:index] + plan[index+1:]
             assert len(plan) == len(new_plan)
             new_transit = compute_transit_distance(node_points, new_plan, start=tool_point, end=initial_point)
-            #print(layer, cost, transit, new_transit)
-            return (layer, new_transit) # Layer important otherwise it shortcuts
+            #print(layer, cost, transit + compute_element_distance(node_points, plan),
+            #      new_transit + compute_element_distance(node_points, plan))
+            #return new_transit
+            return (layer, not first, new_transit) # Layer important otherwise it shortcuts
         elif heuristic == 'online-tsp':
             if forward:
                 _, tsp_distance = solve_tsp(all_elements-structure, ground_nodes, node_points, printed,

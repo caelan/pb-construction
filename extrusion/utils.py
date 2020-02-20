@@ -444,7 +444,7 @@ def compute_transit_distance(node_points, directed_elements, start=None, end=Non
         pairs.append((node_points[directed_elements[-1][1]], end))
     return sum(get_distance(*pair) for pair in pairs)
 
-def compute_sequence_distance(node_points, directed_elements, start=None):
+def compute_sequence_distance(node_points, directed_elements, start=None, end=None):
     if directed_elements is None:
         return INF
     distance = 0.
@@ -454,8 +454,8 @@ def compute_sequence_distance(node_points, directed_elements, start=None):
             distance += get_distance(position, node_points[n1])
         distance += get_distance(node_points[n1], node_points[n2])
         position = node_points[n2]
-    if start is not None:
-        distance += get_distance(position, start)
+    if end is not None:
+        distance += get_distance(position, end)
     return distance
 
 ##################################################

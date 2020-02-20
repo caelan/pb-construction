@@ -8,7 +8,8 @@ from itertools import product, combinations
 import numpy as np
 
 from extrusion.utils import get_pairs, get_midpoint, SUPPORT_THETA, get_undirected, compute_element_distance, \
-    reverse_element, nodes_from_elements, is_start, is_end, get_other_node, compute_transit_distance, compute_printed_nodes
+    reverse_element, nodes_from_elements, is_start, is_end, get_other_node, \
+    compute_transit_distance, compute_printed_nodes, compute_sequence_distance
 from pddlstream.utils import get_connected_components
 from pybullet_tools.utils import get_distance, elapsed_time, BLACK, wait_for_user, BLUE, RED, get_pitch, INF, \
     angle_between, remove_all_debug, GREEN, draw_point
@@ -16,7 +17,7 @@ from extrusion.stiffness import plan_stiffness
 
 INITIAL_NODE = 'initial'
 FINAL_NODE = 'final'
-SCALE = 1e3 # millimeters
+SCALE = 1e6 # millimeters
 INVALID = 1e3 # meters (just make larger than sum of path)
 
 STATUS = """
@@ -80,6 +81,7 @@ def greedily_plan(all_elements, node_points, ground_nodes, remaining, initial_po
     sequence = []
     remaining_elements = set(cost_from_edge)
     while remaining_elements:
+        # TODO: sample different random seeds
         #key_fn = lambda d: (cost_from_edge[d], random.random())
         #key_fn = lambda d: (cost_from_edge[d], compute_z_distance(node_points, d))
         key_fn = lambda d: (cost_from_edge[d], get_distance(point, node_points[d[0]]))
@@ -91,8 +93,22 @@ def greedily_plan(all_elements, node_points, ground_nodes, remaining, initial_po
     # wait_for_user()
     return level_from_node, cost_from_edge, sequence
 
-def solve_tsp(all_elements, ground_nodes, node_points, printed, initial_point, final_point, layers=True,
-              max_time=30, visualize=True, verbose=False):
+def extract_sequence(level_from_node, remaining, ordered_pairs):
+    planned = set()
+    sequence = []
+    for key1, key2 in ordered_pairs[1:-1]:
+        element1, node1 = key1
+        element2, node2 = key2
+        if (element1 == element2) and (element1 not in planned) and (node1 in level_from_node):
+            directed = reverse_element(element1) if is_end(node1, element1) else element1
+            planned.add(element1)
+            sequence.append(directed)
+    if remaining != planned:
+        return None
+    return sequence
+
+def solve_tsp(all_elements, ground_nodes, node_points, printed, initial_point, final_point,
+              bidirectional=False, layers=True, max_time=30, visualize=True, verbose=False):
     # https://developers.google.com/optimization/routing/tsp
     # https://developers.google.com/optimization/reference/constraint_solver/routing/RoutingModel
     # http://www.math.uwaterloo.ca/tsp/concorde.html
@@ -103,6 +119,7 @@ def solve_tsp(all_elements, ground_nodes, node_points, printed, initial_point, f
     # TODO: Minimum Spanning Tree (MST) bias
     # TODO: time window constraint to ensure connected
     # TODO: reuse by simply swapping out the first vertex
+    # arc-routing
     from ortools.constraint_solver import routing_enums_pb2, pywrapcp
     from extrusion.visualization import draw_ordered, draw_model
     start_time = time.time()
@@ -145,7 +162,7 @@ def solve_tsp(all_elements, ground_nodes, node_points, printed, initial_point, f
             # theta = angle_between(delta, [0, 0, -1])
             # upward = theta < (np.pi / 2 - SUPPORT_THETA)
             #if (directed in tree_elements): # or upward:
-            if directed in cost_from_edge:
+            if bidirectional or (directed in cost_from_edge):
                 # Add edges from anything that is roughly the correct cost
                 start = (element, node1)
                 end = (element, node2)
@@ -180,11 +197,12 @@ def solve_tsp(all_elements, ground_nodes, node_points, printed, initial_point, f
 
     key_from_index = list({k for pair in extrusion_edges | transit_edges for k in pair})
     edge_weights = {pair: INVALID for pair in product(key_from_index, repeat=2)}
-    for k1, k2 in transit_edges:
+    for k1, k2 in transit_edges | extrusion_edges:
         p1, p2 = point_from_vertex[k1], point_from_vertex[k2]
         edge_weights[k1, k2] = get_distance(p1, p2)
-    edge_weights.update({e: 0. for e in extrusion_edges}) # frame edges are free
+    #edge_weights.update({e: 0. for e in extrusion_edges}) # frame edges are free
     edge_weights[FINAL_NODE, INITIAL_NODE] = 0.
+    edge_weights[INITIAL_NODE, FINAL_NODE] = INVALID # Otherwise might be backward
 
     print('Elements: {} | Vertices: {} | Edges: {} | Structure: {:.3f} | Min Level {} | Max Level: {}'.format(
         len(remaining), len(key_from_index), len(edge_weights), total_distance, min_level, max_level))
@@ -231,9 +249,9 @@ def solve_tsp(all_elements, ground_nodes, node_points, printed, initial_point, f
     order = parse_solution(solver, manager, key_from_index, initial_solution)[:-1]
     ordered_pairs = get_pairs(order)
     cost = sum(edge_weights[pair] for pair in ordered_pairs)
-    print('Initial solution | Invalid: {} | Objective: {:.3f} | Cost: {:.3f} | Duration: {:.3f}s'.format(
-        invalid, objective, cost, elapsed_time(start_time)))
-    if visualize: # and invalid
+    #print('Initial solution | Invalid: {} | Objective: {:.3f} | Cost: {:.3f} | Duration: {:.3f}s'.format(
+    #    invalid, objective, cost, elapsed_time(start_time)))
+    if False and visualize: # and invalid
         remove_all_debug()
         draw_model(printed, node_points, None, color=BLACK)
         draw_point(initial_point, color=BLACK)
@@ -244,16 +262,22 @@ def solve_tsp(all_elements, ground_nodes, node_points, printed, initial_point, f
                     draw_point(point_from_vertex[key], color=RED)
         draw_ordered(ordered_pairs, point_from_vertex)
         wait_for_user() # TODO: pause only if viewer
-    start_time = time.time()
+    #sequence = extract_sequence(level_from_node, remaining, ordered_pairs)
+    #print(compute_sequence_distance(node_points, sequence, start=initial_point, end=final_point), total_distance+cost)
+    #print([cost_from_edge[edge] for edge in sequence])
+    #return sequence, cost
 
+    start_time = time.time()
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()
     #search_parameters.solution_limit = 1
     search_parameters.time_limit.seconds = int(max_time)
     search_parameters.log_search = verbose
+    # AUTOMATIC | PATH_CHEAPEST_ARC | LOCAL_CHEAPEST_ARC | GLOBAL_CHEAPEST_ARC | LOCAL_CHEAPEST_INSERTION
     #search_parameters.first_solution_strategy = (
-    #    routing_enums_pb2.FirstSolutionStrategy.AUTOMATIC) # AUTOMATIC | PATH_CHEAPEST_ARC
+    #    routing_enums_pb2.FirstSolutionStrategy.AUTOMATIC)
+    # AUTOMATIC | GREEDY_DESCENT | GUIDED_LOCAL_SEARCH | SIMULATED_ANNEALING | TABU_SEARCH | OBJECTIVE_TABU_SEARCH
     #search_parameters.local_search_metaheuristic = (
-    #    routing_enums_pb2.LocalSearchMetaheuristic.AUTOMATIC) # AUTOMATIC | GUIDED_LOCAL_SEARCH
+    #    routing_enums_pb2.LocalSearchMetaheuristic.GREEDY_DESCENT)
     #solution = solver.SolveWithParameters(search_parameters)
     solution = solver.SolveFromAssignmentWithParameters(initial_solution, search_parameters)
     #print_solution(manager, solver, solution)
@@ -271,6 +295,10 @@ def solve_tsp(all_elements, ground_nodes, node_points, printed, initial_point, f
     cost = sum(edge_weights[pair] for pair in ordered_pairs)
     print('Final solution | Invalid: {} | Objective: {:.3f} | Cost: {:.3f} | Duration: {:.3f}s'.format(
         invalid, objective, cost, elapsed_time(start_time)))
+
+    sequence = extract_sequence(level_from_node, remaining, ordered_pairs)
+    #print(compute_sequence_distance(node_points, sequence, start=initial_point, end=final_point)) #, total_distance+cost)
+
     if visualize:
         # TODO: visualize by weight
         remove_all_debug()
@@ -282,17 +310,9 @@ def solve_tsp(all_elements, ground_nodes, node_points, printed, initial_point, f
         draw_ordered(ordered_pairs, point_from_vertex)
         wait_for_user()
 
-    planned = set()
-    sequence = []
-    for key1, key2 in ordered_pairs[1:-1]:
-        element1, node1 = key1
-        element2, node2 = key2
-        if (element1 == element2) and (element1 not in planned) and (node1 in level_from_node):
-            directed = reverse_element(element1) if is_end(node1, element1) else element1
-            planned.add(element1)
-            sequence.append(directed)
-    if remaining != planned:
+    if sequence is None:
         return None, INF
+    #print([cost_from_edge[edge] for edge in sequence])
     return sequence, cost
 
 ##################################################
