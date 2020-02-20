@@ -157,7 +157,6 @@ def get_tool_position(robot):
     return point_from_pose(initial_pose)
 
 def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
-
     initial_point = get_tool_position(robot)
 
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
@@ -170,7 +169,7 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
     tsp_cache = {} # Technically influenced by the current position as well
     plan = None
     if heuristic == 'fixed-tsp':
-        plan, _ = solve_tsp(all_elements, ground_nodes, node_points, initial_point, initial_point, visualize=False)
+        plan, _ = solve_tsp(all_elements, ground_nodes, node_points, set(), initial_point, initial_point, visualize=False)
         #tsp_cache[all_elements] = plan
     elif heuristic == 'plan-stiffness':
         plan = plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, all_elements,
@@ -208,6 +207,7 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
         reaction_fn = force_from_reaction  # force_from_reaction | torque_from_reaction
 
         first_node, second_node = directed if forward else reverse_element(directed)
+        layer = sign * layer_from_edge[element]
 
         tool_point = position
         tool_distance = 0.
@@ -238,7 +238,7 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
         elif heuristic == 'distance':
             return tool_distance
         elif heuristic == 'layered-distance':
-            return (sign*layer_from_edge[element], tool_distance)
+            return (layer, tool_distance)
         # elif heuristic == 'components':
         #     # Ground nodes intentionally omitted
         #     # TODO: this is broken
@@ -257,18 +257,17 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
         elif heuristic == 'tsp':
             if printed not in tsp_cache:
                 # TODO: seed with the previous solution
-                remaining = all_elements - printed if forward else printed
-                assert element in remaining
-                printed_nodes = compute_printed_nodes(ground_nodes, printed) if forward else ground_nodes
-                plan, _ = solve_tsp(remaining, printed_nodes, node_points, tool_point, initial_point,
-                                    layers=True, max_time=30, visualize=False, verbose=True)
-                tsp_cache[printed] = plan
+                #remaining = all_elements - printed if forward else printed
+                #assert element in remaining
+                #printed_nodes = compute_printed_nodes(ground_nodes, printed) if forward else ground_nodes
+                tsp_cache[printed] = solve_tsp(all_elements, ground_nodes, node_points, printed, tool_point, initial_point,
+                                               layers=True, max_time=30, visualize=False, verbose=True)
                 #last_plan[:] = plan
-            plan = tsp_cache[printed]
+            plan, cost = tsp_cache[printed]
             if plan is None:
                 #return tool_distance
-                return INF
-            #transit = compute_transit_distance(node_points, plan, start=tool_point, end=initial_point)
+                return (layer, INF)
+            transit = compute_transit_distance(node_points, plan, start=tool_point, end=initial_point)
             assert forward
             #return plan[0] != directed # No info if the best isn't possible
             index = None
@@ -281,14 +280,14 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
             new_plan = [directed] + plan[:index] + plan[index+1:]
             assert len(plan) == len(new_plan)
             new_transit = compute_transit_distance(node_points, new_plan, start=tool_point, end=initial_point)
-            #print(transit, new_transit)
-            return new_transit
+            #print(layer, cost, transit, new_transit)
+            return (layer, new_transit) # Layer important otherwise it shortcuts
         elif heuristic == 'online-tsp':
             if forward:
-                _, tsp_distance = solve_tsp(all_elements-structure, ground_nodes, node_points,
+                _, tsp_distance = solve_tsp(all_elements-structure, ground_nodes, node_points, printed,
                                             node_points[second_node], initial_point, visualize=False)
             else:
-                _, tsp_distance = solve_tsp(structure, ground_nodes, node_points, initial_point,
+                _, tsp_distance = solve_tsp(structure, ground_nodes, node_points, printed, initial_point,
                                             node_points[second_node], visualize=False)
             total = tool_distance + tsp_distance
             return total

@@ -8,7 +8,7 @@ from itertools import product, combinations
 import numpy as np
 
 from extrusion.utils import get_pairs, get_midpoint, SUPPORT_THETA, get_undirected, compute_element_distance, \
-    reverse_element, nodes_from_elements, is_start, is_end, get_other_node, compute_transit_distance
+    reverse_element, nodes_from_elements, is_start, is_end, get_other_node, compute_transit_distance, compute_printed_nodes
 from pddlstream.utils import get_connected_components
 from pybullet_tools.utils import get_distance, elapsed_time, BLACK, wait_for_user, BLUE, RED, get_pitch, INF, \
     angle_between, remove_all_debug, GREEN, draw_point
@@ -60,24 +60,25 @@ def parse_solution(solver, manager, key_from_index, solution):
     order.append(key_from_index[manager.IndexToNode(index)])
     return order
 
-def greedily_plan(elements, node_points, ground_nodes, initial_point):
+##################################################
+
+def greedily_plan(all_elements, node_points, ground_nodes, remaining, initial_point):
     from extrusion.heuristics import compute_distance_from_node, compute_layer_from_vertex, compute_z_distance
-    level_from_node = compute_layer_from_vertex(elements, node_points, ground_nodes)
+    level_from_node = compute_layer_from_vertex(all_elements, node_points, ground_nodes)
     cost_from_edge = {}
-    if not all(node in level_from_node for node in nodes_from_elements(elements)):
+    if not all(node in level_from_node for node in nodes_from_elements(remaining)):
         return level_from_node, cost_from_edge, None # Disconnected
-    for edge in elements:  # TODO: might be redundant given compute_layer_from_element
+    for edge in remaining:  # TODO: might be redundant given compute_layer_from_element
         n1, n2 = edge
         if level_from_node[n1] <= level_from_node[n2]:
             cost_from_edge[n1, n2] = level_from_node[n1]
         else:
             cost_from_edge[n2, n1] = level_from_node[n2]
-    tree_elements = set(cost_from_edge)
     # sequence = sorted(tree_elements, key=lambda e: cost_from_edge[e])
 
     point = initial_point
     sequence = []
-    remaining_elements = set(tree_elements)
+    remaining_elements = set(cost_from_edge)
     while remaining_elements:
         #key_fn = lambda d: (cost_from_edge[d], random.random())
         #key_fn = lambda d: (cost_from_edge[d], compute_z_distance(node_points, d))
@@ -90,7 +91,7 @@ def greedily_plan(elements, node_points, ground_nodes, initial_point):
     # wait_for_user()
     return level_from_node, cost_from_edge, sequence
 
-def solve_tsp(elements, ground_nodes, node_points, initial_point, final_point, layers=True,
+def solve_tsp(all_elements, ground_nodes, node_points, printed, initial_point, final_point, layers=True,
               max_time=30, visualize=True, verbose=False):
     # https://developers.google.com/optimization/routing/tsp
     # https://developers.google.com/optimization/reference/constraint_solver/routing/RoutingModel
@@ -104,31 +105,35 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, final_point, l
     # TODO: reuse by simply swapping out the first vertex
     from ortools.constraint_solver import routing_enums_pb2, pywrapcp
     from extrusion.visualization import draw_ordered, draw_model
+    start_time = time.time()
     assert initial_point is not None
-    if not elements:
+    remaining = all_elements - printed
+    #printed_nodes = compute_printed_nodes(ground_nodes, printed)
+    if not remaining:
         cost = get_distance(initial_point, final_point)
         return [], cost
-    start_time = time.time()
-    total_distance = compute_element_distance(node_points, elements)
+    # TODO: use as a lower bound
+    total_distance = compute_element_distance(node_points, remaining)
 
     # TODO: some of these are invalid still
-    # TODO: need to compute this upfront once otherwise the levels change
-    level_from_node, cost_from_edge, sequence = greedily_plan(elements, node_points, ground_nodes, initial_point)
+    level_from_node, cost_from_edge, sequence = greedily_plan(all_elements, node_points, ground_nodes, remaining, initial_point)
     if sequence is None:
         return None, INF
     extrusion_edges = set()
     point_from_vertex = {INITIAL_NODE: initial_point, FINAL_NODE: final_point}
-    frame_nodes = set()
-    max_level = max(level_from_node.values())
+    frame_nodes = nodes_from_elements(remaining)
+    min_level = min(level_from_node[n] for n in frame_nodes)
+    max_level = max(level_from_node[n] for n in frame_nodes)
 
+    frame_keys = set()
     keys_from_node = defaultdict(set)
-    for element in elements:
+    for element in remaining:
         mid = (element, element)
         point_from_vertex[mid] = get_midpoint(node_points, element)
         for node in element:
             key = (element, node)
             point_from_vertex[key] = node_points[node]
-            frame_nodes.add(key)
+            frame_keys.add(key)
             keys_from_node[node].add(key)
 
         for reverse in [True, False]:
@@ -154,23 +159,24 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, final_point, l
     # Connect v2 to v1 if v2 is the same level
     # Traversing an edge might move to a prior level (but at most one)
     transit_edges = set()
-    for directed in product(frame_nodes, repeat=2):
+    for directed in product(frame_keys, repeat=2):
         key1, key2 = directed
         element1, node1 = key1
         #level1 = min(level_from_node[n] for n in element1)
         level1 = level_from_node[get_other_node(node1, element1)]
         _, node2 = key2
         level2 = level_from_node[node2]
-        if level2 in [level1, level1+1]:
+        if level2 in [level1, level1+1]: # TODO: could bucket more coarsely
             transit_edges.add(directed)
-    for key in frame_nodes:
+    for key in frame_keys:
         _, node = key
-        if level_from_node[node] == 0:
+        if level_from_node[node] == min_level:
             transit_edges.add((INITIAL_NODE, key))
         if level_from_node[node] in [max_level, max_level-1]:
             transit_edges.add((key, FINAL_NODE))
+    # TODO: can also remove restriction that elements are printed in a single direction
     if not layers:
-        transit_edges.update(product(frame_nodes | {INITIAL_NODE, FINAL_NODE}, repeat=2)) # TODO: apply to greedy as well
+        transit_edges.update(product(frame_keys | {INITIAL_NODE, FINAL_NODE}, repeat=2)) # TODO: apply to greedy as well
 
     key_from_index = list({k for pair in extrusion_edges | transit_edges for k in pair})
     edge_weights = {pair: INVALID for pair in product(key_from_index, repeat=2)}
@@ -180,8 +186,8 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, final_point, l
     edge_weights.update({e: 0. for e in extrusion_edges}) # frame edges are free
     edge_weights[FINAL_NODE, INITIAL_NODE] = 0.
 
-    print('Elements: {} | Vertices: {} | Edges: {} | Structure: {:.3f} | Level: {}'.format(
-        len(elements), len(key_from_index), len(edge_weights), total_distance, max_level))
+    print('Elements: {} | Vertices: {} | Edges: {} | Structure: {:.3f} | Min Level {} | Max Level: {}'.format(
+        len(remaining), len(key_from_index), len(edge_weights), total_distance, min_level, max_level))
     index_from_key = dict(map(reversed, enumerate(key_from_index)))
     num_vehicles, depot = 1, index_from_key[INITIAL_NODE]
     manager = pywrapcp.RoutingIndexManager(len(key_from_index), num_vehicles, depot)
@@ -202,7 +208,7 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, final_point, l
     #initial_order = [INITIAL_NODE] # Start and end automatically included
     for directed in sequence:
         node1, node2 = directed
-        element = get_undirected(elements, directed)
+        element = get_undirected(remaining, directed)
         initial_order.extend([
             (element, node1),
             (element, element),
@@ -229,11 +235,11 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, final_point, l
         invalid, objective, cost, elapsed_time(start_time)))
     if visualize: # and invalid
         remove_all_debug()
+        draw_model(printed, node_points, None, color=BLACK)
         draw_point(initial_point, color=BLACK)
         draw_point(final_point, color=GREEN)
         for pair in ordered_pairs:
             if edge_weights[pair] == INVALID:
-                print(pair)
                 for key in pair:
                     draw_point(point_from_vertex[key], color=RED)
         draw_ordered(ordered_pairs, point_from_vertex)
@@ -268,21 +274,24 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, final_point, l
     if visualize:
         # TODO: visualize by weight
         remove_all_debug()
+        draw_model(printed, node_points, None, color=BLACK)
+        draw_point(initial_point, color=BLACK)
+        draw_point(final_point, color=GREEN)
         #tour_pairs = ordered_pairs + get_pairs(list(reversed(order)))
         #draw_model(extrusion_edges - set(tour_pairs), point_from_vertex, ground_nodes, color=BLACK)
         draw_ordered(ordered_pairs, point_from_vertex)
         wait_for_user()
 
-    printed = set()
+    planned = set()
     sequence = []
     for key1, key2 in ordered_pairs[1:-1]:
         element1, node1 = key1
         element2, node2 = key2
-        if (element1 == element2) and (element1 not in printed) and (node1 in level_from_node):
+        if (element1 == element2) and (element1 not in planned) and (node1 in level_from_node):
             directed = reverse_element(element1) if is_end(node1, element1) else element1
-            printed.add(element1)
+            planned.add(element1)
             sequence.append(directed)
-    if elements != printed:
+    if remaining != planned:
         return None, INF
     return sequence, cost
 
