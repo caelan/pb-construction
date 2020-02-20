@@ -10,7 +10,8 @@ import numpy as np
 from extrusion.utils import get_pairs, get_midpoint, SUPPORT_THETA, get_undirected, compute_element_distance, \
     reverse_element, nodes_from_elements, is_start, is_end, get_other_node, compute_transit_distance
 from pddlstream.utils import get_connected_components
-from pybullet_tools.utils import get_distance, elapsed_time, BLACK, wait_for_user, BLUE, RED, get_pitch, INF, angle_between, remove_all_debug
+from pybullet_tools.utils import get_distance, elapsed_time, BLACK, wait_for_user, BLUE, RED, get_pitch, INF, \
+    angle_between, remove_all_debug, GREEN, draw_point
 from extrusion.stiffness import plan_stiffness
 
 INITIAL_NODE = 'initial'
@@ -78,7 +79,7 @@ def greedily_plan(elements, node_points, ground_nodes, initial_point):
     sequence = []
     remaining_elements = set(tree_elements)
     while remaining_elements:
-        # key_fn = lambda d: (cost_from_edge[d], random.random())
+        #key_fn = lambda d: (cost_from_edge[d], random.random())
         #key_fn = lambda d: (cost_from_edge[d], compute_z_distance(node_points, d))
         key_fn = lambda d: (cost_from_edge[d], get_distance(point, node_points[d[0]]))
         directed = min(remaining_elements, key=key_fn)
@@ -89,7 +90,7 @@ def greedily_plan(elements, node_points, ground_nodes, initial_point):
     # wait_for_user()
     return level_from_node, cost_from_edge, sequence
 
-def solve_tsp(elements, ground_nodes, node_points, initial_point, final_point,
+def solve_tsp(elements, ground_nodes, node_points, initial_point, final_point, layers=True,
               max_time=30, visualize=True, verbose=False):
     # https://developers.google.com/optimization/routing/tsp
     # https://developers.google.com/optimization/reference/constraint_solver/routing/RoutingModel
@@ -111,6 +112,7 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, final_point,
     total_distance = compute_element_distance(node_points, elements)
 
     # TODO: some of these are invalid still
+    # TODO: need to compute this upfront once otherwise the levels change
     level_from_node, cost_from_edge, sequence = greedily_plan(elements, node_points, ground_nodes, initial_point)
     if sequence is None:
         return None, INF
@@ -165,8 +167,10 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, final_point,
         _, node = key
         if level_from_node[node] == 0:
             transit_edges.add((INITIAL_NODE, key))
-        if level_from_node[node] == max_level:
+        if level_from_node[node] in [max_level, max_level-1]:
             transit_edges.add((key, FINAL_NODE))
+    if not layers:
+        transit_edges.update(product(frame_nodes | {INITIAL_NODE, FINAL_NODE}, repeat=2)) # TODO: apply to greedy as well
 
     key_from_index = list({k for pair in extrusion_edges | transit_edges for k in pair})
     edge_weights = {pair: INVALID for pair in product(key_from_index, repeat=2)}
@@ -218,13 +222,20 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, final_point,
 
     objective = initial_solution.ObjectiveValue() / SCALE
     invalid = int(objective / INVALID)
-    order = parse_solution(solver, manager, key_from_index, initial_solution)
+    order = parse_solution(solver, manager, key_from_index, initial_solution)[:-1]
     ordered_pairs = get_pairs(order)
     cost = sum(edge_weights[pair] for pair in ordered_pairs)
     print('Initial solution | Invalid: {} | Objective: {:.3f} | Cost: {:.3f} | Duration: {:.3f}s'.format(
         invalid, objective, cost, elapsed_time(start_time)))
-    if visualize:
+    if visualize: # and invalid
         remove_all_debug()
+        draw_point(initial_point, color=BLACK)
+        draw_point(final_point, color=GREEN)
+        for pair in ordered_pairs:
+            if edge_weights[pair] == INVALID:
+                print(pair)
+                for key in pair:
+                    draw_point(point_from_vertex[key], color=RED)
         draw_ordered(ordered_pairs, point_from_vertex)
         wait_for_user() # TODO: pause only if viewer
     start_time = time.time()
@@ -248,7 +259,7 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, final_point,
 
     objective = solution.ObjectiveValue() / SCALE
     invalid = int(objective / INVALID)
-    order = parse_solution(solver, manager, key_from_index, solution)
+    order = parse_solution(solver, manager, key_from_index, solution)[:-1]
     ordered_pairs = get_pairs(order) # + [(order[-1], order[0])]
     #cost = compute_element_distance(point_from_vertex, ordered_pairs)
     cost = sum(edge_weights[pair] for pair in ordered_pairs)
@@ -264,7 +275,7 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, final_point,
 
     printed = set()
     sequence = []
-    for key1, key2 in ordered_pairs[1:-2]:
+    for key1, key2 in ordered_pairs[1:-1]:
         element1, node1 = key1
         element2, node2 = key2
         if (element1 == element2) and (element1 not in printed) and (node1 in level_from_node):

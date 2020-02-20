@@ -256,12 +256,12 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
             return (sign*order[element], tool_distance) # Chooses least expensive direction
         elif heuristic == 'tsp':
             if printed not in tsp_cache:
-                # TODO: reuse solutions
+                # TODO: seed with the previous solution
                 remaining = all_elements - printed if forward else printed
                 assert element in remaining
                 printed_nodes = compute_printed_nodes(ground_nodes, printed) if forward else ground_nodes
                 plan, _ = solve_tsp(remaining, printed_nodes, node_points, tool_point, initial_point,
-                                    max_time=30, visualize=False, verbose=True)
+                                    layers=True, max_time=30, visualize=False, verbose=True)
                 tsp_cache[printed] = plan
                 #last_plan[:] = plan
             plan = tsp_cache[printed]
@@ -270,6 +270,7 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
                 return INF
             #transit = compute_transit_distance(node_points, plan, start=tool_point, end=initial_point)
             assert forward
+            #return plan[0] != directed # No info if the best isn't possible
             index = None
             for i, directed2 in enumerate(plan):
                 undirected2 = get_undirected(all_elements, directed2)
