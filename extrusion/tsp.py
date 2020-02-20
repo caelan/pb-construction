@@ -8,7 +8,7 @@ from itertools import product, combinations
 import numpy as np
 
 from extrusion.utils import get_pairs, get_midpoint, SUPPORT_THETA, get_undirected, compute_element_distance, \
-    reverse_element, nodes_from_elements, is_start, is_end, get_other_node
+    reverse_element, nodes_from_elements, is_start, is_end, get_other_node, compute_transit_distance
 from pddlstream.utils import get_connected_components
 from pybullet_tools.utils import get_distance, elapsed_time, BLACK, wait_for_user, BLUE, RED, get_pitch, INF, angle_between, remove_all_debug
 from extrusion.stiffness import plan_stiffness
@@ -110,6 +110,7 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, final_point,
     start_time = time.time()
     total_distance = compute_element_distance(node_points, elements)
 
+    # TODO: some of these are invalid still
     level_from_node, cost_from_edge, sequence = greedily_plan(elements, node_points, ground_nodes, initial_point)
     if sequence is None:
         return None, INF
@@ -252,7 +253,7 @@ def solve_tsp(elements, ground_nodes, node_points, initial_point, final_point,
     #cost = compute_element_distance(point_from_vertex, ordered_pairs)
     cost = sum(edge_weights[pair] for pair in ordered_pairs)
     print('Final solution | Invalid: {} | Objective: {:.3f} | Cost: {:.3f} | Duration: {:.3f}s'.format(
-        invalid, cost, objective, elapsed_time(start_time)))
+        invalid, objective, cost, elapsed_time(start_time)))
     if visualize:
         # TODO: visualize by weight
         remove_all_debug()

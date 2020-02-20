@@ -7,7 +7,7 @@ from collections import namedtuple
 from extrusion.equilibrium import compute_all_reactions, compute_node_reactions
 from extrusion.parsing import load_extrusion
 from extrusion.utils import get_extructed_ids, downselect_elements, compute_z_distance, TOOL_LINK, get_undirected, \
-    reverse_element, get_midpoint, nodes_from_elements
+    reverse_element, get_midpoint, nodes_from_elements, compute_printed_nodes, compute_transit_distance
 from extrusion.stiffness import create_stiffness_checker, force_from_reaction, torque_from_reaction, plan_stiffness
 from extrusion.tsp import compute_component_mst, solve_tsp
 from pddlstream.utils import adjacent_from_edges, hash_or_id, get_connected_components, outgoing_from_edges
@@ -174,7 +174,7 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
         #tsp_cache[all_elements] = plan
     elif heuristic == 'plan-stiffness':
         plan = plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, all_elements,
-                                        initial_position=initial_point, checker=checker, max_backtrack=INF)
+                              initial_position=initial_point, checker=checker, max_backtrack=INF)
     order = None
     if plan is not None:
         order = {get_undirected(all_elements, directed): i for i, directed in enumerate(plan)}
@@ -184,6 +184,7 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
         stiffness_cache.update({element: score_stiffness(extrusion_path, element_from_id, all_elements - {element},
                                                          checker=checker) for element in all_elements})
 
+    #last_plan = None
     reaction_cache = {}
     distance_cache = {}
     ee_cache = {}
@@ -195,6 +196,7 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
         element = get_undirected(all_elements, directed)
         n1, n2 = directed
 
+        # forward adds, backward removes
         structure = printed | {element} if forward else printed - {element}
         structure_ids = get_extructed_ids(element_from_id, structure)
 
@@ -206,7 +208,6 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
         reaction_fn = force_from_reaction  # force_from_reaction | torque_from_reaction
 
         first_node, second_node = directed if forward else reverse_element(directed)
-        remaining_elements = all_elements - printed if forward else printed - {element}
 
         tool_point = position
         tool_distance = 0.
@@ -238,11 +239,14 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
             return tool_distance
         elif heuristic == 'layered-distance':
             return (sign*layer_from_edge[element], tool_distance)
-        elif heuristic == 'components':
-            vertices = {v for e in remaining_elements for v in e}
-            components = get_connected_components(vertices, remaining_elements)
-            #print('Components: {} | Distance: {:.3f}'.format(len(components), tool_distance))
-            return (len(components), tool_distance)
+        # elif heuristic == 'components':
+        #     # Ground nodes intentionally omitted
+        #     # TODO: this is broken
+        #     remaining = all_elements - printed if forward else printed - {element}
+        #     vertices = nodes_from_elements(remaining)
+        #     components = get_connected_components(vertices, remaining)
+        #     #print('Components: {} | Distance: {:.3f}'.format(len(components), tool_distance))
+        #     return (len(components), tool_distance)
         elif heuristic == 'fixed-tsp':
             # TODO: layer_from_edge[element]
             # TODO: score based on current distance from the plan in the tour
@@ -251,29 +255,47 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
                 return (INF, tool_distance)
             return (sign*order[element], tool_distance) # Chooses least expensive direction
         elif heuristic == 'tsp':
-            assert forward
             if printed not in tsp_cache:
-                # TODO: need to indicate printed nodes
-                plan, _ = solve_tsp(remaining_elements, ground_nodes, node_points, initial_point, initial_point,
+                # TODO: reuse solutions
+                remaining = all_elements - printed if forward else printed
+                assert element in remaining
+                printed_nodes = compute_printed_nodes(ground_nodes, printed) if forward else ground_nodes
+                plan, _ = solve_tsp(remaining, printed_nodes, node_points, tool_point, initial_point,
                                     max_time=30, visualize=False, verbose=True)
-                tsp_cache[remaining_elements] = plan
-            plan = tsp_cache[remaining_elements]
+                tsp_cache[printed] = plan
+                #last_plan[:] = plan
+            plan = tsp_cache[printed]
             if plan is None:
-                return tool_distance # fall back on either distance or INF
-            return
+                #return tool_distance
+                return INF
+            #transit = compute_transit_distance(node_points, plan, start=tool_point, end=initial_point)
+            assert forward
+            index = None
+            for i, directed2 in enumerate(plan):
+                undirected2 = get_undirected(all_elements, directed2)
+                if element == undirected2:
+                    assert index is None
+                    index = i
+            assert index is not None
+            new_plan = [directed] + plan[:index] + plan[index+1:]
+            assert len(plan) == len(new_plan)
+            new_transit = compute_transit_distance(node_points, new_plan, start=tool_point, end=initial_point)
+            #print(transit, new_transit)
+            return new_transit
         elif heuristic == 'online-tsp':
             if forward:
-                _, remaining_distance = solve_tsp(all_elements-structure, ground_nodes, node_points,
-                                                  node_points[second_node], initial_point, visualize=False)
+                _, tsp_distance = solve_tsp(all_elements-structure, ground_nodes, node_points,
+                                            node_points[second_node], initial_point, visualize=False)
             else:
-                _, remaining_distance = solve_tsp(structure, ground_nodes, node_points, initial_point,
-                                                  node_points[second_node], visualize=False)
-            total = tool_distance + remaining_distance
+                _, tsp_distance = solve_tsp(structure, ground_nodes, node_points, initial_point,
+                                            node_points[second_node], visualize=False)
+            total = tool_distance + tsp_distance
             return total
-        elif heuristic == 'mst':
-            remaining_distance = compute_component_mst(node_points, ground_nodes, remaining_elements,
-                                                       initial_position=node_points[second_node])
-            return tool_distance + remaining_distance
+        # elif heuristic == 'mst':
+        #     # TODO: this is broken
+        #     mst_distance = compute_component_mst(node_points, ground_nodes, remaining,
+        #                                          initial_position=node_points[second_node])
+        #     return tool_distance + mst_distance
         elif heuristic == 'x':
             return sign * get_midpoint(node_points, element)[0]
         elif heuristic == 'z':

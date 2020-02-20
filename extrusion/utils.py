@@ -430,6 +430,20 @@ def get_midpoint(node_points, element):
 
 ##################################################
 
+def compute_transit_distance(node_points, directed_elements, start=None, end=None):
+    if directed_elements is None:
+        return INF
+    assert directed_elements
+    # Could instead compute full distance and subtract
+    pairs = []
+    if start is not None:
+        pairs.append((start, node_points[directed_elements[0][0]] ))
+    pairs.extend((node_points[directed1[1]], node_points[directed2[0]])
+                 for directed1, directed2 in get_pairs(directed_elements))
+    if end is not None:
+        pairs.append((node_points[directed_elements[-1][1]], end))
+    return sum(get_distance(*pair) for pair in pairs)
+
 def compute_sequence_distance(node_points, directed_elements, start=None):
     if directed_elements is None:
         return INF
