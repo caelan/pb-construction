@@ -13,7 +13,7 @@ from extrusion.utils import check_connected, get_id_from_element, PrintTrajector
     compute_printable_elements, roundrobin, timeout, get_undirected, recover_sequence, recover_directed_sequence
 from extrusion.stiffness import create_stiffness_checker, test_stiffness
 from extrusion.visualization import color_structure
-from extrusion.motion import compute_motion, compute_motions
+from extrusion.motion import compute_motion, compute_motions, LAZY
 # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
 from pybullet_tools.utils import INF, has_gui, elapsed_time, LockRenderer, randomize, \
     get_movable_joints, get_joint_positions, get_distance_fn, get_configuration
@@ -86,7 +86,7 @@ def topological_sort(robot, obstacles, element_bodies, extrusion_path):
 
 def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[], num_ee=0, num_arm=1,
               plan_all=False, use_conflicts=False, use_replan=False, heuristic='z', max_time=INF, backtrack_limit=INF,
-              revisit=False, ee_only=False, collisions=True, stiffness=True, motions=True, lazy=False, checker=None, **kwargs):
+              revisit=False, ee_only=False, collisions=True, stiffness=True, motions=True, lazy=LAZY, checker=None, **kwargs):
     if not use_conflicts:
         num_ee, num_arm = min(num_ee, 1),  min(num_arm, 1)
     if ee_only:

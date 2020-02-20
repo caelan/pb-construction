@@ -4,7 +4,7 @@ import time
 
 from extrusion.progression import Node, retrace_commands
 from extrusion.heuristics import get_heuristic_fn, get_tool_position
-from extrusion.motion import compute_motion, compute_motions
+from extrusion.motion import compute_motion, compute_motions, LAZY
 from extrusion.parsing import load_extrusion
 from extrusion.stream import get_print_gen_fn, MAX_DIRECTIONS, MAX_ATTEMPTS
 from extrusion.utils import get_id_from_element, get_ground_elements, is_ground, \
@@ -32,7 +32,7 @@ def draw_action(node_points, printed, element):
 
 def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=[],
                heuristic='z', max_time=INF, max_memory=INF, backtrack_limit=INF, revisit=False, stiffness_attempts=1,
-               collisions=True, stiffness=True, motions=True, lazy=True, checker=None, **kwargs):
+               collisions=True, stiffness=True, motions=True, lazy=LAZY, checker=None, **kwargs):
     # Focused has the benefit of reusing prior work
     # Greedy has the benefit of conditioning on previous choices
     # TODO: max branching factor

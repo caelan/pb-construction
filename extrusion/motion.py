@@ -16,6 +16,7 @@ from extrusion.utils import get_disabled_collisions, MotionTrajectory, PrintTraj
 from extrusion.stream import get_element_collision_fn
 
 MIN_ELEMENTS = INF # 2 | 3 | INF
+LAZY = False
 
 def create_bounding_mesh(element_bodies, node_points, printed_elements):
     # TODO: use bounding boxes instead of points
@@ -40,7 +41,7 @@ def create_bounding_mesh(element_bodies, node_points, printed_elements):
 
 def compute_motion(robot, fixed_obstacles, element_bodies,
                    printed_elements, start_conf, end_conf,
-                   collisions=True, max_time=INF):
+                   collisions=True, max_time=INF, smooth=100):
     # TODO: can also just plan to initial conf and then shortcut
     joints = get_movable_joints(robot)
     assert len(joints) == len(end_conf)
@@ -105,7 +106,7 @@ def compute_motion(robot, fixed_obstacles, element_bodies,
     path = None
     if check_initial_end(start_conf, end_conf, collision_fn):
         path = birrt(start_conf, end_conf, distance_fn, sample_fn, extend_fn, element_collision_fn,
-                     restarts=50, iterations=100, smooth=100, max_time=max_time)
+                     restarts=50, iterations=100, smooth=smooth, max_time=max_time)
 
     # path = plan_joint_motion(robot, joints, end_conf, obstacles=obstacles,
     #                          self_collisions=SELF_COLLISIONS, disabled_collisions=disabled_collisions,

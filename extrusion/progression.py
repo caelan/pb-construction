@@ -14,7 +14,7 @@ from extrusion.stream import get_print_gen_fn, STEP_SIZE, APPROACH_DISTANCE, MAX
 from extrusion.utils import check_connected, get_id_from_element, load_world, RESOLUTION, compute_printable_directed, \
     get_undirected, flatten_commands
 from extrusion.stiffness import TRANS_TOL, ROT_TOL, create_stiffness_checker, test_stiffness
-from extrusion.motion import compute_motion, compute_motions
+from extrusion.motion import compute_motion, compute_motions, LAZY
 from extrusion.optimize import OPTIMIZE, optimize_commands
 
 # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
@@ -108,7 +108,7 @@ def add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn,
 
 def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders=[],
                 heuristic='z', max_time=INF, backtrack_limit=INF, revisit=False,
-                stiffness=True, motions=True, collisions=True, lazy=True, checker=None, **kwargs):
+                stiffness=True, motions=True, collisions=True, lazy=LAZY, checker=None, **kwargs):
 
     start_time = time.time()
     initial_conf = get_configuration(robot)
