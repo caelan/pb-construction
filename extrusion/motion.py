@@ -16,7 +16,7 @@ from extrusion.utils import get_disabled_collisions, MotionTrajectory, PrintTraj
 from extrusion.stream import get_element_collision_fn
 
 MIN_ELEMENTS = INF # 2 | 3 | INF
-LAZY = False
+LAZY = True
 
 def create_bounding_mesh(element_bodies, node_points, printed_elements):
     # TODO: use bounding boxes instead of points

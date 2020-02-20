@@ -167,9 +167,11 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
     distance_from_node = compute_distance_from_node(all_elements, node_points, ground_nodes)
     layer_from_edge = compute_layer_from_element(all_elements, node_points, ground_nodes)
 
+    tsp_cache = {} # Technically influenced by the current position as well
     plan = None
-    if heuristic == 'tsp':
+    if heuristic == 'fixed-tsp':
         plan, _ = solve_tsp(all_elements, ground_nodes, node_points, initial_point, initial_point, visualize=False)
+        #tsp_cache[all_elements] = plan
     elif heuristic == 'plan-stiffness':
         plan = plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, all_elements,
                                         initial_position=initial_point, checker=checker, max_backtrack=INF)
@@ -241,19 +243,31 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
             components = get_connected_components(vertices, remaining_elements)
             #print('Components: {} | Distance: {:.3f}'.format(len(components), tool_distance))
             return (len(components), tool_distance)
-        elif heuristic == 'tsp':
+        elif heuristic == 'fixed-tsp':
             # TODO: layer_from_edge[element]
             # TODO: score based on current distance from the plan in the tour
+            # TODO: factor in the distance to the next element in a more effective way
             if order is None:
                 return (INF, tool_distance)
-            return (sign*order[element], tool_distance)
+            return (sign*order[element], tool_distance) # Chooses least expensive direction
+        elif heuristic == 'tsp':
+            assert forward
+            if printed not in tsp_cache:
+                # TODO: need to indicate printed nodes
+                plan, _ = solve_tsp(remaining_elements, ground_nodes, node_points, initial_point, initial_point,
+                                    max_time=30, visualize=False, verbose=True)
+                tsp_cache[remaining_elements] = plan
+            plan = tsp_cache[remaining_elements]
+            if plan is None:
+                return tool_distance # fall back on either distance or INF
+            return
         elif heuristic == 'online-tsp':
             if forward:
-                _, remaining_distance = solve_tsp(all_elements-structure, ground_nodes,
-                                                      node_points, node_points[second_node], initial_point, visualize=False)
+                _, remaining_distance = solve_tsp(all_elements-structure, ground_nodes, node_points,
+                                                  node_points[second_node], initial_point, visualize=False)
             else:
-                _, remaining_distance = solve_tsp(structure, ground_nodes,
-                                                      node_points, initial_point, node_points[second_node], visualize=False)
+                _, remaining_distance = solve_tsp(structure, ground_nodes, node_points, initial_point,
+                                                  node_points[second_node], visualize=False)
             total = tool_distance + remaining_distance
             return total
         elif heuristic == 'mst':
