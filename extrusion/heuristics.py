@@ -10,7 +10,7 @@ from extrusion.utils import get_extructed_ids, downselect_elements, compute_z_di
     reverse_element, get_midpoint, nodes_from_elements, compute_printed_nodes, compute_transit_distance, \
     compute_sequence_distance, compute_element_distance
 from extrusion.stiffness import create_stiffness_checker, force_from_reaction, torque_from_reaction, plan_stiffness
-from extrusion.tsp import compute_component_mst, solve_tsp
+from extrusion.tsp import compute_component_mst, solve_tsp, compute_layer_from_directed
 from pddlstream.utils import adjacent_from_edges, hash_or_id, get_connected_components, outgoing_from_edges
 from pybullet_tools.utils import get_distance, INF, get_joint_positions, get_movable_joints, get_link_pose, \
     link_from_name, BodySaver, set_joint_positions, point_from_pose, get_pitch, set_configuration
@@ -166,6 +166,7 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
 
     distance_from_node = compute_distance_from_node(all_elements, node_points, ground_nodes)
     layer_from_edge = compute_layer_from_element(all_elements, node_points, ground_nodes)
+    _, layer_from_directed = compute_layer_from_directed(all_elements, node_points, ground_nodes)
 
     tsp_cache = {} # Technically influenced by the current position as well
     plan = None
@@ -184,7 +185,7 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
         stiffness_cache.update({element: score_stiffness(extrusion_path, element_from_id, all_elements - {element},
                                                          checker=checker) for element in all_elements})
 
-    #last_plan = None
+    last_plan = []
     reaction_cache = {}
     distance_cache = {}
     ee_cache = {}
@@ -209,6 +210,7 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
 
         first_node, second_node = directed if forward else reverse_element(directed)
         layer = sign * layer_from_edge[element]
+        #layer = sign * layer_from_directed.get(directed, INF)
 
         tool_point = position
         tool_distance = 0.
@@ -256,18 +258,18 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
                 return (INF, tool_distance)
             return (sign*order[element], tool_distance) # Chooses least expensive direction
         elif heuristic == 'tsp':
-            if printed not in tsp_cache:
+            if printed not in tsp_cache: # not last_plan and
                 # TODO: seed with the previous solution
                 #remaining = all_elements - printed if forward else printed
                 #assert element in remaining
                 #printed_nodes = compute_printed_nodes(ground_nodes, printed) if forward else ground_nodes
                 tsp_cache[printed] = solve_tsp(all_elements, ground_nodes, node_points, printed, tool_point, initial_point,
-                                               bidirectional=False, layers=True, max_time=30, visualize=True, verbose=True)
+                                               bidirectional=True, layers=True, max_time=30, visualize=False, verbose=True)
                 #print(tsp_cache[printed])
-                #last_plan[:] = plan
+                if not last_plan:
+                    last_plan[:] = tsp_cache[printed][0]
             plan, cost = tsp_cache[printed]
-            #plan = [...]
-            #plan = plan[len(printed):]
+            #plan = last_plan[len(printed):]
             if plan is None:
                 #return tool_distance
                 return (layer, INF)

@@ -156,11 +156,11 @@ def plan_extrusion(args_list, viewer=False, verify=False, verbose=False, watch=F
     checker = create_stiffness_checker(extrusion_path, verbose=False) # if stiffness else None
     #visualize_stiffness(extrusion_path)
     #debug_elements(robot, node_points, node_order, elements)
+    initial_position = point_from_pose(get_link_pose(robot, link_from_name(robot, TOOL_LINK)))
 
     for args in args_list:
         saver.restore()
         #initial_conf = get_joint_positions(robot, get_movable_joints(robot))
-        initial_position = point_from_pose(get_link_pose(robot, link_from_name(robot, TOOL_LINK)))
         with LockRenderer(lock=not viewer):
             start_time = time.time()
             plan, data = None, {}
@@ -186,7 +186,7 @@ def plan_extrusion(args_list, viewer=False, verify=False, verbose=False, watch=F
         data.update({
             'runtime': runtime,
             'num_elements': len(elements),
-            'ee_distance': compute_sequence_distance(node_points, sequence, start=initial_position),
+            'ee_distance': compute_sequence_distance(node_points, sequence, start=initial_position, end=initial_position),
             'print_distance': get_print_distance(plan, teleport=True),
             'distance': get_print_distance(plan, teleport=False),
             'sequence': sequence,

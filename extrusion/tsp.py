@@ -9,7 +9,7 @@ import numpy as np
 
 from extrusion.utils import get_pairs, get_midpoint, SUPPORT_THETA, get_undirected, compute_element_distance, \
     reverse_element, nodes_from_elements, is_start, is_end, get_other_node, \
-    compute_transit_distance, compute_printed_nodes, compute_sequence_distance
+    compute_transit_distance, compute_printed_nodes, compute_sequence_distance, check_connected
 from pddlstream.utils import get_connected_components
 from pybullet_tools.utils import get_distance, elapsed_time, BLACK, wait_for_user, BLUE, RED, get_pitch, INF, \
     angle_between, remove_all_debug, GREEN, draw_point
@@ -63,19 +63,31 @@ def parse_solution(solver, manager, key_from_index, solution):
 
 ##################################################
 
-def greedily_plan(all_elements, node_points, ground_nodes, remaining, initial_point):
-    from extrusion.heuristics import compute_distance_from_node, compute_layer_from_vertex, compute_z_distance
+def compute_layer_from_directed(all_elements, node_points, ground_nodes, remaining=None):
+    from extrusion.heuristics import compute_layer_from_vertex
+    if remaining is None:
+        remaining = all_elements
     level_from_node = compute_layer_from_vertex(all_elements, node_points, ground_nodes)
     cost_from_edge = {}
     if not all(node in level_from_node for node in nodes_from_elements(remaining)):
-        return level_from_node, cost_from_edge, None # Disconnected
+        return level_from_node, None # Disconnected
     for edge in remaining:  # TODO: might be redundant given compute_layer_from_element
         n1, n2 = edge
         if level_from_node[n1] <= level_from_node[n2]:
             cost_from_edge[n1, n2] = level_from_node[n1]
         else:
             cost_from_edge[n2, n1] = level_from_node[n2]
+        #min_level = min(level_from_node[n] for n in edge)
+        #cost_from_edge[n1, n2] = min_level
+        #cost_from_edge[n2, n1] = min_level
+    return level_from_node, cost_from_edge
+
+def greedily_plan(all_elements, node_points, ground_nodes, remaining, initial_point):
+    from extrusion.heuristics import compute_z_distance
+    level_from_node, cost_from_edge = compute_layer_from_directed(all_elements, node_points, ground_nodes, remaining)
     # sequence = sorted(tree_elements, key=lambda e: cost_from_edge[e])
+    if cost_from_edge is None:
+        return level_from_node, cost_from_edge, None
 
     point = initial_point
     sequence = []
@@ -298,6 +310,16 @@ def solve_tsp(all_elements, ground_nodes, node_points, printed, initial_point, f
 
     sequence = extract_sequence(level_from_node, remaining, ordered_pairs)
     #print(compute_sequence_distance(node_points, sequence, start=initial_point, end=final_point)) #, total_distance+cost)
+
+    print(sequence)
+    violations = 0
+    printed_nodes = compute_printed_nodes(ground_nodes, printed)
+    for directed in sequence:
+        if directed[0] not in printed_nodes:
+            print(directed)
+            violations += 1
+        printed_nodes.update(directed)
+    print('Violations:', violations)
 
     if visualize:
         # TODO: visualize by weight
