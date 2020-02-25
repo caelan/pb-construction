@@ -5,12 +5,13 @@ import time
 import numpy as np
 
 from collections import namedtuple
+from itertools import combinations, product, combinations_with_replacement
 
 from pyconmech import StiffnessChecker
 
 from extrusion.utils import get_extructed_ids, compute_sequence_distance, get_distance, \
-    compute_printable_directed, get_undirected, compute_z_distance
-from pybullet_tools.utils import HideOutput, INF, elapsed_time
+    compute_printable_directed, get_undirected, compute_z_distance, reverse_element, get_directions
+from pybullet_tools.utils import HideOutput, INF, elapsed_time, randomize, implies
 
 TRANS_TOL = 0.0015
 ROT_TOL = INF # 5 * np.pi / 180
@@ -100,8 +101,65 @@ def test_stiffness(extrusion_path, element_from_id, elements, **kwargs):
 
 ##################################################
 
+def count_violations(ground_nodes, sequence):
+    violations = 0
+    printed_nodes = set(ground_nodes)
+    for directed in sequence:
+        if directed[0] not in printed_nodes:
+            #print(directed)
+            violations += 1
+        printed_nodes.update(directed)
+    return violations
+
+def search_neighborhood(extrusion_path, element_from_id, node_points, ground_nodes, checker, sequence,
+                        initial_position, stiffness=True, max_candidates=1, max_time=INF):
+    start_time = time.time()
+    best_sequence = None
+    best_cost = compute_sequence_distance(node_points, sequence, start=initial_position, end=initial_position)
+    candidates = 1
+    for i1, i2 in randomize(combinations_with_replacement(range(len(sequence)), r=2)):
+        for directed1 in get_directions(sequence[i1]):
+            for directed2 in get_directions(sequence[i2]):
+                if implies(best_sequence, (max_candidates <= candidates)) and (max_time <= elapsed_time(start_time)):
+                    return best_sequence
+                candidates += 1
+                if i1 == i2:
+                    new_sequence = sequence[:i1] + [directed1] + sequence[i1 + 1:]
+                else:
+                    new_sequence = sequence[:i1] + [directed1] + sequence[i1 + 1:i2] + [directed2] + sequence[i2 + 1:]
+                assert len(new_sequence) == len(sequence)
+                if count_violations(ground_nodes, new_sequence):
+                    continue
+                new_cost = compute_sequence_distance(node_points, new_sequence, start=initial_position,
+                                                     end=initial_position)
+                if best_cost <= new_cost:
+                    continue
+                print(best_cost, new_cost)
+                return new_sequence
+                # TODO: eager version of this also
+                # if stiffness and not test_stiffness(extrusion_path, element_from_id, printed, checker=checker, verbose=False):
+                #    continue # Unfortunately the full structure is affected
+    return best_sequence
+
+def local_search(extrusion_path, element_from_id, node_points, ground_nodes, checker, sequence,
+                 initial_position=None, stiffness=True, max_time=INF):
+    start_time = time.time()
+    sequence = list(sequence)
+    #elements = set(element_from_id.values())
+    #indices = list(range(len(sequence)))
+    #directions = [True, False]
+
+    while elapsed_time(start_time) < max_time:
+        new_sequence = search_neighborhood(extrusion_path, element_from_id, node_points, ground_nodes, checker, sequence,
+                                           initial_position, stiffness=stiffness, max_time=INF)
+        if new_sequence is None:
+            break
+        sequence = new_sequence
+
+##################################################
+
 def plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, elements,
-                   initial_position=None, checker=None, stiffness=True, max_time=INF, max_backtrack=0):
+                   initial_position=None, checker=None, stiffness=True, heuristic='distance', max_time=INF, max_backtrack=0):
     start_time = time.time()
     if stiffness and checker is None:
         checker = create_stiffness_checker(extrusion_path)
@@ -118,9 +176,11 @@ def plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, e
             continue
         if printed == remaining_elements:
             #from extrusion.visualization import draw_ordered
-            distance = compute_sequence_distance(node_points, sequence)
-            print('Success! Elements: {}, Distance: {:.2f}m, Time: {:.3f}sec'.format(
+            distance = compute_sequence_distance(node_points, sequence, start=initial_position, end=initial_position)
+            print('Success! Elements: {}, Distance: {:.3f}m, Time: {:.3f}sec'.format(
                 len(sequence), distance, elapsed_time(start_time)))
+            local_search(extrusion_path, element_from_id, node_points, ground_nodes, checker, sequence,
+                         initial_position=initial_position, stiffness=stiffness, max_time=INF)
             #draw_ordered(sequence, node_points)
             #wait_for_user()
             return sequence
@@ -133,11 +193,17 @@ def plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, e
             min_remaining = min(min_remaining, num_remaining)
             # Don't count edge length
             distance = get_distance(position, node_points[node1]) if position is not None else None
-            #distance = compute_sequence_distance(node_points, new_sequence)
-            #bias = None
-            #bias = compute_z_distance(node_points, element)
-            #bias = distance
-            bias = random.random()
+            # distance = compute_sequence_distance(node_points, new_sequence)
+            if heuristic == 'none':
+                bias = None
+            elif heuristic == 'random':
+                bias = random.random()
+            elif heuristic == 'z':
+                bias = compute_z_distance(node_points, element)
+            elif heuristic == 'distance':
+                bias = distance
+            else:
+                raise ValueError(heuristic)
             #bias = heuristic_fn(printed, element, conf=None) # TODO: experiment with other biases
             priority = (num_remaining, bias, random.random())
             heapq.heappush(queue, (priority, new_printed, node_points[node2], new_sequence))

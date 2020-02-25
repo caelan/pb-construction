@@ -327,7 +327,7 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
         elif heuristic == 'plan-stiffness':
             if order is None:
                 return None
-            return sign*order[element]
+            return (sign*order[element], directed not in order)
         elif heuristic == 'load':
             nodal_loads = checker.get_nodal_loads(existing_ids=structure_ids, dof_flattened=False) # get_self_weight_loads
             return reduce_op(np.linalg.norm(force_from_reaction(reaction)) for reaction in nodal_loads.values())

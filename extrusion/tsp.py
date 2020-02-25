@@ -311,12 +311,12 @@ def solve_tsp(all_elements, ground_nodes, node_points, printed, initial_point, f
     sequence = extract_sequence(level_from_node, remaining, ordered_pairs)
     #print(compute_sequence_distance(node_points, sequence, start=initial_point, end=final_point)) #, total_distance+cost)
 
-    print(sequence)
+    #print(sequence)
     violations = 0
     printed_nodes = compute_printed_nodes(ground_nodes, printed)
     for directed in sequence:
         if directed[0] not in printed_nodes:
-            print(directed)
+            #print(directed)
             violations += 1
         printed_nodes.update(directed)
     print('Violations:', violations)

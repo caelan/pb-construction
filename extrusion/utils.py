@@ -437,7 +437,7 @@ def compute_transit_distance(node_points, directed_elements, start=None, end=Non
     # Could instead compute full distance and subtract
     pairs = []
     if start is not None:
-        pairs.append((start, node_points[directed_elements[0][0]] ))
+        pairs.append((start, node_points[directed_elements[0][0]]))
     pairs.extend((node_points[directed1[1]], node_points[directed2[0]])
                  for directed1, directed2 in get_pairs(directed_elements))
     if end is not None:
