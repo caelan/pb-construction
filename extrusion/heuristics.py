@@ -48,6 +48,7 @@ HEURISTICS = ['none'] + DISTANCE_HEURISTICS + COST_HEURISTICS
 Node = namedtuple('Node', ['edge', 'vertex', 'cost'])
 
 def dijkstra(source_vertices, successor_fn, cost_fn=lambda v1, v2: 1):
+    # TODO: could unify with motion_planners
     node_from_vertex = {}
     queue = []
     for vertex in source_vertices:

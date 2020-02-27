@@ -2,19 +2,14 @@ from __future__ import print_function
 
 import os
 import numpy as np
-import math
-import traceback
-import signal
 
 from collections import defaultdict, deque
-from itertools import islice, cycle
-from contextlib import contextmanager
 
 from pybullet_tools.utils import get_link_pose, BodySaver, set_point, multiply, set_pose, set_joint_positions, \
     Point, HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, get_aabb, \
-    get_distance, get_relative_pose, get_link_subtree, clone_body, randomize, get_movable_joints, get_all_links, get_bodies_in_region, pairwise_link_collision, \
-    set_static, BASE_LINK, add_data_path, INF, load_model, create_plane, set_color, TAN, set_texture, create_box, \
-    apply_alpha, point_from_pose, get_max_velocity, get_distance_fn
+    get_distance, get_relative_pose, get_link_subtree, clone_body, randomize, get_movable_joints, get_all_links, \
+    get_bodies_in_region, pairwise_link_collision, \
+    set_static, BASE_LINK, INF, create_plane, apply_alpha, point_from_pose, get_distance_fn, get_memory_in_kb, get_pairs
 from pddlstream.utils import get_connected_components
 
 KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
@@ -52,22 +47,18 @@ GROUND_COLOR = 0.8*np.ones(3)
 
 ##################################################
 
-def get_pairs(sequence):
-    return list(zip(sequence[:-1], sequence[1:]))
+MAX_MEMORY = INF
+#MAX_MEMORY = 1.5 * KILOBYTES_PER_GIGABYTE # 1.5 GB
 
-# https://docs.python.org/3.1/library/itertools.html#recipes
-def roundrobin(*iterables):
-    "roundrobin('ABC', 'D', 'EF') --> A D E B F C"
-    # Recipe credited to George Sakkis
-    pending = len(iterables)
-    nexts = cycle(iter(it).__next__ for it in iterables)
-    while pending:
-        try:
-            for next in nexts:
-                yield next()
-        except StopIteration:
-            pending -= 1
-            nexts = cycle(islice(nexts, pending))
+def check_memory(max_memory=MAX_MEMORY):
+    if max_memory == INF:
+        return True
+    memory_kb = get_memory_in_kb()
+    #print('Peak memory: {} | Max memory: {}'.format(peak_memory, max_memory))
+    if memory_kb <= max_memory:
+        return True
+    print('Memory of {:.0f} KB exceeds memory limit of {:.0f} KB'.format(memory_kb, max_memory))
+    return False
 
 ##################################################
 
@@ -514,6 +505,7 @@ def downsample_nodes(elements, node_points, ground_nodes, num=None):
 ##################################################
 
 def check_connected(ground_nodes, printed_elements):
+    # TODO: could merge with my connected components algorithm
     if not printed_elements:
         return True
     node_neighbors = get_node_neighbors(printed_elements)
@@ -552,81 +544,3 @@ def compute_z_distance(node_points, element):
     # Distance to a ground plane
     # Opposing gravitational force
     return get_midpoint(node_points, element)[2]
-
-##################################################
-
-BYTES_PER_KILOBYTE = math.pow(2, 10)
-BYTES_PER_GIGABYTE = math.pow(2, 30)
-KILOBYTES_PER_GIGABYTE = BYTES_PER_GIGABYTE / BYTES_PER_KILOBYTE
-
-MAX_MEMORY = INF
-#MAX_MEMORY = 1.5 * KILOBYTES_PER_GIGABYTE # 1.5 GB
-
-def get_memory_in_kb():
-    # https://pypi.org/project/psutil/
-    # https://psutil.readthedocs.io/en/latest/
-    import psutil
-    #rss: aka "Resident Set Size", this is the non-swapped physical memory a process has used. (bytes)
-    #vms: aka "Virtual Memory Size", this is the total amount of virtual memory used by the process. (bytes)
-    #shared: (Linux) memory that could be potentially shared with other processes.
-    #text (Linux, BSD): aka TRS (text resident set) the amount of memory devoted to executable code.
-    #data (Linux, BSD): aka DRS (data resident set) the amount of physical memory devoted to other than executable code.
-    #lib (Linux): the memory used by shared libraries.
-    #dirty (Linux): the number of dirty pages.
-    #pfaults (macOS): number of page faults.
-    #pageins (macOS): number of actual pageins.
-    process = psutil.Process(os.getpid())
-    #process.pid()
-    #process.ppid()
-    pmem = process.memory_info() # this seems to actually get the current memory!
-    return pmem.vms / BYTES_PER_KILOBYTE
-    #print(process.memory_full_info())
-    #print(process.memory_percent())
-    # process.rlimit(psutil.RLIMIT_NOFILE)  # set resource limits (Linux only)
-    #print(psutil.virtual_memory())
-    #print(psutil.swap_memory())
-    #print(psutil.pids())
-
-def check_memory(max_memory=MAX_MEMORY):
-    if max_memory == INF:
-        return True
-    memory_kb = get_memory_in_kb()
-    #print('Peak memory: {} | Max memory: {}'.format(peak_memory, max_memory))
-    if memory_kb <= max_memory:
-        return True
-    print('Memory of {:.0f} KB exceeds memory limit of {:.0f} KB'.format(memory_kb, max_memory))
-    return False
-
-##################################################
-
-def raise_timeout(signum, frame):
-    raise TimeoutError()
-
-@contextmanager
-def timeout(duration):
-    # https://www.jujens.eu/posts/en/2018/Jun/02/python-timeout-function/
-    # https://code-maven.com/python-timeout
-    # https://pypi.org/project/func-timeout/
-    # https://pypi.org/project/timeout-decorator/
-    # https://eli.thegreenplace.net/2011/08/22/how-not-to-set-a-timeout-on-a-computation-in-python
-    # https://docs.python.org/3/library/signal.html
-    # https://docs.python.org/3/library/contextlib.html
-    # https://stackoverflow.com/a/22348885
-    assert 0 < duration
-    if duration == INF:
-        yield
-        return
-    # Register a function to raise a TimeoutError on the signal
-    signal.signal(signal.SIGALRM, raise_timeout)
-    # Schedule the signal to be sent after ``duration``
-    signal.alarm(int(math.ceil(duration)))
-    try:
-        yield
-    except TimeoutError as e:
-        print('Timeout after {} sec'.format(duration))
-        #traceback.print_exc()
-        pass
-    finally:
-        # Unregister the signal so it won't be triggered
-        # if the timeout is not reached
-        signal.signal(signal.SIGALRM, signal.SIG_IGN)

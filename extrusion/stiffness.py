@@ -179,8 +179,8 @@ def plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, e
             distance = compute_sequence_distance(node_points, sequence, start=initial_position, end=initial_position)
             print('Success! Elements: {}, Distance: {:.3f}m, Time: {:.3f}sec'.format(
                 len(sequence), distance, elapsed_time(start_time)))
-            local_search(extrusion_path, element_from_id, node_points, ground_nodes, checker, sequence,
-                         initial_position=initial_position, stiffness=stiffness, max_time=INF)
+            #local_search(extrusion_path, element_from_id, node_points, ground_nodes, checker, sequence,
+            #             initial_position=initial_position, stiffness=stiffness, max_time=INF)
             #draw_ordered(sequence, node_points)
             #wait_for_user()
             return sequence

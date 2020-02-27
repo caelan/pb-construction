@@ -7,12 +7,12 @@ from itertools import product, combinations
 
 import numpy as np
 
-from extrusion.utils import get_pairs, get_midpoint, SUPPORT_THETA, get_undirected, compute_element_distance, \
+from extrusion.utils import get_midpoint, SUPPORT_THETA, get_undirected, compute_element_distance, \
     reverse_element, nodes_from_elements, is_start, is_end, get_other_node, \
     compute_transit_distance, compute_printed_nodes, compute_sequence_distance, check_connected
 from pddlstream.utils import get_connected_components
 from pybullet_tools.utils import get_distance, elapsed_time, BLACK, wait_for_user, BLUE, RED, get_pitch, INF, \
-    angle_between, remove_all_debug, GREEN, draw_point
+    angle_between, remove_all_debug, GREEN, draw_point, get_pairs
 from extrusion.stiffness import plan_stiffness
 
 INITIAL_NODE = 'initial'

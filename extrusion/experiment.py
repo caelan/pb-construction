@@ -1,7 +1,6 @@
 import datetime
 import os
 import time
-import traceback
 import sys
 
 sys.path.extend([
@@ -17,12 +16,12 @@ from collections import namedtuple
 
 from extrusion.progression import progression
 from extrusion.lookahead import lookahead
-from extrusion.heuristics import HEURISTICS, DISTANCE_HEURISTICS, COST_HEURISTICS
+from extrusion.heuristics import DISTANCE_HEURISTICS, COST_HEURISTICS
 from extrusion.parsing import enumerate_problems
 from extrusion.regression import regression
 from extrusion.stream import SKIP_PERCENTAGE
 from pddlstream.utils import get_python_version
-from pybullet_tools.utils import is_darwin, user_input, write_pickle, elapsed_time
+from pybullet_tools.utils import is_darwin, user_input, write_pickle, elapsed_time, DATE_FORMAT, chunks
 
 # TODO: use dicts instead
 
@@ -43,11 +42,6 @@ EXCLUDE = [
 ]
 
 EXPERIMENTS_DIR = 'experiments/'
-DATE_FORMAT = '%y-%m-%d_%H-%M-%S'
-
-def chunks(sequence, n=1):
-    for i in range(0, len(sequence), n):
-        yield sequence[i:i + n]
 
 ##################################################
 
@@ -99,6 +93,7 @@ def train_parallel(args, n=1):
     generator = pool.imap_unordered(plan_extrusion, jobs, chunksize=1)
     results = []
     while True:
+        # TODO: randomly sort instead
         last_time = time.time()
         try:
             for config, data in generator.next(): # timeout=2 * args.max_time)

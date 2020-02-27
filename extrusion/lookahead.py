@@ -10,13 +10,14 @@ from extrusion.heuristics import get_heuristic_fn, get_tool_position
 from extrusion.parsing import load_extrusion
 from extrusion.stream import get_print_gen_fn, MAX_DIRECTIONS, MAX_ATTEMPTS
 from extrusion.utils import check_connected, get_id_from_element, PrintTrajectory, JOINT_WEIGHTS, compute_printed_nodes, \
-    compute_printable_elements, roundrobin, timeout, get_undirected, recover_sequence, recover_directed_sequence
+    compute_printable_elements, get_undirected, recover_sequence, recover_directed_sequence
 from extrusion.stiffness import create_stiffness_checker, test_stiffness
 from extrusion.visualization import color_structure
 from extrusion.motion import compute_motion, compute_motions, LAZY
 # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
 from pybullet_tools.utils import INF, has_gui, elapsed_time, LockRenderer, randomize, \
-    get_movable_joints, get_joint_positions, get_distance_fn, get_configuration
+    get_movable_joints, get_joint_positions, get_distance_fn, get_configuration, timeout, roundrobin
+
 
 def retrace_elements(visited, current_state, **kwargs):
     return [traj.element for traj in retrace_trajectories(visited, current_state, **kwargs)
