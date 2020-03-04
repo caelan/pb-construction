@@ -11,7 +11,8 @@ import matplotlib.pyplot as plt
 from collections import OrderedDict, defaultdict
 #from tabulate import tabulate
 
-from extrusion.experiment import EXCLUDE, Configuration, EXPERIMENTS_DIR, HEURISTICS, ALGORITHMS
+from extrusion.experiment import EXCLUDE, Configuration, EXPERIMENTS_DIR, ALGORITHMS
+from extrusion.heuristics import HEURISTICS
 
 DEFAULT_MAX_TIME = 1 * 60 * 60
 #DEFAULT_MAX_TIME = 1.5 * 60 * 60

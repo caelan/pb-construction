@@ -10,7 +10,7 @@ sys.path.extend([
 
 from itertools import product
 from multiprocessing import cpu_count, Pool
-from multiprocessing.context import TimeoutError
+#from multiprocessing.context import TimeoutError
 
 from collections import namedtuple
 
@@ -107,13 +107,13 @@ def train_parallel(args, n=1):
                 print('Saved', path)
         except StopIteration:
             break
-        except TimeoutError:
-            # TODO: record this as a failure? Nothing is saved though...
-            timeouts += 1
-            #traceback.print_exc()
-            print('Error! Timed out after {:.3f} seconds'.format(elapsed_time(last_time)))
-            break # This kills all jobs
-            #continue # This repeats jobs until success
+        # except TimeoutError:
+        #     # TODO: record this as a failure? Nothing is saved though...
+        #     timeouts += 1
+        #     #traceback.print_exc()
+        #     print('Error! Timed out after {:.3f} seconds'.format(elapsed_time(last_time)))
+        #     break # This kills all jobs
+        #     #continue # This repeats jobs until success
     print('Total time:', elapsed_time(initial_time))
     return results
 

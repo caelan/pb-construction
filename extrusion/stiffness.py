@@ -27,7 +27,8 @@ def create_stiffness_checker(extrusion_path, verbose=False):
     if not os.path.exists(extrusion_path):
         raise FileNotFoundError(extrusion_path)
     with HideOutput():
-        checker = StiffnessChecker(json_file_path=extrusion_path, verbose=verbose)
+        #checker = StiffnessChecker(json_file_path=extrusion_path, verbose=verbose)
+        checker = StiffnessChecker.from_json(json_file_path=extrusion_path, verbose=verbose)
     #checker.set_output_json(True)
     #checker.set_output_json_path(file_path=os.getcwd(), file_name="stiffness-results.json")
     checker.set_self_weight_load(True)
