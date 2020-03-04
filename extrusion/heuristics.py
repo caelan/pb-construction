@@ -25,7 +25,7 @@ COST_HEURISTICS = [
     'distance',
     'layered-distance',
     #'mst',
-    'tsp',
+    #'tsp',
     #'online-tsp',
     #'components',
 ]

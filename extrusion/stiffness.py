@@ -160,7 +160,7 @@ def local_search(extrusion_path, element_from_id, node_points, ground_nodes, che
 ##################################################
 
 def plan_stiffness(extrusion_path, element_from_id, node_points, ground_nodes, elements,
-                   initial_position=None, checker=None, stiffness=True, heuristic='distance', max_time=INF, max_backtrack=0):
+                   initial_position=None, checker=None, stiffness=True, heuristic='z', max_time=INF, max_backtrack=0):
     start_time = time.time()
     if stiffness and checker is None:
         checker = create_stiffness_checker(extrusion_path)
