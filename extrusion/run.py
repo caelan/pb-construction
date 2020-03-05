@@ -203,11 +203,15 @@ def plan_extrusion(args_list, viewer=False, verify=False, verbose=False, watch=F
 
     reset_simulation()
     disconnect()
-    if watch:
+    if watch and (plan is not None):
         # TODO: avoid reconnecting
         animate = not (args.disable or args.ee_only)
-        display_trajectories(node_points, ground_nodes, plan, #time_step=None, video=True,
+        connect(use_gui=True, shadows=SHADOWS, color=BACKGROUND_COLOR)
+        obstacles, robot = load_world()
+        display_trajectories(robot, node_points, ground_nodes, plan, #time_step=None, video=True,
                              animate=animate)
+        reset_simulation()
+        disconnect()
     if not verbose:
         sys.stdout.close()
     return results

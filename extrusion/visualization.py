@@ -9,7 +9,7 @@ from extrusion.stiffness import force_from_reaction
 from pybullet_tools.utils import add_text, draw_pose, get_pose, wait_for_user, add_line, remove_debug, has_gui, \
     draw_point, LockRenderer, set_camera_pose, set_color, apply_alpha, RED, BLUE, GREEN, get_visual_data, connect, \
     get_movable_joints, remove_all_debug, VideoSaver, set_joint_positions, point_from_pose, wait_for_duration, \
-    reset_simulation, disconnect
+    reset_simulation, disconnect, set_configuration
 
 #BACKGROUND_COLOR = 1*np.ones(3)
 BACKGROUND_COLOR = [0.9, 0.9, 1.0] # 229, 229, 255
@@ -177,13 +177,10 @@ def set_extrusion_camera(node_points):
 
 ##################################################
 
-def display_trajectories(node_points, ground_nodes, trajectories, animate=True, time_step=0.02, video=False):
+def display_trajectories(robot, node_points, ground_nodes, trajectories, animate=True, time_step=0.02, video=False):
     if trajectories is None:
         return
-    connect(use_gui=True, shadows=SHADOWS, color=BACKGROUND_COLOR)
     set_extrusion_camera(node_points)
-    obstacles, robot = load_world()
-    movable_joints = get_movable_joints(robot)
     planned_elements = [traj.element for traj in trajectories if isinstance(traj, PrintTrajectory)]
     colors = sample_colors(len(planned_elements))
     # if not animate:
@@ -216,7 +213,7 @@ def display_trajectories(node_points, ground_nodes, trajectories, animate=True, 
         handles = []
 
         for conf in trajectory.path:
-            set_joint_positions(robot, movable_joints, conf)
+            set_configuration(robot, conf)
             if isinstance(trajectory, PrintTrajectory):
                 current_point = point_from_pose(trajectory.end_effector.get_tool_pose())
                 if last_point is not None:
@@ -245,5 +242,4 @@ def display_trajectories(node_points, ground_nodes, trajectories, animate=True, 
     if video_saver is not None:
         video_saver.restore()
     wait_for_user()
-    reset_simulation()
-    disconnect()
+

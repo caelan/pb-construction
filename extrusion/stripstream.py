@@ -3,26 +3,17 @@ import numpy as np
 from extrusion.utils import element_supports, Profiler, load_robot
 from extrusion.stream import get_print_gen_fn, USE_CONMECH
 from extrusion.heuristics import compute_distance_from_node
-from extrusion.visualization import draw_model
+from extrusion.visualization import draw_model, display_trajectories
 from pddlstream.algorithms.focused import solve_focused
 from pddlstream.language.constants import And, PDDLProblem, print_solution
 from pddlstream.language.generator import from_test
 from pddlstream.language.stream import StreamInfo, PartialInputs, WildOutput
 from pddlstream.utils import read, get_file_path
 from pybullet_tools.utils import get_configuration, wait_if_gui, RED, get_point, set_pose, Pose, Euler, Point, \
-    get_movable_joints, set_joint_position
+    get_movable_joints, set_joint_position, has_gui, WorldSaver
 
 
 STRIPSTREAM_ALGORITHM = 'stripstream'
-
-
-##################################################
-
-# TODO: condition on plan/downstream constraints
-# TODO: stream fusion
-
-def compute_z_supports(node_points, element_bodies):
-    return {(e, n) for e in element_bodies for n in e if element_supports(e, n, node_points)}
 
 
 ##################################################
@@ -35,33 +26,37 @@ def get_pddlstream(robot1, obstacles, node_points, element_bodies, ground_nodes,
 
     # TODO: partially order the elements instead
     # TODO: full layer partial ordering
-    supports = compute_z_supports(node_points, element_bodies)
+    #supports = {(e, n) for e in element_bodies for n in e if element_supports(e, n, node_points)}
     node_from_n = compute_distance_from_node(element_bodies, node_points, ground_nodes)
     supports = {(node.edge, n) for n, node in node_from_n.items() if node.edge is not None}
     #supports = set()
     # TODO: pass into the stream
 
     centroid = np.average(node_points, axis=0)
-    print(centroid)
-    print(get_point(robot1))
+    #print(centroid)
+    #print(get_point(robot1))
     robot2 = load_robot()
     set_pose(robot2, Pose(point=Point(*2*centroid[:2]), euler=Euler(yaw=np.pi)))
-    for rob in [robot1, robot2]:
-        joint1 = get_movable_joints(rob)[0]
-        set_joint_position(rob, joint1, np.pi/8)
+
+    #robots = [robot1]
+    robots = [robot1, robot2]
+    for robot in [robot1, robot2]:
+        joint1 = get_movable_joints(robot)[0]
+        set_joint_position(robot, joint1, np.pi/8)
 
     #print(supports)
     elements = {e for e, _ in supports}
     draw_model(elements, node_points, ground_nodes, color=RED)
     wait_if_gui()
 
-    initial_conf = np.array(get_configuration(robot1))
-    print(initial_conf)
+    initial_confs = {robot: get_configuration(robot1) for robot in robots}
 
     domain_pddl = read(get_file_path(__file__, 'pddl/domain.pddl'))
+    stream_pddl = read(get_file_path(__file__, 'pddl/stream.pddl'))
     constant_map = {}
 
-    stream_pddl = read(get_file_path(__file__, 'pddl/stream.pddl'))
+    # TODO: condition on plan/downstream constraints
+    # TODO: stream fusion
     stream_map = {
         #'test-cfree': from_test(get_test_cfree(element_bodies)),
         #'sample-print': from_gen_fn(get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes)),
@@ -69,12 +64,17 @@ def get_pddlstream(robot1, obstacles, node_points, element_bodies, ground_nodes,
         'test-stiffness': from_test(test_stiffness),
     }
 
-    init = [
-        ('Robot', robot1),
-        ('Conf', robot1, initial_conf),
-        ('AtConf', robot1, initial_conf),
-        ('CanMove', robot1),
-    ]
+    init = []
+    for robot, conf in initial_confs.items():
+        init.extend([
+            ('Robot', robot),
+            ('Conf', robot, conf),
+            ('AtConf', robot, conf),
+            #('CanMove', robot),
+        ])
+        if robot == robot1:
+            init.append(('CanMove', robot))
+
     init.extend(('Grounded', n) for n in ground_nodes)
     init.extend(('Supports', e, n) for e, n in supports)
     init.extend(('StartNode', n, e) for e in element_bodies
@@ -101,6 +101,7 @@ def get_pddlstream(robot1, obstacles, node_points, element_bodies, ground_nodes,
     goal_literals = [
         #('AtConf', robot, initial_conf),
     ]
+    #goal_literals.extend(('AtConf', r, q) for r, q in initial_confs.items())
     goal_literals.extend(('Removed', e) for e in element_bodies)
     goal = And(*goal_literals)
 
@@ -119,6 +120,7 @@ def plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
     # TODO: NEGATIVE_SUFFIX to make axioms easier
     # TODO: sort by action cost heuristic
     # http://www.fast-downward.org/Doc/Evaluator#Max_evaluator
+    saver = WorldSaver()
 
     pddlstream_problem = get_pddlstream(robot, obstacles, node_points, element_bodies, ground_nodes,
                                         trajectories=trajectories, collisions=collisions, disable=disable,
@@ -145,7 +147,11 @@ def plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
     data = {}
     if plan is None:
         return None, data
+
     trajectories = [t for name, args in reversed(plan) if name == 'print' for t in args[-1].trajectories]
+    if has_gui():
+        saver.restore()
+        display_trajectories(robot, node_points, ground_nodes, trajectories)
     return trajectories, data
 
 ##################################################
