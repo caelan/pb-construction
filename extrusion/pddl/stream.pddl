@@ -5,11 +5,12 @@
   ;  :certified (CFree ?t ?e)
   ;)
   (:stream sample-print
-    :inputs (?n ?e)
-    :domain (StartNode ?n ?e)
+    :inputs (?r ?n ?e)
+    :domain (and (Robot ?r) (StartNode ?n ?e))
     ; :fluents (Printed)
-    :outputs (?t)
-    :certified (and (PrintAction ?n ?e ?t) (Traj ?t))
+    :outputs (?q1 ?q2 ?t)
+    :certified (and (PrintAction ?r ?n ?e ?q1 ?q2 ?t)
+                    (Conf ?r ?q1) (Conf ?r ?q2) (Traj ?t))
   )
   (:stream test-stiffness
    :fluents (Printed)

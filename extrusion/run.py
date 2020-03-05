@@ -36,7 +36,7 @@ from extrusion.stiffness import plan_stiffness, create_stiffness_checker
 from pybullet_tools.utils import connect, disconnect, get_movable_joints, get_joint_positions, LockRenderer, \
     unit_pose, reset_simulation, draw_pose, apply_alpha, BLACK, Pose, Euler, has_gui, set_numpy_seed, \
     set_random_seed, INF, wait_for_user, link_from_name, get_link_pose, point_from_pose, WorldSaver, elapsed_time, \
-    timeout
+    timeout, get_configuration
 
 
 ##################################################
@@ -85,7 +85,7 @@ def solve_extrusion(robot, obstacles, element_from_id, node_points, element_bodi
     #     wait_for_user()
     # return
 
-    initial_conf = get_joint_positions(robot, get_movable_joints(robot))
+    initial_conf = get_configuration(robot)
     if args.algorithm == 'stripstream':
         sampled_trajectories = []
         if precompute:
