@@ -12,11 +12,11 @@
   )
 
   (:stream sample-print
-    :inputs (?r ?n ?e)
-    :domain (and (Robot ?r) (StartNode ?n ?e))
+    :inputs (?r ?n1 ?e ?n2)
+    :domain (and (Robot ?r) (Direction ?n1 ?e ?n2))
     ; :fluents (Printed)
     :outputs (?q1 ?q2 ?t)
-    :certified (and (PrintAction ?r ?n ?e ?q1 ?q2 ?t)
+    :certified (and (PrintAction ?r ?n1 ?e ?n2 ?q1 ?q2 ?t)
                     (Conf ?r ?q1) (Conf ?r ?q2) (Traj ?r ?t))
   )
 

@@ -1,8 +1,8 @@
 import numpy as np
 
-from extrusion.utils import element_supports, Profiler, load_robot
+from extrusion.utils import element_supports, Profiler, load_robot, get_other_node
 from extrusion.stream import get_print_gen_fn, USE_CONMECH
-from extrusion.heuristics import compute_distance_from_node
+from extrusion.heuristics import compute_distance_from_node, compute_layer_from_vertex
 from extrusion.visualization import draw_model, display_trajectories
 from pddlstream.algorithms.focused import solve_focused
 from pddlstream.algorithms.downward import SEARCH_OPTIONS, set_cost_scale
@@ -25,17 +25,18 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
     # TODO: plan for the end-effector first
     # TODO: cost-sensitive planning (greedily explore cheapest)
 
-    # TODO: partially order the elements instead
+    # TODO: partially order the nodes/elements instead
     # TODO: full layer partial ordering
-    #supports = {(e, n) for e in element_bodies for n in e if element_supports(e, n, node_points)}
+    elements = set(element_bodies)
     node_from_n = compute_distance_from_node(element_bodies, node_points, ground_nodes)
+    #layer_from_n = compute_layer_from_vertex(element_bodies, node_points, ground_nodes)
     supports = {(node.edge, n) for n, node in node_from_n.items() if node.edge is not None}
     #supports = set()
+    supporters = {e for e, _ in supports}
     # TODO: pass into the stream
 
     #print(supports)
-    # elements = {e for e, _ in supports}
-    # draw_model(elements, node_points, ground_nodes, color=RED)
+    # draw_model(supporters, node_points, ground_nodes, color=RED)
     # wait_if_gui()
 
     initial_confs = {'r{}'.format(i): np.array(get_configuration(robot)) for i, robot in enumerate(robots)}
@@ -63,10 +64,13 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
             #('CanMove', robot),
         ])
 
+    # TODO: could make level objects
     init.extend(('Grounded', n) for n in ground_nodes)
-    init.extend(('Supports', e, n) for e, n in supports)
-    init.extend(('StartNode', n, e) for e in element_bodies
-                for n in e if (e, n) not in supports)
+    init.extend(('Supports', e, n2) for e, n2 in supports)
+    init.extend(('Direction', get_other_node(n2, e), e, n2)
+                for e, n2 in supports)
+    init.extend(('Direction', n1, e, get_other_node(n1, e))
+                for e in elements - supporters for n1 in e)
 
     for e in element_bodies:
         n1, n2 = e
@@ -81,11 +85,11 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
         ])
 
     assert not trajectories
-    for t in trajectories:
-        init.extend([
-            ('Traj', t),
-            ('PrintAction', t.n1, t.element, t),
-        ])
+    # for t in trajectories:
+    #     init.extend([
+    #         ('Traj', t),
+    #         ('PrintAction', t.n1, t.element, t),
+    #     ])
 
     goal_literals = [
         #('AtConf', robot, initial_conf),
@@ -137,12 +141,12 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
     #set_cost_scale(1000)
     #planner = 'ff-ehc'
     #planner = 'ff-lazy-tiebreak' # Branching factor becomes large. Rely on preferred. Preferred should also be cheaper
-    #planner = 'ff-eager-tiebreak' # Need to use a eager search, otherwise doesn't incorporate new cost
-    planner = 'max-astar'
+    planner = 'ff-eager-tiebreak' # Need to use a eager search, otherwise doesn't incorporate child cost
+    #planner = 'max-astar'
     # TODO: limit the branching factor if necessary
     solution = solve_focused(pddlstream_problem, stream_info=stream_info, max_time=max_time,
                              effort_weight=1, unit_efforts=True, max_skeletons=None, unit_costs=True, bind=False,
-                             planner=planner, max_planner_time=15, debug=False, reorder=False,
+                             planner=planner, max_planner_time=60, debug=False, reorder=False,
                              initial_complexity=1)
     # Reachability heuristics good for detecting dead-ends
     # Infeasibility from the start means disconnected or collision
@@ -157,8 +161,8 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
     if has_gui():
         saver.restore()
         display_trajectories(node_points, ground_nodes, trajectories)
-    return None, data
-    #return trajectories, data
+        return None, data
+    return trajectories, data
 
 ##################################################
 
@@ -167,7 +171,7 @@ def get_wild_print_gen_fn(robots, obstacles, node_points, element_bodies, ground
     # TODO: could reuse end-effector trajectories
     gen_fn_from_robot = {robot: get_print_gen_fn(robot, obstacles, node_points, element_bodies,
                                                  ground_nodes, **kwargs) for robot in robots}
-    def wild_gen_fn(name, node1, element):
+    def wild_gen_fn(name, node1, element, node2):
         index = int(name[1:])
         robot = robots[index]
         for command, in gen_fn_from_robot[robot](node1, element):
