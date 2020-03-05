@@ -1,6 +1,6 @@
 import numpy as np
 
-from extrusion.utils import element_supports, Profiler
+from extrusion.utils import element_supports, Profiler, load_robot
 from extrusion.stream import get_print_gen_fn, USE_CONMECH
 from extrusion.heuristics import compute_distance_from_node
 from extrusion.visualization import draw_model
@@ -9,7 +9,8 @@ from pddlstream.language.constants import And, PDDLProblem, print_solution
 from pddlstream.language.generator import from_test
 from pddlstream.language.stream import StreamInfo, PartialInputs, WildOutput
 from pddlstream.utils import read, get_file_path
-from pybullet_tools.utils import get_configuration, wait_if_gui, RED
+from pybullet_tools.utils import get_configuration, wait_if_gui, RED, get_point, set_pose, Pose, Euler, Point, \
+    get_movable_joints, set_joint_position
 
 
 STRIPSTREAM_ALGORITHM = 'stripstream'
@@ -26,7 +27,7 @@ def compute_z_supports(node_points, element_bodies):
 
 ##################################################
 
-def get_pddlstream(robot, obstacles, node_points, element_bodies, ground_nodes,
+def get_pddlstream(robot1, obstacles, node_points, element_bodies, ground_nodes,
                    trajectories=[], **kwargs):
     # TODO: instantiation slowness is due to conditional effects
     # TODO: plan for the end-effector first
@@ -40,12 +41,21 @@ def get_pddlstream(robot, obstacles, node_points, element_bodies, ground_nodes,
     #supports = set()
     # TODO: pass into the stream
 
+    centroid = np.average(node_points, axis=0)
+    print(centroid)
+    print(get_point(robot1))
+    robot2 = load_robot()
+    set_pose(robot2, Pose(point=Point(*2*centroid[:2]), euler=Euler(yaw=np.pi)))
+    for rob in [robot1, robot2]:
+        joint1 = get_movable_joints(rob)[0]
+        set_joint_position(rob, joint1, np.pi/8)
+
     #print(supports)
     elements = {e for e, _ in supports}
     draw_model(elements, node_points, ground_nodes, color=RED)
     wait_if_gui()
 
-    initial_conf = np.array(get_configuration(robot))
+    initial_conf = np.array(get_configuration(robot1))
     print(initial_conf)
 
     domain_pddl = read(get_file_path(__file__, 'pddl/domain.pddl'))
@@ -55,15 +65,15 @@ def get_pddlstream(robot, obstacles, node_points, element_bodies, ground_nodes,
     stream_map = {
         #'test-cfree': from_test(get_test_cfree(element_bodies)),
         #'sample-print': from_gen_fn(get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes)),
-        'sample-print': get_wild_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes, **kwargs),
+        'sample-print': get_wild_print_gen_fn(robot1, obstacles, node_points, element_bodies, ground_nodes, **kwargs),
         'test-stiffness': from_test(test_stiffness),
     }
 
     init = [
-        ('Robot', robot),
-        ('Conf', robot, initial_conf),
-        ('AtConf', robot, initial_conf),
-        ('CanMove', robot),
+        ('Robot', robot1),
+        ('Conf', robot1, initial_conf),
+        ('AtConf', robot1, initial_conf),
+        ('CanMove', robot1),
     ]
     init.extend(('Grounded', n) for n in ground_nodes)
     init.extend(('Supports', e, n) for e, n in supports)

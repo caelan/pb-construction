@@ -13,7 +13,7 @@ from pybullet_tools.utils import get_link_pose, BodySaver, set_point, multiply, 
     get_distance, get_relative_pose, get_link_subtree, clone_body, randomize, get_movable_joints, get_all_links, \
     get_bodies_in_region, pairwise_link_collision, \
     set_static, BASE_LINK, INF, create_plane, apply_alpha, point_from_pose, get_distance_fn, get_memory_in_kb, \
-    get_pairs, Saver
+    get_pairs, Saver, set_configuration
 from pddlstream.utils import get_connected_components
 
 KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
@@ -66,15 +66,20 @@ def check_memory(max_memory=MAX_MEMORY):
 
 ##################################################
 
-def load_world(use_floor=True):
+def load_robot():
     root_directory = os.path.dirname(os.path.abspath(__file__))
-    obstacles = []
-    #side, height = 10, 0.01
     with HideOutput():
         robot = load_pybullet(os.path.join(root_directory, KUKA_PATH), fixed_base=True)
         #print([get_max_velocity(robot, joint) for joint in get_movable_joints(robot)])
         set_static(robot)
-        set_joint_positions(robot, get_movable_joints(robot), INITIAL_CONF)
+        set_configuration(robot, INITIAL_CONF)
+    return robot
+
+def load_world(use_floor=True):
+    obstacles = []
+    #side, height = 10, 0.01
+    robot = load_robot()
+    with HideOutput():
         lower, _ = get_aabb(robot)
         if use_floor:
             #floor = load_model('models/short_floor.urdf', fixed_base=True)
