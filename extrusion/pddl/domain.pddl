@@ -10,6 +10,7 @@
     (Collision ?t ?e)
     (Grounded ?n)
     (Edge ?n1 ?e ?n2)
+    (StartNode ?n ?e)
     (Supports ?e ?n)
     (Stiff)
   )

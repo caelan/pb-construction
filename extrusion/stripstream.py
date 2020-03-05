@@ -30,11 +30,15 @@ class Profiler(Saver):
 # TODO: condition on plan/downstream constraints
 # TODO: stream fusion
 
+def compute_z_supports(node_points, element_bodies):
+    return {(e, n) for e in element_bodies for n in e if element_supports(e, n, node_points)}
+
+
 def get_pddlstream(robot, obstacles, node_points, element_bodies, ground_nodes,
                    trajectories=[], **kwargs):
-    # TODO: instantiation slowness is due to condition effects
-    # Regression works well here because of the fixed goal state
+    # TODO: instantiation slowness is due to conditional effects
     # TODO: plan for the end-effector first
+    # TODO: cost-sensitive planning (greedily explore cheapest)
 
     domain_pddl = read(get_file_path(__file__, 'pddl/retired.pddl'))
     constant_map = {}
@@ -47,36 +51,15 @@ def get_pddlstream(robot, obstacles, node_points, element_bodies, ground_nodes,
         'test-stiffness': from_test(test_stiffness),
     }
 
-    # TODO: assert that all elements have some support
     init = []
-    for n in ground_nodes:
-        init.append(('Grounded', n))
+    init.extend(('Grounded', n) for n in ground_nodes)
 
-    nodes = set()
-    for e in element_bodies:
-        for n in e:
-            if element_supports(e, n, node_points):
-                init.append(('Supports', e, n))
-            if is_start_node(n, e, node_points):
-                init.append(('StartNode', n, e))
-        #if e[0] not in nodes:
-        #    add_text(e[0], position=(0, 0, -0.02), parent=element_bodies[e])
-        #if e[1] not in nodes:
-        #    add_text(e[1], position=(0, 0, 0.02), parent=element_bodies[e])
-        #nodes.update(e)
-
-    # Really there are 3 types of elements with respect to a node
-    # 1) Elements that directly support the node (are below)
-    # 2) Elements that stabilize the node (are parallel to the ground)
-    # 3) Elements that extend from the node
-    # 1 < 2 < 3
-
-    #for n, neighbors in get_node_neighbors(element_bodies).items():
-    #    for e1, e2 in permutations(neighbors, 2):
-    #        p1 = node_points[get_other_node(n, e1)]
-    #        p2 = node_points[get_other_node(n, e2)]
-    #        if p1[2] - p2[2] > 0.01:
-    #            init.append(('Above', e1, e2))
+    # TODO: partially order the elements instead
+    # TODO: full layer partial ordering
+    supports = compute_z_supports(node_points, element_bodies)
+    init.extend(('Supports', e, n) for e, n in supports)
+    init.extend(('StartNode', n, e) for e in element_bodies
+                for n in e if (e, n) not in supports)
 
     for e in element_bodies:
         n1, n2 = e
@@ -87,21 +70,16 @@ def get_pddlstream(robot, obstacles, node_points, element_bodies, ground_nodes,
             ('Printed', e),
             ('Edge', n1, e, n2),
             ('Edge', n2, e, n1),
-            #('StartNode', n1, e),
-            #('StartNode', n2, e),
         ])
-        #if is_ground(e, ground_nodes):
-        #    init.append(('Grounded', e))
-    #for e1, neighbors in get_element_neighbors(element_bodies).items():
-    #    for e2 in neighbors:
-    #        init.append(('Supports', e1, e2))
     for t in trajectories:
         init.extend([
             ('Traj', t),
             ('PrintAction', t.n1, t.element, t),
         ])
 
-    goal = And(*[('Removed', e) for e in element_bodies])
+    goal_literals = []
+    goal_literals.extend(('Removed', e) for e in element_bodies)
+    goal = And(*goal_literals)
 
     return PDDLProblem(domain_pddl, constant_map, stream_pddl, stream_map, init, goal)
 
