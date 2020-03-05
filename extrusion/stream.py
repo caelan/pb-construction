@@ -439,6 +439,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
         trajectories = list(trajectories)
         for num in irange(INF):
             for attempt, tool_traj in enumerate(islice(extrusion.generator(), max_directions)):
+                # TODO: is this slower now for some reason?
                 #tool_traj.safe_from_body = {} # Disables caching
                 if not tool_traj.is_safe(obstacles):
                     continue

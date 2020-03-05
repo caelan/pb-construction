@@ -1,6 +1,7 @@
 import cProfile
 import pstats
 
+from pybullet_tools.utils import Saver
 from extrusion.utils import element_supports, is_start_node
 from extrusion.stream import get_print_gen_fn, USE_CONMECH
 from pddlstream.algorithms.focused import solve_focused
@@ -12,8 +13,21 @@ from pddlstream.utils import read, get_file_path
 
 STRIPSTREAM_ALGORITHM = 'stripstream'
 
-# TODO: sort by action cost heuristic
-# http://www.fast-downward.org/Doc/Evaluator#Max_evaluator
+class Profiler(Saver):
+    def __init__(self, cumulative=False, num=25):
+        self.field = 'cumtime' if cumulative else 'tottime'
+        self.num = num
+        self.pr = cProfile.Profile()
+        self.pr.enable()
+        self.restore()
+        self.restore()
+    # def __enter__(self):
+    #     return self # Enter called at with
+    def restore(self):
+        self.pr.disable()
+        pstats.Stats(self.pr).sort_stats(self.field).print_stats(self.num)
+
+##################################################
 
 def get_pddlstream(robot, obstacles, node_points, element_bodies, ground_nodes,
                    trajectories=[], **kwargs):
@@ -21,10 +35,10 @@ def get_pddlstream(robot, obstacles, node_points, element_bodies, ground_nodes,
     # Regression works well here because of the fixed goal state
     # TODO: plan for the end-effector first
 
-    domain_pddl = read(get_file_path(__file__, 'domain.pddl'))
+    domain_pddl = read(get_file_path(__file__, 'pddl/domain.pddl'))
     constant_map = {}
 
-    stream_pddl = read(get_file_path(__file__, 'stream.pddl'))
+    stream_pddl = read(get_file_path(__file__, 'pddl/stream.pddl'))
     stream_map = {
         #'test-cfree': from_test(get_test_cfree(element_bodies)),
         #'sample-print': from_gen_fn(get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes)),
@@ -92,8 +106,7 @@ def get_pddlstream(robot, obstacles, node_points, element_bodies, ground_nodes,
 
 
 def plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
-                  trajectories=[], collisions=True, disable=False,
-                  debug=False, max_time=30):
+                  trajectories=[], collisions=True, disable=False, debug=False, max_time=30, checker=None):
     # TODO: fail if wild stream produces unexpected facts
     # TODO: try search at different cost levels (i.e. w/ and w/o abstract)
     # TODO: only consider axioms that could be relevant
@@ -102,35 +115,35 @@ def plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
     # TODO: iterated search using random restarts
     # TODO: most of the time seems to be spent extracting the stream plan
     # TODO: NEGATIVE_SUFFIX to make axioms easier
-    pr = cProfile.Profile()
-    pr.enable()
-    pddlstream_problem = get_pddlstream(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                        trajectories=trajectories, collisions=collisions, disable=disable)
-    #solution = solve_incremental(pddlstream_problem, planner='add-random-lazy', max_time=600,
-    #                             max_planner_time=300, debug=True)
-    stream_info = {
-        'sample-print': StreamInfo(PartialInputs(unique=True)),
-    }
-    # TODO: goal serialization
-    #planner = 'ff-ehc'
-    #planner = 'ff-lazy-tiebreak' # Branching factor becomes large. Rely on preferred. Preferred should also be cheaper
-    planner = 'ff-eager-tiebreak' # Need to use a eager search, otherwise doesn't incorporate new cost
-    #planner = 'max-astar'
-    # TODO: limit the branching factor if necessary
-    solution = solve_focused(pddlstream_problem, stream_info=stream_info, max_time=max_time,
-                             effort_weight=1, unit_efforts=True, max_skeletons=None, unit_costs=True, bind=False,
-                             planner=planner, max_planner_time=15, debug=debug, reorder=False)
-    # Reachability heuristics good for detecting dead-ends
-    # Infeasibility from the start means disconnected or collision
-    print_solution(solution)
-    pr.disable()
-    pstats.Stats(pr).sort_stats('tottime').print_stats(25)
+    # TODO: sort by action cost heuristic
+    # http://www.fast-downward.org/Doc/Evaluator#Max_evaluator
+
+    with Profiler():
+        pddlstream_problem = get_pddlstream(robot, obstacles, node_points, element_bodies, ground_nodes,
+                                            trajectories=trajectories, collisions=collisions, disable=disable)
+        #solution = solve_incremental(pddlstream_problem, planner='add-random-lazy', max_time=600,
+        #                             max_planner_time=300, debug=True)
+        stream_info = {
+            'sample-print': StreamInfo(PartialInputs(unique=True)),
+        }
+        # TODO: goal serialization
+        #planner = 'ff-ehc'
+        #planner = 'ff-lazy-tiebreak' # Branching factor becomes large. Rely on preferred. Preferred should also be cheaper
+        planner = 'ff-eager-tiebreak' # Need to use a eager search, otherwise doesn't incorporate new cost
+        #planner = 'max-astar'
+        # TODO: limit the branching factor if necessary
+        solution = solve_focused(pddlstream_problem, stream_info=stream_info, max_time=max_time,
+                                 effort_weight=1, unit_efforts=True, max_skeletons=None, unit_costs=True, bind=False,
+                                 planner=planner, max_planner_time=15, debug=debug, reorder=False)
+        # Reachability heuristics good for detecting dead-ends
+        # Infeasibility from the start means disconnected or collision
+        print_solution(solution)
+
     plan, _, _ = solution
     data = {}
     if plan is None:
         return None, data
-    trajectories = [t for _, (n1, e, c) in reversed(plan)
-            for t in c.trajectories]
+    trajectories = [t for _, (n1, e, c) in reversed(plan) for t in c.trajectories]
     return trajectories, data
 
 ##################################################

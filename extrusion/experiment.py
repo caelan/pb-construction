@@ -78,6 +78,7 @@ def train_parallel(args, n=1):
                            args.disable, args.stiffness, args.motions, args.ee_only)
                        for seed, algorithm, heuristic in product(group, algorithms, heuristics)]
                       for problem, group in product(problems, groups)]
+    # TODO: separate out the algorithms again
     # TODO: print the size per job
     print('Jobs: {}'.format(len(jobs)))
 
