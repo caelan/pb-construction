@@ -38,7 +38,7 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
     # wait_if_gui()
 
     robot1 = robots[0]
-    initial_confs = {robot: get_configuration(robot) for robot in robots}
+    initial_confs = {robot: np.array(get_configuration(robot)) for robot in robots}
 
     domain_pddl = read(get_file_path(__file__, 'pddl/domain.pddl'))
     stream_pddl = read(get_file_path(__file__, 'pddl/stream.pddl'))
