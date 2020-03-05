@@ -1,6 +1,8 @@
 import numpy as np
 
-from extrusion.utils import element_supports, Profiler, load_robot, get_other_node
+from itertools import product
+
+from extrusion.utils import element_supports, Profiler, load_robot, get_other_node, get_node_neighbors
 from extrusion.stream import get_print_gen_fn, USE_CONMECH
 from extrusion.heuristics import compute_distance_from_node, compute_layer_from_vertex
 from extrusion.visualization import draw_model, display_trajectories
@@ -21,19 +23,35 @@ STRIPSTREAM_ALGORITHM = 'stripstream'
 
 def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
                    trajectories=[], **kwargs):
-    # TODO: instantiation slowness is due to conditional effects
-    # TODO: plan for the end-effector first
-    # TODO: cost-sensitive planning (greedily explore cheapest)
-
-    # TODO: partially order the nodes/elements instead
-    # TODO: full layer partial ordering
     elements = set(element_bodies)
-    node_from_n = compute_distance_from_node(element_bodies, node_points, ground_nodes)
-    #layer_from_n = compute_layer_from_vertex(element_bodies, node_points, ground_nodes)
-    supports = {(node.edge, n) for n, node in node_from_n.items() if node.edge is not None}
-    #supports = set()
-    supporters = {e for e, _ in supports}
+    layer_from_n = compute_layer_from_vertex(element_bodies, node_points, ground_nodes)
+
+    directions = set()
+    for e in elements:
+        for n1 in e:
+            n2 = get_other_node(n1, e)
+            if layer_from_n[n1] <= layer_from_n[n2]:
+                directions.add((n1, e, n2))
+
     # TODO: pass into the stream
+    # TODO: could make level objects
+    # TODO: full layer partial ordering
+    # Could update whether a node is connected, but it's slightly tricky
+    orders = set()
+    for n1, neighbors in get_node_neighbors(elements).items():
+        below, equal, above = [], [], [] # wrt n1
+        for e in neighbors: # Directed version of this?
+            n2 = get_other_node(n1, e)
+            if layer_from_n[n1] < layer_from_n[n2]:
+                above.append(e)
+            elif layer_from_n[n1] > layer_from_n[n2]:
+                below.append(e)
+            else:
+                equal.append(e)
+        for e1, e2 in product(below, equal + above):
+            orders.add((e1, e2))
+        for e1, e2 in product(equal, above):
+            orders.add((e1, e2))
 
     #print(supports)
     # draw_model(supporters, node_points, ground_nodes, color=RED)
@@ -64,13 +82,9 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
             #('CanMove', robot),
         ])
 
-    # TODO: could make level objects
     init.extend(('Grounded', n) for n in ground_nodes)
-    init.extend(('Supports', e, n2) for e, n2 in supports)
-    init.extend(('Direction', get_other_node(n2, e), e, n2)
-                for e, n2 in supports)
-    init.extend(('Direction', n1, e, get_other_node(n1, e))
-                for e in elements - supporters for n1 in e)
+    init.extend(('Direction', *triplet) for triplet in directions)
+    init.extend(('Order', *pair) for pair in orders)
 
     for e in element_bodies:
         n1, n2 = e
@@ -80,8 +94,6 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
             ('Node', n2),
             ('Element', e),
             ('Printed', e),
-            ('Edge', n1, e, n2),
-            ('Edge', n2, e, n1),
         ])
 
     assert not trajectories
@@ -130,6 +142,9 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
     pddlstream_problem = get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
                                         trajectories=trajectories, collisions=collisions, disable=disable,
                                         precompute_collisions=True, supports=False)
+    print('Init:', pddlstream_problem.init)
+    print('Goal:', pddlstream_problem.goal)
+
     #solution = solve_incremental(pddlstream_problem, planner='add-random-lazy', max_time=600,
     #                             max_planner_time=300, debug=True)
     stream_info = {
