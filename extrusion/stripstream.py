@@ -1,10 +1,11 @@
 import numpy as np
 
 from itertools import product
+from collections import defaultdict
 
 from extrusion.utils import element_supports, Profiler, load_robot, get_other_node, get_node_neighbors
 from extrusion.stream import get_print_gen_fn, USE_CONMECH
-from extrusion.heuristics import compute_distance_from_node, compute_layer_from_vertex
+from extrusion.heuristics import compute_distance_from_node, compute_layer_from_vertex, compute_layer_from_element
 from extrusion.visualization import draw_model, display_trajectories
 from pddlstream.algorithms.focused import solve_focused
 from pddlstream.algorithms.downward import SEARCH_OPTIONS, set_cost_scale
@@ -25,6 +26,7 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
                    trajectories=[], **kwargs):
     elements = set(element_bodies)
     layer_from_n = compute_layer_from_vertex(element_bodies, node_points, ground_nodes)
+    layer_from_e = compute_layer_from_element(element_bodies, node_points, ground_nodes)
 
     directions = set()
     for e in elements:
@@ -35,12 +37,12 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
 
     # TODO: pass into the stream
     # TODO: could make level objects
-    # TODO: full layer partial ordering
     # Could update whether a node is connected, but it's slightly tricky
+    # Local ordering
     orders = set()
     for n1, neighbors in get_node_neighbors(elements).items():
         below, equal, above = [], [], [] # wrt n1
-        for e in neighbors: # Directed version of this?
+        for e in neighbors: # Directed version of this (likely wouldn't need directions then)
             n2 = get_other_node(n1, e)
             if layer_from_n[n1] < layer_from_n[n2]:
                 above.append(e)
@@ -48,10 +50,17 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
                 below.append(e)
             else:
                 equal.append(e)
-        for e1, e2 in product(below, equal + above):
-            orders.add((e1, e2))
-        for e1, e2 in product(equal, above):
-            orders.add((e1, e2))
+        orders.update(product(below, equal + above))
+        orders.update(product(equal, above))
+
+    # Global ordering
+    elements_from_layer = defaultdict(list)
+    for e, l in layer_from_e.items():
+        elements_from_layer[l].append(e)
+
+    layers = sorted(elements_from_layer)
+    for layer in layers[:-1]:
+        orders.update(product(elements_from_layer[layer], elements_from_layer[layer+1]))
 
     #print(supports)
     # draw_model(supporters, node_points, ground_nodes, color=RED)
@@ -134,7 +143,7 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
 
     #robots = [robot1]
     robots = [robot1, robot2]
-    for robot in [robot1, robot2]:
+    for robot in robots:
         joint1 = get_movable_joints(robot)[0]
         set_joint_position(robot, joint1, np.pi/8)
     saver = WorldSaver()
@@ -153,7 +162,8 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
     }
 
     # TODO: goal serialization
-    #set_cost_scale(1000)
+    # TODO: could revert back to goal count now that no deadends
+    set_cost_scale(1)
     #planner = 'ff-ehc'
     #planner = 'ff-lazy-tiebreak' # Branching factor becomes large. Rely on preferred. Preferred should also be cheaper
     planner = 'ff-eager-tiebreak' # Need to use a eager search, otherwise doesn't incorporate child cost
@@ -161,7 +171,7 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
     # TODO: limit the branching factor if necessary
     solution = solve_focused(pddlstream_problem, stream_info=stream_info, max_time=max_time,
                              effort_weight=1, unit_efforts=True, max_skeletons=None, unit_costs=True, bind=False,
-                             planner=planner, max_planner_time=60, debug=False, reorder=False,
+                             planner=planner, max_planner_time=60, debug=True, reorder=False,
                              initial_complexity=1)
     # Reachability heuristics good for detecting dead-ends
     # Infeasibility from the start means disconnected or collision
