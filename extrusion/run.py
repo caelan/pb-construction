@@ -22,7 +22,7 @@ from extrusion.experiment import train_parallel
 from extrusion.motion import compute_motions, validate_trajectories
 from extrusion.stripstream import plan_sequence
 from extrusion.utils import load_world, TOOL_LINK, compute_sequence_distance, get_print_distance, \
-    recover_sequence, recover_directed_sequence
+    recover_sequence, recover_directed_sequence, Profiler
 from extrusion.parsing import load_extrusion, create_elements_bodies, \
     enumerate_problems, get_extrusion_path, affine_extrusion
 from extrusion.stream import get_print_gen_fn
@@ -86,8 +86,6 @@ def solve_extrusion(robot, obstacles, element_from_id, node_points, element_bodi
     # return
 
     initial_conf = get_joint_positions(robot, get_movable_joints(robot))
-    pr = cProfile.Profile()
-    pr.enable()
     if args.algorithm == 'stripstream':
         sampled_trajectories = []
         if precompute:
@@ -114,10 +112,7 @@ def solve_extrusion(robot, obstacles, element_from_id, node_points, element_bodi
     else:
         raise ValueError(args.algorithm)
     if args.motions:
-        plan = compute_motions(robot, obstacles, element_bodies, initial_conf,
-                               plan, collisions=not args.cfree)
-    pr.disable()
-    pstats.Stats(pr).sort_stats('tottime').print_stats(10) # tottime | cumtime
+        plan = compute_motions(robot, obstacles, element_bodies, initial_conf, plan, collisions=not args.cfree)
     return plan, data
 
 def plan_extrusion(args_list, viewer=False, verify=False, verbose=False, watch=False):
@@ -166,8 +161,9 @@ def plan_extrusion(args_list, viewer=False, verify=False, verbose=False, watch=F
             start_time = time.time()
             plan, data = None, {}
             with timeout(args.max_time):
-                plan, data = solve_extrusion(robot, obstacles, element_from_id, node_points, element_bodies,
-                                             extrusion_path, ground_nodes, args, checker=checker)
+                with Profiler(num=10):
+                    plan, data = solve_extrusion(robot, obstacles, element_from_id, node_points, element_bodies,
+                                                 extrusion_path, ground_nodes, args, checker=checker)
             runtime = elapsed_time(start_time)
 
         sequence = recover_directed_sequence(plan)

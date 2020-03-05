@@ -1,6 +1,9 @@
 from __future__ import print_function
 
+import cProfile
 import os
+import pstats
+
 import numpy as np
 
 from collections import defaultdict, deque
@@ -9,7 +12,8 @@ from pybullet_tools.utils import get_link_pose, BodySaver, set_point, multiply, 
     Point, HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, get_aabb, \
     get_distance, get_relative_pose, get_link_subtree, clone_body, randomize, get_movable_joints, get_all_links, \
     get_bodies_in_region, pairwise_link_collision, \
-    set_static, BASE_LINK, INF, create_plane, apply_alpha, point_from_pose, get_distance_fn, get_memory_in_kb, get_pairs
+    set_static, BASE_LINK, INF, create_plane, apply_alpha, point_from_pose, get_distance_fn, get_memory_in_kb, \
+    get_pairs, Saver
 from pddlstream.utils import get_connected_components
 
 KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
@@ -550,3 +554,17 @@ def compute_z_distance(node_points, element):
     # Distance to a ground plane
     # Opposing gravitational force
     return get_midpoint(node_points, element)[2]
+
+##################################################
+
+class Profiler(Saver):
+    def __init__(self, cumulative=False, num=25):
+        self.field = 'cumtime' if cumulative else 'tottime'
+        self.num = num
+        self.pr = cProfile.Profile()
+        self.pr.enable()
+    # def __enter__(self):
+    #     return self # Enter called at with
+    def restore(self):
+        self.pr.disable()
+        pstats.Stats(self.pr).sort_stats(self.field).print_stats(self.num)

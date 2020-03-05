@@ -1,9 +1,6 @@
-import cProfile
-import pstats
-
-from pybullet_tools.utils import Saver
-from extrusion.utils import element_supports, is_start_node
+from extrusion.utils import element_supports, Profiler
 from extrusion.stream import get_print_gen_fn, USE_CONMECH
+from extrusion.heuristics import compute_distance_from_node
 from pddlstream.algorithms.focused import solve_focused
 from pddlstream.language.constants import And, PDDLProblem, print_solution
 from pddlstream.language.generator import from_test
@@ -13,17 +10,6 @@ from pddlstream.utils import read, get_file_path
 
 STRIPSTREAM_ALGORITHM = 'stripstream'
 
-class Profiler(Saver):
-    def __init__(self, cumulative=False, num=25):
-        self.field = 'cumtime' if cumulative else 'tottime'
-        self.num = num
-        self.pr = cProfile.Profile()
-        self.pr.enable()
-    # def __enter__(self):
-    #     return self # Enter called at with
-    def restore(self):
-        self.pr.disable()
-        pstats.Stats(self.pr).sort_stats(self.field).print_stats(self.num)
 
 ##################################################
 
@@ -34,11 +20,21 @@ def compute_z_supports(node_points, element_bodies):
     return {(e, n) for e in element_bodies for n in e if element_supports(e, n, node_points)}
 
 
+##################################################
+
 def get_pddlstream(robot, obstacles, node_points, element_bodies, ground_nodes,
                    trajectories=[], **kwargs):
     # TODO: instantiation slowness is due to conditional effects
     # TODO: plan for the end-effector first
     # TODO: cost-sensitive planning (greedily explore cheapest)
+
+    # TODO: partially order the elements instead
+    # TODO: full layer partial ordering
+    #supports = compute_z_supports(node_points, element_bodies)
+    node_from_n = compute_distance_from_node(element_bodies, node_points, ground_nodes)
+    supports = {(node.edge, n) for n, node in node_from_n.items() if node.edge is not None}
+    #supports = set()
+    # TODO: pass into the stream
 
     domain_pddl = read(get_file_path(__file__, 'pddl/retired.pddl'))
     constant_map = {}
@@ -53,10 +49,6 @@ def get_pddlstream(robot, obstacles, node_points, element_bodies, ground_nodes,
 
     init = []
     init.extend(('Grounded', n) for n in ground_nodes)
-
-    # TODO: partially order the elements instead
-    # TODO: full layer partial ordering
-    supports = compute_z_supports(node_points, element_bodies)
     init.extend(('Supports', e, n) for e, n in supports)
     init.extend(('StartNode', n, e) for e in element_bodies
                 for n in e if (e, n) not in supports)
