@@ -273,7 +273,7 @@ def get_collision_test(robot, brick_from_index, collisions=True):
 ##################################################
 
 def get_pddlstream(robot, brick_from_index, obstacle_from_name, collisions=True, teleport=False):
-    domain_pddl = read(get_file_path(__file__, 'domain.pddl'))
+    domain_pddl = read(get_file_path(__file__, 'retired.pddl'))
     stream_pddl = read(get_file_path(__file__, 'stream.pddl'))
     constant_map = {}
 

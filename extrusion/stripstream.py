@@ -19,8 +19,6 @@ class Profiler(Saver):
         self.num = num
         self.pr = cProfile.Profile()
         self.pr.enable()
-        self.restore()
-        self.restore()
     # def __enter__(self):
     #     return self # Enter called at with
     def restore(self):
@@ -29,13 +27,16 @@ class Profiler(Saver):
 
 ##################################################
 
+# TODO: condition on plan/downstream constraints
+# TODO: stream fusion
+
 def get_pddlstream(robot, obstacles, node_points, element_bodies, ground_nodes,
                    trajectories=[], **kwargs):
     # TODO: instantiation slowness is due to condition effects
     # Regression works well here because of the fixed goal state
     # TODO: plan for the end-effector first
 
-    domain_pddl = read(get_file_path(__file__, 'pddl/domain.pddl'))
+    domain_pddl = read(get_file_path(__file__, 'pddl/retired.pddl'))
     constant_map = {}
 
     stream_pddl = read(get_file_path(__file__, 'pddl/stream.pddl'))
@@ -120,7 +121,8 @@ def plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
 
     with Profiler():
         pddlstream_problem = get_pddlstream(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                            trajectories=trajectories, collisions=collisions, disable=disable)
+                                            trajectories=trajectories, collisions=collisions, disable=disable,
+                                            precompute_collisions=True, supports=False)
         #solution = solve_incremental(pddlstream_problem, planner='add-random-lazy', max_time=600,
         #                             max_planner_time=300, debug=True)
         stream_info = {

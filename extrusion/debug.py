@@ -42,10 +42,10 @@ def get_pddlstream_test(node_points, elements, ground_nodes):
     # stripstream/lis_scripts/run_print.py
     # stripstream/lis_scripts/print_data.txt
 
-    domain_pddl = read(get_file_path(__file__, 'domain.pddl'))
+    domain_pddl = read(get_file_path(__file__, 'pddl/domain.pddl'))
     constant_map = {}
 
-    stream_pddl = read(get_file_path(__file__, 'stream.pddl'))
+    stream_pddl = read(get_file_path(__file__, 'pddl/stream.pddl'))
     #stream_pddl = None
     stream_map = {
         'test-cfree': from_test(get_test_cfree({})),

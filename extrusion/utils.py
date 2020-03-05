@@ -223,6 +223,9 @@ class Trajectory(object):
         for conf in self.path[1:]:
             set_joint_positions(self.robot, self.joints, conf)
             yield
+    def interpolate(self):
+        # TODO: linear or spline interpolation
+        raise NotImplementedError()
 
 class MotionTrajectory(Trajectory): # Transfer
     def __init__(self, robot, joints, path, attachments=[]):
@@ -254,6 +257,9 @@ class PrintTrajectory(Trajectory): # TODO: add element body?
                               self.tool_path[::-1], self.element, not self.is_reverse)
     def __repr__(self):
         return 'p({}->{})'.format(self.n1, self.n2)
+    def interpolate(self):
+        # TODO: maintain a constant end-effector velocity by retiming
+        raise NotImplementedError()
 
 def get_print_distance(trajectories, teleport=False):
     if trajectories is None:
