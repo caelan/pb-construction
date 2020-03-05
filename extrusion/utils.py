@@ -9,7 +9,7 @@ import numpy as np
 from collections import defaultdict, deque
 
 from pybullet_tools.utils import get_link_pose, BodySaver, set_point, multiply, set_pose, set_joint_positions, \
-    Point, HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, angle_between, get_aabb, \
+    Point, HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, get_aabb, \
     get_distance, get_relative_pose, get_link_subtree, clone_body, randomize, get_movable_joints, get_all_links, \
     get_bodies_in_region, pairwise_link_collision, \
     set_static, BASE_LINK, INF, create_plane, apply_alpha, point_from_pose, get_distance_fn, get_memory_in_kb, \
@@ -469,33 +469,6 @@ def compute_sequence_distance(node_points, directed_elements, start=None, end=No
     return distance
 
 ##################################################
-
-def is_start_node(n1, e, node_points):
-    return not element_supports(e, n1, node_points)
-
-def doubly_printable(e, node_points):
-    return all(is_start_node(n, e, node_points) for n in e)
-
-def get_supported_orders(elements, node_points):
-    node_neighbors = get_node_neighbors(elements)
-    orders = set()
-    for node in node_neighbors:
-        supporters = {e for e in node_neighbors[node] if element_supports(e, node, node_points)}
-        printers = {e for e in node_neighbors[node] if is_start_node(node, e, node_points)
-                    and not doubly_printable(e, node_points)}
-        orders.update((e1, e2) for e1 in supporters for e2 in printers)
-    return orders
-
-def element_supports(e, n1, node_points): # A property of nodes
-    # TODO: support polygon (ZMP heuristic)
-    # TODO: recursively apply as well
-    # TODO: end-effector force
-    # TODO: allow just a subset to support
-    # TODO: construct using only upwards
-    n2 = get_other_node(n1, e)
-    delta = node_points[n2] - node_points[n1]
-    theta = angle_between(delta, [0, 0, -1])
-    return theta < (np.pi / 2 - SUPPORT_THETA)
 
 def retrace_supporters(element, incoming_edges, supporters):
     for element2 in incoming_edges[element]:

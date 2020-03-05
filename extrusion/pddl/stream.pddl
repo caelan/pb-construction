@@ -5,11 +5,11 @@
   ;  :certified (CFree ?t ?e)
   ;)
 
-  (:stream test-cfree-traj-conf
-    :inputs (?r ?t ?r2 ?q2)
-    :domain (and (Traj ?r ?t) (Conf ?r2 ?q2))
-    :certified (CFreeTrajConf ?r ?t ?r2 ?q2)
-  )
+  ;(:stream test-cfree-traj-conf
+  ;  :inputs (?r ?t ?r2 ?q2)
+  ;  :domain (and (Traj ?r ?t) (Conf ?r2 ?q2))
+  ;  :certified (CFreeTrajConf ?r ?t ?r2 ?q2)
+  ;)
 
   (:stream sample-print
     :inputs (?r ?n1 ?e ?n2)
@@ -20,8 +20,8 @@
                     (Conf ?r ?q1) (Conf ?r ?q2) (Traj ?r ?t))
   )
 
-  (:stream test-stiffness
-   :fluents (Printed)
-   :certified (Stiff)
-  )
+  ;(:stream test-stiffness
+  ; :fluents (Printed)
+  ; :certified (Stiff)
+  ;)
 )

@@ -1,21 +1,20 @@
+from collections import defaultdict
+from itertools import product
+
 import numpy as np
 
-from itertools import product
-from collections import defaultdict
-
-from extrusion.utils import element_supports, Profiler, load_robot, get_other_node, get_node_neighbors
+from extrusion.heuristics import compute_layer_from_vertex, compute_layer_from_element
 from extrusion.stream import get_print_gen_fn, USE_CONMECH
-from extrusion.heuristics import compute_distance_from_node, compute_layer_from_vertex, compute_layer_from_element
-from extrusion.visualization import draw_model, display_trajectories
+from extrusion.utils import load_robot, get_other_node, get_node_neighbors
+from extrusion.visualization import display_trajectories
+from pddlstream.algorithms.downward import set_cost_scale
 from pddlstream.algorithms.focused import solve_focused
-from pddlstream.algorithms.downward import SEARCH_OPTIONS, set_cost_scale
 from pddlstream.language.constants import And, PDDLProblem, print_solution
 from pddlstream.language.generator import from_test
 from pddlstream.language.stream import StreamInfo, PartialInputs, WildOutput
 from pddlstream.utils import read, get_file_path
-from pybullet_tools.utils import get_configuration, wait_if_gui, RED, get_point, set_pose, Pose, Euler, Point, \
+from pybullet_tools.utils import get_configuration, set_pose, Pose, Euler, Point, \
     get_movable_joints, set_joint_position, has_gui, WorldSaver
-
 
 STRIPSTREAM_ALGORITHM = 'stripstream'
 

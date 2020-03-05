@@ -11,8 +11,9 @@ from pybullet_tools.utils import get_movable_joints, get_joint_positions, multip
     randomize, get_extend_fn, user_input, INF, elapsed_time, get_bodies_in_region, get_aabb, get_all_links, \
     pairwise_link_collision, step_simulation, BASE_LINK
 from extrusion.utils import TOOL_LINK, get_disabled_collisions, get_node_neighbors, \
-    PrintTrajectory, retrace_supporters, get_supported_orders, prune_dominated, Command, MotionTrajectory, RESOLUTION, \
+    PrintTrajectory, retrace_supporters, prune_dominated, Command, MotionTrajectory, RESOLUTION, \
     JOINT_WEIGHTS, EE_LINK, EndEffector, is_ground, is_end, is_reversed, reverse_element
+from extrusion.retired import get_supported_orders
 #from extrusion.run import USE_IKFAST, get_supported_orders, retrace_supporters, SELF_COLLISIONS, USE_CONMECH
 from pddlstream.utils import neighbors_from_orders, irange
 
