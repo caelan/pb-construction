@@ -92,7 +92,7 @@ def solve_extrusion(robot, obstacles, element_from_id, node_points, element_bodi
             sampled_trajectories = sample_trajectories(robot, obstacles, node_points, element_bodies, ground_nodes)
         plan, data = plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
                                    trajectories=sampled_trajectories, collisions=not args.cfree,
-                                   max_time=args.max_time, disable=args.disable, debug=False, **kwargs)
+                                   max_time=args.max_time, disable=args.disable, **kwargs)
     elif args.algorithm == 'progression':
         plan, data = progression(robot, obstacles, element_bodies, extrusion_path, partial_orders=partial_orders,
                                  heuristic=args.bias, max_time=args.max_time,
@@ -208,7 +208,7 @@ def plan_extrusion(args_list, viewer=False, verify=False, verbose=False, watch=F
         animate = not (args.disable or args.ee_only)
         connect(use_gui=True, shadows=SHADOWS, color=BACKGROUND_COLOR)
         obstacles, robot = load_world()
-        display_trajectories(robot, node_points, ground_nodes, plan, #time_step=None, video=True,
+        display_trajectories(node_points, ground_nodes, plan, #time_step=None, video=True,
                              animate=animate)
         reset_simulation()
         disconnect()

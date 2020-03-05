@@ -16,7 +16,10 @@ from pybullet_tools.utils import get_link_pose, BodySaver, set_point, multiply, 
     get_pairs, Saver, set_configuration
 from pddlstream.utils import get_connected_components
 
-KUKA_PATH = '../conrob_pybullet/models/kuka_kr6_r900/urdf/kuka_kr6_r900_extrusion.urdf'
+KUKA_DIR = '../conrob_pybullet/models/kuka_kr6_r900/urdf/'
+#KUKA_PATH = 'kuka_kr6_r900_extrusion.urdf'
+KUKA_PATH = 'kuka_kr6_r900_extrusion_simple.urdf'
+
 TOOL_LINK = 'eef_tcp_frame'
 EE_LINK = 'eef_base_link' # robot_tool0
 # [u'base_frame_in_rob_base', u'element_list', u'node_list', u'assembly_type', u'model_type', u'unit']
@@ -68,8 +71,9 @@ def check_memory(max_memory=MAX_MEMORY):
 
 def load_robot():
     root_directory = os.path.dirname(os.path.abspath(__file__))
+    kuka_path = os.path.join(root_directory, KUKA_DIR, KUKA_PATH)
     with HideOutput():
-        robot = load_pybullet(os.path.join(root_directory, KUKA_PATH), fixed_base=True)
+        robot = load_pybullet(kuka_path, fixed_base=True)
         #print([get_max_velocity(robot, joint) for joint in get_movable_joints(robot)])
         set_static(robot)
         set_configuration(robot, INITIAL_CONF)
@@ -231,7 +235,7 @@ class Trajectory(object):
     def iterate(self):
         for conf in self.path[1:]:
             set_joint_positions(self.robot, self.joints, conf)
-            yield
+            yield conf
     def interpolate(self):
         # TODO: linear or spline interpolation
         raise NotImplementedError()
@@ -562,6 +566,7 @@ def compute_z_distance(node_points, element):
 
 ##################################################
 
+# TODO: from pddlstream.utils import Profiler
 class Profiler(Saver):
     def __init__(self, cumulative=False, num=25):
         self.field = 'cumtime' if cumulative else 'tottime'

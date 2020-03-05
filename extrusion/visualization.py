@@ -177,7 +177,7 @@ def set_extrusion_camera(node_points):
 
 ##################################################
 
-def display_trajectories(robot, node_points, ground_nodes, trajectories, animate=True, time_step=0.02, video=False):
+def display_trajectories(node_points, ground_nodes, trajectories, animate=True, time_step=0.02, video=False):
     if trajectories is None:
         return
     set_extrusion_camera(node_points)
@@ -212,8 +212,8 @@ def display_trajectories(robot, node_points, ground_nodes, trajectories, animate
         last_point = None
         handles = []
 
-        for conf in trajectory.path:
-            set_configuration(robot, conf)
+        for _ in trajectory.iterate():
+            # TODO: the robot body could be different
             if isinstance(trajectory, PrintTrajectory):
                 current_point = point_from_pose(trajectory.end_effector.get_tool_pose())
                 if last_point is not None:

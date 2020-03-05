@@ -33,7 +33,7 @@
     :parameters (?r ?n ?e ?q1 ?q2 ?t)
     :precondition (and (PrintAction ?r ?n ?e ?q1 ?q2 ?t) (Printed ?e) ; (Stiff)
                         ; TODO: check the other node to avoid connecting until supported
-                       (AtConf ?r ?q1) ; (not (UnsafeTraj ?r ?t))
+                       ; (AtConf ?r ?q1) ; (not (UnsafeTraj ?r ?t))
                        (forall (?e2) (imply (Supports ?e2 ?n) (Printed ?e2)))
                        (forall (?e2) (imply (Collision ?t ?e2) (Removed ?e2)))
                   )
@@ -41,10 +41,10 @@
                  (not (Printed ?e)))
   )
 
-  (:derived (UnsafeTraj ?r ?t) (and
-        (Traj ?r ?t)
-        (exists (?r2 ?q2) (and (Conf ?r2 ?q2) (not (= ?r ?r2))
-                               (not (CFreeTrajConf ?r ?t ?r2 ?q2))
-                               (AtConf ?r2 ?q2))))
-  )
+  ;(:derived (UnsafeTraj ?r ?t) (and
+  ;      (Traj ?r ?t)
+  ;      (exists (?r2 ?q2) (and (Conf ?r2 ?q2) (not (= ?r ?r2))
+  ;                             (not (CFreeTrajConf ?r ?t ?r2 ?q2))
+  ;                             (AtConf ?r2 ?q2))))
+  ;)
 )
