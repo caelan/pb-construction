@@ -6,7 +6,7 @@
     (Element ?e)
     (Printed ?e)
     (Removed ?e)
-    (Traj ?t)
+    (Traj ?r ?t)
     (PrintAction ?r ?n ?e ?q1 ?q2 ?t)
     (Collision ?t ?e)
     (Grounded ?n)
@@ -17,6 +17,8 @@
     (Conf ?r ?q)
     (AtConf ?r ?q)
     (CanMove ?r)
+    (CFreeTrajConf ?r ?t ?r2 ?q2)
+    (UnsafeTraj ?r ?t)
   )
 
   (:action move
@@ -31,11 +33,18 @@
     :parameters (?r ?n ?e ?q1 ?q2 ?t)
     :precondition (and (PrintAction ?r ?n ?e ?q1 ?q2 ?t) (Printed ?e) ; (Stiff)
                         ; TODO: check the other node to avoid connecting until supported
-                       (AtConf ?r ?q1)
+                       (AtConf ?r ?q1) ; (not (UnsafeTraj ?r ?t))
                        (forall (?e2) (imply (Supports ?e2 ?n) (Printed ?e2)))
                        (forall (?e2) (imply (Collision ?t ?e2) (Removed ?e2)))
                   )
     :effect (and (Removed ?e) (CanMove ?r)
                  (not (Printed ?e)))
+  )
+
+  (:derived (UnsafeTraj ?r ?t) (and
+        (Traj ?r ?t)
+        (exists (?r2 ?q2) (and (Conf ?r2 ?q2) (not (= ?r ?r2))
+                               (not (CFreeTrajConf ?r ?t ?r2 ?q2))
+                               (AtConf ?r2 ?q2))))
   )
 )

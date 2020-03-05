@@ -18,7 +18,7 @@ STRIPSTREAM_ALGORITHM = 'stripstream'
 
 ##################################################
 
-def get_pddlstream(robot1, obstacles, node_points, element_bodies, ground_nodes,
+def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
                    trajectories=[], **kwargs):
     # TODO: instantiation slowness is due to conditional effects
     # TODO: plan for the end-effector first
@@ -32,24 +32,13 @@ def get_pddlstream(robot1, obstacles, node_points, element_bodies, ground_nodes,
     #supports = set()
     # TODO: pass into the stream
 
-    centroid = np.average(node_points, axis=0)
-    #print(centroid)
-    #print(get_point(robot1))
-    robot2 = load_robot()
-    set_pose(robot2, Pose(point=Point(*2*centroid[:2]), euler=Euler(yaw=np.pi)))
-
-    #robots = [robot1]
-    robots = [robot1, robot2]
-    for robot in [robot1, robot2]:
-        joint1 = get_movable_joints(robot)[0]
-        set_joint_position(robot, joint1, np.pi/8)
-
     #print(supports)
-    elements = {e for e, _ in supports}
-    draw_model(elements, node_points, ground_nodes, color=RED)
-    wait_if_gui()
+    # elements = {e for e, _ in supports}
+    # draw_model(elements, node_points, ground_nodes, color=RED)
+    # wait_if_gui()
 
-    initial_confs = {robot: get_configuration(robot1) for robot in robots}
+    robot1 = robots[0]
+    initial_confs = {robot: get_configuration(robot) for robot in robots}
 
     domain_pddl = read(get_file_path(__file__, 'pddl/domain.pddl'))
     stream_pddl = read(get_file_path(__file__, 'pddl/stream.pddl'))
@@ -62,6 +51,7 @@ def get_pddlstream(robot1, obstacles, node_points, element_bodies, ground_nodes,
         #'sample-print': from_gen_fn(get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes)),
         'sample-print': get_wild_print_gen_fn(robot1, obstacles, node_points, element_bodies, ground_nodes, **kwargs),
         'test-stiffness': from_test(test_stiffness),
+        'test-cfree-traj-conf': from_test(lambda *args: True),
     }
 
     init = []
@@ -108,7 +98,7 @@ def get_pddlstream(robot1, obstacles, node_points, element_bodies, ground_nodes,
     return PDDLProblem(domain_pddl, constant_map, stream_pddl, stream_map, init, goal)
 
 
-def plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
+def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
                   trajectories=[], collisions=True, disable=False, debug=False, max_time=30, checker=None):
     # TODO: fail if wild stream produces unexpected facts
     # TODO: try search at different cost levels (i.e. w/ and w/o abstract)
@@ -120,15 +110,28 @@ def plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
     # TODO: NEGATIVE_SUFFIX to make axioms easier
     # TODO: sort by action cost heuristic
     # http://www.fast-downward.org/Doc/Evaluator#Max_evaluator
+
+    centroid = np.average(node_points, axis=0)
+    #print(centroid)
+    #print(get_point(robot1))
+    robot2 = load_robot()
+    set_pose(robot2, Pose(point=Point(*2*centroid[:2]), euler=Euler(yaw=np.pi)))
+
+    #robots = [robot1]
+    robots = [robot1, robot2]
+    for robot in [robot1, robot2]:
+        joint1 = get_movable_joints(robot)[0]
+        set_joint_position(robot, joint1, np.pi/8)
     saver = WorldSaver()
 
-    pddlstream_problem = get_pddlstream(robot, obstacles, node_points, element_bodies, ground_nodes,
+    pddlstream_problem = get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
                                         trajectories=trajectories, collisions=collisions, disable=disable,
                                         precompute_collisions=True, supports=False)
     #solution = solve_incremental(pddlstream_problem, planner='add-random-lazy', max_time=600,
     #                             max_planner_time=300, debug=True)
     stream_info = {
         'sample-print': StreamInfo(PartialInputs(unique=True)),
+        'test-cfree-traj-conf': StreamInfo(p_success=1e-2, negate=True), #, verbose=False),
     }
     # TODO: goal serialization
     #planner = 'ff-ehc'
@@ -151,7 +154,7 @@ def plan_sequence(robot, obstacles, node_points, element_bodies, ground_nodes,
     trajectories = [t for name, args in reversed(plan) if name == 'print' for t in args[-1].trajectories]
     if has_gui():
         saver.restore()
-        display_trajectories(robot, node_points, ground_nodes, trajectories)
+        display_trajectories(robot1, node_points, ground_nodes, trajectories)
     return trajectories, data
 
 ##################################################
