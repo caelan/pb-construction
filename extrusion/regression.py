@@ -53,7 +53,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
     if checker is None:
         checker = create_stiffness_checker(extrusion_path, verbose=False) # if stiffness else None
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                    supports=False, precompute_collisions=False,
+                                    precompute_collisions=False,
                                     max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS,
                                     collisions=collisions, **kwargs)
     heuristic_fn = get_heuristic_fn(robot, extrusion_path, heuristic, checker=checker, forward=False)

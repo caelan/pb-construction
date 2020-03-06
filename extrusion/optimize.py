@@ -33,7 +33,7 @@ def optimize_commands(robot, obstacles, element_bodies, extrusion_path, initial_
     start_time = time.time()
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path)
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                    supports=False, precompute_collisions=False,
+                                    precompute_collisions=False,
                                     max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS,
                                     collisions=collisions, **kwargs)
 

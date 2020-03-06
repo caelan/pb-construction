@@ -13,8 +13,6 @@ from pybullet_tools.utils import get_movable_joints, get_joint_positions, multip
 from extrusion.utils import TOOL_LINK, get_disabled_collisions, get_node_neighbors, \
     PrintTrajectory, retrace_supporters, prune_dominated, Command, MotionTrajectory, RESOLUTION, \
     JOINT_WEIGHTS, EE_LINK, EndEffector, is_ground, is_end, is_reversed, reverse_element
-from extrusion.retired import get_supported_orders
-#from extrusion.run import USE_IKFAST, get_supported_orders, retrace_supporters, SELF_COLLISIONS, USE_CONMECH
 from pddlstream.utils import neighbors_from_orders, irange
 
 try:
@@ -388,7 +386,7 @@ def get_element_collision_fn(robot, obstacles):
 SKIP_PERCENTAGE = 0.0 # 0.0 | 0.95
 
 def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground_nodes,
-                     precompute_collisions=False, supports=False,
+                     precompute_collisions=False, partial_orders=set(),
                      collisions=True, disable=False, ee_only=False, allow_failures=False,
                      max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS, max_time=INF, **kwargs):
     # TODO: print on full sphere and just check for collisions with the printed element
@@ -397,7 +395,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
         precompute_collisions = False
     #element_neighbors = get_element_neighbors(element_bodies)
     node_neighbors = get_node_neighbors(element_bodies)
-    incoming_supporters, _ = neighbors_from_orders(get_supported_orders(element_bodies, node_points))
+    incoming_supporters, _ = neighbors_from_orders(partial_orders)
 
     end_effector = EndEffector(robot, ee_link=link_from_name(robot, EE_LINK),
                                tool_link=link_from_name(robot, TOOL_LINK),
@@ -423,11 +421,8 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
         n1, n2 = reverse_element(element) if reverse else element
         neighboring_elements = node_neighbors[n1] & node_neighbors[n2]
 
-        #supporters = {e for e in node_neighbors[n1] if element_supports(e, n1, node_points)}
-        supporters = []
-        if supports:
-            retrace_supporters(element, incoming_supporters, supporters)
-
+        supporters = [] # TODO: can also do according to levels
+        retrace_supporters(element, incoming_supporters, supporters)
         element_obstacles = {element_bodies[e] for e in supporters + list(extruded)}
         obstacles = set(fixed_obstacles) | element_obstacles
         if not collisions:

@@ -117,7 +117,7 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
     if checker is None:
         checker = create_stiffness_checker(extrusion_path, verbose=False)
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                    supports=False, precompute_collisions=False,
+                                    precompute_collisions=False,
                                     max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS,
                                     collisions=collisions, **kwargs)
     id_from_element = get_id_from_element(element_from_id)

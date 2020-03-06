@@ -106,11 +106,11 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
     #                                precompute_collisions=False, supports=False, ee_only=ee_only,
     #                                max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS, collisions=collisions, **kwargs)
     full_print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                         precompute_collisions=False, supports=False, ee_only=ee_only, allow_failures=True,
+                                         precompute_collisions=False, ee_only=ee_only, allow_failures=True,
                                          max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS, collisions=collisions, **kwargs)
     # TODO: could just check environment collisions & kinematics instead of element collisions
     ee_print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                        precompute_collisions=False, supports=False, ee_only=True, allow_failures=True,
+                                        precompute_collisions=False, ee_only=True, allow_failures=True,
                                         max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS, collisions=collisions, **kwargs)
     id_from_element = get_id_from_element(element_from_id)
     all_elements = frozenset(element_bodies)

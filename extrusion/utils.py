@@ -48,6 +48,8 @@ JOINT_WEIGHTS = np.reciprocal([6.28318530718, 5.23598775598, 6.28318530718,
 
 INITIAL_CONF = [0, -np.pi/4, np.pi/4, 0, 0, 0]
 
+TOOL_VELOCITY = 1 # m/s
+
 #GROUND_COLOR = 0.9*np.ones(3)
 GROUND_COLOR = 0.8*np.ones(3)
 #GROUND_COLOR = TAN

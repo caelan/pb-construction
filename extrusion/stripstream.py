@@ -1,5 +1,5 @@
 from collections import defaultdict
-from itertools import product
+from itertools import product, islice
 
 import numpy as np
 
@@ -8,7 +8,7 @@ from extrusion.stream import get_print_gen_fn, USE_CONMECH
 from extrusion.utils import load_robot, get_other_node, get_node_neighbors
 from extrusion.visualization import display_trajectories
 from pddlstream.algorithms.downward import set_cost_scale
-from pddlstream.algorithms.focused import solve_focused
+from pddlstream.algorithms.focused import solve_focused #, CURRENT_STREAM_PLAN
 from pddlstream.language.constants import And, PDDLProblem, print_solution
 from pddlstream.language.generator import from_test
 from pddlstream.language.stream import StreamInfo, PartialInputs, WildOutput
@@ -34,11 +34,10 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
             if layer_from_n[n1] <= layer_from_n[n2]:
                 directions.add((n1, e, n2))
 
-    # TODO: pass into the stream
     # TODO: could make level objects
     # Could update whether a node is connected, but it's slightly tricky
     # Local ordering
-    orders = set()
+    partial_orders = set()
     for n1, neighbors in get_node_neighbors(elements).items():
         below, equal, above = [], [], [] # wrt n1
         for e in neighbors: # Directed version of this (likely wouldn't need directions then)
@@ -49,8 +48,8 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
                 below.append(e)
             else:
                 equal.append(e)
-        orders.update(product(below, equal + above))
-        orders.update(product(equal, above))
+        partial_orders.update(product(below, equal + above))
+        partial_orders.update(product(equal, above))
 
     # Global ordering
     elements_from_layer = defaultdict(list)
@@ -59,7 +58,7 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
 
     layers = sorted(elements_from_layer)
     for layer in layers[:-1]:
-        orders.update(product(elements_from_layer[layer], elements_from_layer[layer+1]))
+        partial_orders.update(product(elements_from_layer[layer], elements_from_layer[layer+1]))
 
     #print(supports)
     # draw_model(supporters, node_points, ground_nodes, color=RED)
@@ -71,12 +70,11 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
     stream_pddl = read(get_file_path(__file__, 'pddl/stream.pddl'))
     constant_map = {}
 
-    # TODO: condition on plan/downstream constraints
-    # TODO: stream fusion
     stream_map = {
         #'test-cfree': from_test(get_test_cfree(element_bodies)),
         #'sample-print': from_gen_fn(get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes)),
-        'sample-print': get_wild_print_gen_fn(robots, obstacles, node_points, element_bodies, ground_nodes, **kwargs),
+        'sample-print': get_wild_print_gen_fn(robots, obstacles, node_points, element_bodies, ground_nodes,
+                                              partial_orders=partial_orders, **kwargs),
         'test-stiffness': from_test(test_stiffness),
         'test-cfree-traj-conf': from_test(lambda *args: True),
     }
@@ -92,7 +90,7 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
 
     init.extend(('Grounded', n) for n in ground_nodes)
     init.extend(('Direction', *triplet) for triplet in directions)
-    init.extend(('Order', *pair) for pair in orders)
+    init.extend(('Order', *pair) for pair in partial_orders)
 
     for e in element_bodies:
         n1, n2 = e
@@ -149,7 +147,7 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
 
     pddlstream_problem = get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
                                         trajectories=trajectories, collisions=collisions, disable=disable,
-                                        precompute_collisions=True, supports=False)
+                                        precompute_collisions=True)
     print('Init:', pddlstream_problem.init)
     print('Goal:', pddlstream_problem.goal)
 
@@ -196,8 +194,15 @@ def get_wild_print_gen_fn(robots, obstacles, node_points, element_bodies, ground
     gen_fn_from_robot = {robot: get_print_gen_fn(robot, obstacles, node_points, element_bodies,
                                                  ground_nodes, **kwargs) for robot in robots}
     def wild_gen_fn(name, node1, element, node2):
-        index = int(name[1:])
-        robot = robots[index]
+        # TODO: could cache this
+        # sequence = [result.get_mapping()['?e'].value for result in CURRENT_STREAM_PLAN]
+        # index = sequence.index(element)
+        # printed = sequence[:index]
+        # TODO: this might need to be recomputed per iteration
+        # TODO: condition on plan/downstream constraints
+        # TODO: stream fusion
+        robot = robots[int(name[1:])]
+        #generator = gen_fn_from_robot[robot](node1, element)
         for command, in gen_fn_from_robot[robot](node1, element):
             q1 = np.array(command.start_conf)
             q2 = np.array(command.end_conf)
