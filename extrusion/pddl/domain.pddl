@@ -18,6 +18,7 @@
     (CanMove ?r)
     (CFreeTrajConf ?r ?t ?r2 ?q2)
     (UnsafeTraj ?r ?t)
+    (Assigned ?r ?e)
   )
 
   ;(:action move
@@ -31,6 +32,7 @@
   (:action print
     :parameters (?r ?n1 ?e ?n2 ?q1 ?q2 ?t)
     :precondition (and (PrintAction ?r ?n1 ?e ?n2 ?q1 ?q2 ?t) (Printed ?e) ; (Stiff)
+                       ; (Assigned ?r ?e)
                        ; (AtConf ?r ?q1) ; (not (UnsafeTraj ?r ?t))
                        (forall (?e2) (imply (Order ?e ?e2) (Removed ?e2)))
                        (forall (?e2) (imply (Collision ?t ?e2) (Removed ?e2)))

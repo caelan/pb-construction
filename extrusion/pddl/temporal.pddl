@@ -21,6 +21,7 @@
     (UnsafeTraj ?r ?t)
     (Idle ?r)
     (Executing ?r ?t)
+    (Assigned ?r ?e)
   )
   (:functions
     (Distance ?t)
@@ -32,9 +33,10 @@
    :duration (= ?duration 1) ; (= ?duration (/ (Distance ?t)  (Speed)))
    :condition (and
         (at start (PrintAction ?r ?n1 ?e ?n2 ?q1 ?q2 ?t))
+        (at start (Assigned ?r ?e))
         (at start (Printed ?e))
         (at start (Idle ?r))
-        ;(at start (forall (?e2) (imply (Order ?e ?e2) (Removed ?e2))))
+        (at start (forall (?e2) (imply (Order ?e ?e2) (Removed ?e2))))
         ;(at start (forall (?e2) (imply (Collision ?t ?e2) (Removed ?e2))))
    )
    :effect (and

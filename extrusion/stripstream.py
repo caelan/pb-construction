@@ -7,7 +7,7 @@ import numpy as np
 
 from extrusion.heuristics import compute_layer_from_vertex, compute_layer_from_element
 from extrusion.stream import get_print_gen_fn, USE_CONMECH
-from extrusion.utils import load_robot, get_other_node, get_node_neighbors, PrintTrajectory
+from extrusion.utils import load_robot, get_other_node, get_node_neighbors, PrintTrajectory, get_midpoint
 from extrusion.visualization import display_trajectories
 from pddlstream.algorithms.downward import set_cost_scale
 from pddlstream.algorithms.focused import solve_focused #, CURRENT_STREAM_PLAN
@@ -16,8 +16,9 @@ from pddlstream.language.generator import from_test
 from pddlstream.language.stream import StreamInfo, PartialInputs, WildOutput
 from pddlstream.utils import read, get_file_path
 from pddlstream.language.temporal import solve_tfd
-from pybullet_tools.utils import get_configuration, set_pose, Pose, Euler, Point, \
-    get_movable_joints, set_joint_position, has_gui, WorldSaver, wait_if_gui, add_line, RED, wait_for_duration
+from pybullet_tools.utils import get_configuration, set_pose, Pose, Euler, Point, get_point, \
+    get_movable_joints, set_joint_position, has_gui, WorldSaver, wait_if_gui, add_line, RED, \
+    wait_for_duration, get_length, INF
 
 STRIPSTREAM_ALGORITHM = 'stripstream'
 
@@ -52,6 +53,8 @@ def simulate_printing(node_points, trajectories, time_step=0.1, speed_up=10.):
     return handles
 
 ##################################################
+
+ROBOT_TEMPLATE = 'r{}'
 
 def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
                    trajectories=[], **kwargs):
@@ -96,7 +99,7 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
     # draw_model(supporters, node_points, ground_nodes, color=RED)
     # wait_if_gui()
 
-    initial_confs = {'r{}'.format(i): np.array(get_configuration(robot)) for i, robot in enumerate(robots)}
+    initial_confs = {ROBOT_TEMPLATE.format(i): np.array(get_configuration(robot)) for i, robot in enumerate(robots)}
 
     #domain_pddl = read(get_file_path(__file__, 'pddl/domain.pddl'))
     domain_pddl = read(get_file_path(__file__, 'pddl/temporal.pddl'))
@@ -122,9 +125,22 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
             #('CanMove', robot),
         ])
 
+    assignments = set() # TODO: could assign to several robots
+    for element in elements:
+        point = get_midpoint(node_points, element)
+        closest_robot, closest_distance = None, INF
+        for i, robot in enumerate(robots):
+            base_point = get_point(robot)
+            distance = get_length((base_point - point)[:2])
+            if distance < closest_distance:
+                closest_robot, closest_distance = ROBOT_TEMPLATE.format(i), distance
+        assert closest_robot is not None
+        assignments.add((closest_robot, element))
+
     init.extend(('Grounded', n) for n in ground_nodes)
     init.extend(('Direction',) + triplet for triplet in directions)
     init.extend(('Order',) + pair for pair in partial_orders)
+    init.extend(('Assigned',) + pair for pair in assignments)
 
     for e in element_bodies:
         n1, n2 = e
