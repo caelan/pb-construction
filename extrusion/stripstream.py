@@ -11,11 +11,11 @@ from extrusion.utils import load_robot, get_other_node, get_node_neighbors, Prin
 from extrusion.visualization import display_trajectories
 from pddlstream.algorithms.downward import set_cost_scale
 from pddlstream.algorithms.focused import solve_focused #, CURRENT_STREAM_PLAN
-from pddlstream.language.constants import And, PDDLProblem, print_solution
+from pddlstream.language.constants import And, PDDLProblem, print_solution, DurativeAction
 from pddlstream.language.generator import from_test
 from pddlstream.language.stream import StreamInfo, PartialInputs, WildOutput
 from pddlstream.utils import read, get_file_path
-from pddlstream.language.temporal import solve_tfd
+from pddlstream.language.temporal import solve_tfd, retime_plan, compute_duration
 from pybullet_tools.utils import get_configuration, set_pose, Pose, Euler, Point, get_point, \
     get_movable_joints, set_joint_position, has_gui, WorldSaver, wait_if_gui, add_line, RED, \
     wait_for_duration, get_length, INF
@@ -56,26 +56,37 @@ def simulate_printing(node_points, trajectories, time_step=0.1, speed_up=10.):
 
 ROBOT_TEMPLATE = 'r{}'
 
-def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
-                   trajectories=[], **kwargs):
-    elements = set(element_bodies)
-    layer_from_n = compute_layer_from_vertex(element_bodies, node_points, ground_nodes)
-    layer_from_e = compute_layer_from_element(element_bodies, node_points, ground_nodes)
+# ----- Small -----
+# extreme_beam_test
+# extrusion_exp_L75.0
+# four-frame
+# simple_frame
+# topopt-205_long_beam_test
+# long_beam_test
 
+# ----- Medium -----
+# robarch_tree_S, robarch_tree_M
+# topopt-101_tiny
+# semi_sphere
+# compas_fea_beam_tree_simp, compas_fea_beam_tree_S_simp, compas_fea_beam_tree_M_simp
+
+def compute_directions(elements, layer_from_n):
     directions = set()
     for e in elements:
         for n1 in e:
             n2 = get_other_node(n1, e)
             if layer_from_n[n1] <= layer_from_n[n2]:
                 directions.add((n1, e, n2))
+    return directions
 
+def compute_local_orders(elements, layer_from_n):
     # TODO: could make level objects
     # Could update whether a node is connected, but it's slightly tricky
     # Local ordering
     partial_orders = set()
     for n1, neighbors in get_node_neighbors(elements).items():
-        below, equal, above = [], [], [] # wrt n1
-        for e in neighbors: # Directed version of this (likely wouldn't need directions then)
+        below, equal, above = [], [], []  # wrt n1
+        for e in neighbors:  # Directed version of this (likely wouldn't need directions then)
             n2 = get_other_node(n1, e)
             if layer_from_n[n1] < layer_from_n[n2]:
                 above.append(e)
@@ -85,15 +96,30 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
                 equal.append(e)
         partial_orders.update(product(below, equal + above))
         partial_orders.update(product(equal, above))
+    return partial_orders
 
-    # Global ordering
+def compute_global_orders(element_bodies, node_points, ground_nodes):
+    layer_from_e = compute_layer_from_element(element_bodies, node_points, ground_nodes)
     elements_from_layer = defaultdict(list)
     for e, l in layer_from_e.items():
         elements_from_layer[l].append(e)
-
+    partial_orders = set()
     layers = sorted(elements_from_layer)
     for layer in layers[:-1]:
         partial_orders.update(product(elements_from_layer[layer], elements_from_layer[layer+1]))
+    return partial_orders
+
+##################################################
+
+def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
+                   trajectories=[], temporal=True, **kwargs):
+    elements = set(element_bodies)
+    layer_from_n = compute_layer_from_vertex(element_bodies, node_points, ground_nodes)
+
+    directions = compute_directions(elements, layer_from_n)
+    #partial_orders = set()
+    partial_orders = compute_local_orders(elements, layer_from_n) # makes the makespan heuristic slow
+    #partial_orders = compute_global_orders(element_bodies, node_points, ground_nodes)
 
     #print(supports)
     # draw_model(supporters, node_points, ground_nodes, color=RED)
@@ -101,8 +127,7 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
 
     initial_confs = {ROBOT_TEMPLATE.format(i): np.array(get_configuration(robot)) for i, robot in enumerate(robots)}
 
-    #domain_pddl = read(get_file_path(__file__, 'pddl/domain.pddl'))
-    domain_pddl = read(get_file_path(__file__, 'pddl/temporal.pddl'))
+    domain_pddl = read(get_file_path(__file__, 'pddl/temporal.pddl' if temporal else 'pddl/domain.pddl'))
     stream_pddl = read(get_file_path(__file__, 'pddl/stream.pddl'))
     constant_map = {}
 
@@ -229,6 +254,8 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
     if plan is None:
         return None, data
 
+    if plan and not isinstance(plan[0], DurativeAction):
+        plan = retime_plan(plan)
     trajectories = [t for action in reversed(plan) if action.name == 'print'
                     for t in action.args[-1].trajectories]
     if has_gui():

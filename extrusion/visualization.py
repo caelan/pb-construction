@@ -1,5 +1,6 @@
-import colorsys
+from __future__ import print_function
 
+import colorsys
 import numpy as np
 
 from extrusion.equilibrium import compute_node_reactions
