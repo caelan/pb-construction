@@ -48,7 +48,7 @@ JOINT_WEIGHTS = np.reciprocal([6.28318530718, 5.23598775598, 6.28318530718,
 
 INITIAL_CONF = [0, -np.pi/4, np.pi/4, 0, 0, 0]
 
-TOOL_VELOCITY = 1 # m/s
+TOOL_VELOCITY = 0.01 # m/s
 
 #GROUND_COLOR = 0.9*np.ones(3)
 GROUND_COLOR = 0.8*np.ones(3)
@@ -272,6 +272,13 @@ class PrintTrajectory(Trajectory): # TODO: add element body?
                               self.tool_path[::-1], self.element, not self.is_reverse)
     def __repr__(self):
         return 'p({}->{})'.format(self.n1, self.n2)
+    def interpolate_tool(self, node_points, start_time=0.):
+        from scipy.interpolate import interp1d
+        positions = [node_points[self.n1], node_points[self.n2]]
+        #positions = list(map(point_from_pose, self.tool_path))
+        durations = [start_time] + [get_distance(*pair) / TOOL_VELOCITY for pair in get_pairs(positions)]
+        times_from_start = np.cumsum(durations)
+        return interp1d(times_from_start, positions, kind='linear', axis=0)
     def interpolate(self):
         # TODO: maintain a constant end-effector velocity by retiming
         raise NotImplementedError()

@@ -5,19 +5,48 @@ import numpy as np
 
 from extrusion.heuristics import compute_layer_from_vertex, compute_layer_from_element
 from extrusion.stream import get_print_gen_fn, USE_CONMECH
-from extrusion.utils import load_robot, get_other_node, get_node_neighbors
+from extrusion.utils import load_robot, get_other_node, get_node_neighbors, PrintTrajectory
 from extrusion.visualization import display_trajectories
 from pddlstream.algorithms.downward import set_cost_scale
-from pddlstream.algorithms.focused import solve_focused #, CURRENT_STREAM_PLAN
+from pddlstream.algorithms.focused import solve_focused, CURRENT_STREAM_PLAN
 from pddlstream.language.constants import And, PDDLProblem, print_solution
 from pddlstream.language.generator import from_test
 from pddlstream.language.stream import StreamInfo, PartialInputs, WildOutput
 from pddlstream.utils import read, get_file_path
 from pybullet_tools.utils import get_configuration, set_pose, Pose, Euler, Point, \
-    get_movable_joints, set_joint_position, has_gui, WorldSaver
+    get_movable_joints, set_joint_position, has_gui, WorldSaver, wait_if_gui, add_line, RED, wait_for_duration
 
 STRIPSTREAM_ALGORITHM = 'stripstream'
 
+def simulate_printing(node_points, trajectories, time_step=0.1, speed_up=10.):
+    print_trajectories = [traj for traj in trajectories if isinstance(traj, PrintTrajectory)]
+    handles = []
+    current_time = 0.
+    current_traj = print_trajectories.pop(0)
+    current_curve = current_traj.interpolate_tool(node_points, start_time=current_time)
+    current_position = current_curve.y[0]
+    while True:
+        print('Time: {:.3f} | Remaining: {} | Segments: {}'.format(
+            current_time, len(print_trajectories), len(handles)))
+        end_time = current_curve.x[-1]
+        if end_time < current_time + time_step:
+            handles.append(add_line(current_position, current_curve.y[-1], color=RED))
+            if not print_trajectories:
+                break
+            current_traj = print_trajectories.pop(0)
+            current_curve = current_traj.interpolate_tool(node_points, start_time=end_time)
+            current_position = current_curve.y[0]
+            print('New trajectory | Start time: {:.3f} | End time: {:.3f} | Duration: {:.3f}'.format(
+                current_curve.x[0], current_curve.x[-1], current_curve.x[-1] - current_curve.x[0]))
+        else:
+            current_time += time_step
+            new_position = current_curve(current_time)
+            handles.append(add_line(current_position, new_position, color=RED))
+            current_position = new_position
+            wait_for_duration(time_step / speed_up)
+            # wait_if_gui()
+    wait_if_gui()
+    return handles
 
 ##################################################
 
@@ -168,7 +197,7 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
     # TODO: limit the branching factor if necessary
     solution = solve_focused(pddlstream_problem, stream_info=stream_info, max_time=max_time,
                              effort_weight=1, unit_efforts=True, max_skeletons=None, unit_costs=True, bind=False,
-                             planner=planner, max_planner_time=60, debug=True, reorder=False,
+                             planner=planner, max_planner_time=60, debug=False, reorder=False,
                              initial_complexity=1)
     # Reachability heuristics good for detecting dead-ends
     # Infeasibility from the start means disconnected or collision
@@ -182,6 +211,7 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
     trajectories = [t for name, args in reversed(plan) if name == 'print' for t in args[-1].trajectories]
     if has_gui():
         saver.restore()
+        #simulate_printing(node_points, trajectories)
         display_trajectories(node_points, ground_nodes, trajectories)
         return None, data
     return trajectories, data
