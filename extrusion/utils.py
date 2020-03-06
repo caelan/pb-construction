@@ -151,6 +151,10 @@ def get_cspace_distance(robot, q1, q2):
     distance_fn = get_distance_fn(robot, joints, weights=JOINT_WEIGHTS)
     return distance_fn(q1, q2)
 
+def retime_waypoints(waypoints, start_time=0.):
+    durations = [start_time] + [get_distance(*pair) / TOOL_VELOCITY for pair in get_pairs(waypoints)]
+    return np.cumsum(durations)
+
 ##################################################
 
 class EndEffector(object):
@@ -260,6 +264,7 @@ class PrintTrajectory(Trajectory): # TODO: add element body?
         #assert len(self.path) == len(self.tool_path)
         self.element = element
         self.n1, self.n2 = reversed(element) if self.is_reverse else element
+        self.spline = None
     @property
     def directed_element(self):
         return (self.n1, self.n2)
@@ -272,12 +277,25 @@ class PrintTrajectory(Trajectory): # TODO: add element body?
                               self.tool_path[::-1], self.element, not self.is_reverse)
     def __repr__(self):
         return 'p({}->{})'.format(self.n1, self.n2)
-    def interpolate_tool(self, node_points, start_time=0.):
+    def retime(self, **kwargs):
+        # TODO: could also retime using the given end time
+        from scipy.interpolate import interp1d
+        positions = list(map(point_from_pose, self.tool_path))
+        times_from_start = retime_waypoints(positions, **kwargs)
+        self.spline = interp1d(times_from_start, self.path, kind='linear', axis=0)
+        return self.spline
+    def at(self, time_from_start):
+        assert self.spline is not None
+        if (time_from_start < self.spline.x[0]) or (self.spline.x[-1] < time_from_start):
+            return None
+        conf = self.spline(time_from_start)
+        set_joint_positions(self.robot, self.joints, conf)
+        return conf
+    def interpolate_tool(self, node_points, **kwargs):
         from scipy.interpolate import interp1d
         positions = [node_points[self.n1], node_points[self.n2]]
         #positions = list(map(point_from_pose, self.tool_path))
-        durations = [start_time] + [get_distance(*pair) / TOOL_VELOCITY for pair in get_pairs(positions)]
-        times_from_start = np.cumsum(durations)
+        times_from_start = retime_waypoints(positions, **kwargs)
         return interp1d(times_from_start, positions, kind='linear', axis=0)
     def interpolate(self):
         # TODO: maintain a constant end-effector velocity by retiming

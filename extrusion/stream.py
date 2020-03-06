@@ -399,7 +399,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
 
     end_effector = EndEffector(robot, ee_link=link_from_name(robot, EE_LINK),
                                tool_link=link_from_name(robot, TOOL_LINK),
-                               visual=False, collision=True)
+                               visual=False, collision=False)
     extrusions = {reverse_element(element) if reverse else element:
                       Extrusion(end_effector, element_bodies, node_points, ground_nodes, element, reverse)
                   for element in element_bodies for reverse in [False, True]}

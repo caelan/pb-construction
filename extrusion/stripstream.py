@@ -14,8 +14,8 @@ from pddlstream.algorithms.focused import solve_focused #, CURRENT_STREAM_PLAN
 from pddlstream.language.constants import And, PDDLProblem, print_solution, DurativeAction
 from pddlstream.language.generator import from_test
 from pddlstream.language.stream import StreamInfo, PartialInputs, WildOutput
-from pddlstream.utils import read, get_file_path
-from pddlstream.language.temporal import solve_tfd, retime_plan, compute_duration
+from pddlstream.utils import read, get_file_path, inclusive_range
+from pddlstream.language.temporal import retime_plan, compute_duration, get_end
 from pybullet_tools.utils import get_configuration, set_pose, Pose, Euler, Point, get_point, \
     get_movable_joints, set_joint_position, has_gui, WorldSaver, wait_if_gui, add_line, RED, \
     wait_for_duration, get_length, INF
@@ -256,12 +256,32 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
 
     if plan and not isinstance(plan[0], DurativeAction):
         plan = retime_plan(plan)
+    duration = compute_duration(plan)
+    print('Duration: {:.3f}'.format(duration))
+    time_step = 0.1
+
     trajectories = [t for action in reversed(plan) if action.name == 'print'
                     for t in action.args[-1].trajectories]
     if has_gui():
         saver.restore()
         #simulate_printing(node_points, trajectories)
-        display_trajectories(node_points, ground_nodes, trajectories)
+        #display_trajectories(node_points, ground_nodes, trajectories)
+
+        print_trajectories = []
+        for action in plan:
+            command = action.args[-1]
+            for traj in command.trajectories:
+                if isinstance(traj, PrintTrajectory):
+                    traj.retime(start_time=action.start)
+                    print_trajectories.append(traj)
+
+        for t in inclusive_range(0, duration, time_step):
+            print('t={:.3f}/{:.3f}'.format(t, duration))
+            #if action.start <= t <= get_end(action):
+            for traj in print_trajectories:
+                traj.at(t)
+            wait_for_duration(time_step)
+
     return None, data
     #return trajectories, data
 
