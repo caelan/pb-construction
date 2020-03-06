@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 from collections import defaultdict
 from itertools import product, islice
 
@@ -8,11 +10,12 @@ from extrusion.stream import get_print_gen_fn, USE_CONMECH
 from extrusion.utils import load_robot, get_other_node, get_node_neighbors, PrintTrajectory
 from extrusion.visualization import display_trajectories
 from pddlstream.algorithms.downward import set_cost_scale
-from pddlstream.algorithms.focused import solve_focused, CURRENT_STREAM_PLAN
+from pddlstream.algorithms.focused import solve_focused #, CURRENT_STREAM_PLAN
 from pddlstream.language.constants import And, PDDLProblem, print_solution
 from pddlstream.language.generator import from_test
 from pddlstream.language.stream import StreamInfo, PartialInputs, WildOutput
 from pddlstream.utils import read, get_file_path
+from pddlstream.language.temporal import solve_tfd
 from pybullet_tools.utils import get_configuration, set_pose, Pose, Euler, Point, \
     get_movable_joints, set_joint_position, has_gui, WorldSaver, wait_if_gui, add_line, RED, wait_for_duration
 
@@ -95,7 +98,8 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
 
     initial_confs = {'r{}'.format(i): np.array(get_configuration(robot)) for i, robot in enumerate(robots)}
 
-    domain_pddl = read(get_file_path(__file__, 'pddl/domain.pddl'))
+    #domain_pddl = read(get_file_path(__file__, 'pddl/domain.pddl'))
+    domain_pddl = read(get_file_path(__file__, 'pddl/temporal.pddl'))
     stream_pddl = read(get_file_path(__file__, 'pddl/stream.pddl'))
     constant_map = {}
 
@@ -114,12 +118,13 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
             ('Robot', robot),
             ('Conf', robot, conf),
             ('AtConf', robot, conf),
+            ('Idle', robot),
             #('CanMove', robot),
         ])
 
     init.extend(('Grounded', n) for n in ground_nodes)
-    init.extend(('Direction', *triplet) for triplet in directions)
-    init.extend(('Order', *pair) for pair in partial_orders)
+    init.extend(('Direction',) + triplet for triplet in directions)
+    init.extend(('Order',) + pair for pair in partial_orders)
 
     for e in element_bodies:
         n1, n2 = e
@@ -197,7 +202,7 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
     # TODO: limit the branching factor if necessary
     solution = solve_focused(pddlstream_problem, stream_info=stream_info, max_time=max_time,
                              effort_weight=1, unit_efforts=True, max_skeletons=None, unit_costs=True, bind=False,
-                             planner=planner, max_planner_time=60, debug=False, reorder=False,
+                             planner=planner, max_planner_time=60, debug=True, reorder=False,
                              initial_complexity=1)
     # Reachability heuristics good for detecting dead-ends
     # Infeasibility from the start means disconnected or collision
@@ -208,13 +213,14 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
     if plan is None:
         return None, data
 
-    trajectories = [t for name, args in reversed(plan) if name == 'print' for t in args[-1].trajectories]
+    trajectories = [t for action in reversed(plan) if action.name == 'print'
+                    for t in action.args[-1].trajectories]
     if has_gui():
         saver.restore()
         #simulate_printing(node_points, trajectories)
         display_trajectories(node_points, ground_nodes, trajectories)
-        return None, data
-    return trajectories, data
+    return None, data
+    #return trajectories, data
 
 ##################################################
 

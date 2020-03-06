@@ -31,12 +31,13 @@
   (:action print
     :parameters (?r ?n1 ?e ?n2 ?q1 ?q2 ?t)
     :precondition (and (PrintAction ?r ?n1 ?e ?n2 ?q1 ?q2 ?t) (Printed ?e) ; (Stiff)
-                        ; TODO: check the other node to avoid connecting until supported
                        ; (AtConf ?r ?q1) ; (not (UnsafeTraj ?r ?t))
                        (forall (?e2) (imply (Order ?e ?e2) (Removed ?e2)))
                        (forall (?e2) (imply (Collision ?t ?e2) (Removed ?e2)))
                   )
     :effect (and (Removed ?e) (CanMove ?r)
+                 (AtConf ?r ?q2) ; TODO: reverse?
+                 (not (AtConf ?r ?q1))
                  (not (Printed ?e)))
   )
 
