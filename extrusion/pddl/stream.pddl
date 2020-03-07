@@ -20,8 +20,10 @@
                     (Conf ?r ?q1) (Conf ?r ?q2) (Traj ?r ?t))
   )
 
-  ;(:stream test-stiffness
-  ; :fluents (Printed)
-  ; :certified (Stiff)
+  (:function (Length ?e)
+    (and (Element ?e))
+  )
+  ;(:function (Distance ?r ?t)
+  ;  (Traj ?r ?t)
   ;)
 )

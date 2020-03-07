@@ -7,13 +7,16 @@ import numpy as np
 
 from extrusion.heuristics import compute_layer_from_vertex, compute_layer_from_element
 from extrusion.stream import get_print_gen_fn, USE_CONMECH
-from extrusion.utils import load_robot, get_other_node, get_node_neighbors, PrintTrajectory, get_midpoint
+from extrusion.utils import load_robot, get_other_node, get_node_neighbors, PrintTrajectory, get_midpoint, \
+    get_element_length, TOOL_VELOCITY
 from extrusion.visualization import display_trajectories
 from pddlstream.algorithms.downward import set_cost_scale
+from pddlstream.algorithms.incremental import solve_incremental
 from pddlstream.algorithms.focused import solve_focused #, CURRENT_STREAM_PLAN
-from pddlstream.language.constants import And, PDDLProblem, print_solution, DurativeAction
+from pddlstream.language.constants import And, PDDLProblem, print_solution, DurativeAction, Equal
 from pddlstream.language.generator import from_test
 from pddlstream.language.stream import StreamInfo, PartialInputs, WildOutput
+from pddlstream.language.function import FunctionInfo
 from pddlstream.utils import read, get_file_path, inclusive_range
 from pddlstream.language.temporal import retime_plan, compute_duration, get_end
 from pybullet_tools.utils import get_configuration, set_pose, Pose, Euler, Point, get_point, \
@@ -138,9 +141,14 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
                                               partial_orders=partial_orders, **kwargs),
         'test-stiffness': from_test(test_stiffness),
         'test-cfree-traj-conf': from_test(lambda *args: True),
+
+        'Length': lambda el: 1, # 100*get_element_length(el, node_points),
+        #'Distance': lamb
     }
 
-    init = []
+    init = [
+        Equal(('Speed',), TOOL_VELOCITY),
+    ]
     for robot, conf in initial_confs.items():
         init.extend([
             ('Robot', robot),
@@ -167,7 +175,7 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
     init.extend(('Order',) + pair for pair in partial_orders)
     init.extend(('Assigned',) + pair for pair in assignments)
 
-    for e in element_bodies:
+    for e in elements:
         n1, n2 = e
         #n1, n2 = ['n{}'.format(i) for i in e]
         init.extend([
@@ -231,6 +239,8 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
     stream_info = {
         'sample-print': StreamInfo(PartialInputs(unique=True)),
         'test-cfree-traj-conf': StreamInfo(p_success=1e-2, negate=True), #, verbose=False),
+        'Length': FunctionInfo(eager=True),  # Need to eagerly evaluate otherwise 0 duration (failure)
+        'Distance': FunctionInfo(eager=True),  # Need to eagerly evaluate otherwise 0 duration (failure)
     }
 
     # TODO: goal serialization
@@ -241,8 +251,9 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
     planner = 'ff-eager-tiebreak' # Need to use a eager search, otherwise doesn't incorporate child cost
     #planner = 'max-astar'
     # TODO: limit the branching factor if necessary
+    #solution = solve_incremental(pddlstream_problem)
     solution = solve_focused(pddlstream_problem, stream_info=stream_info, max_time=max_time,
-                             effort_weight=1, unit_efforts=True, max_skeletons=None, unit_costs=True, bind=False,
+                             effort_weight=1, unit_efforts=True, max_skeletons=None, unit_costs=False, bind=False,
                              planner=planner, max_planner_time=60, debug=True, reorder=False,
                              initial_complexity=1)
     # Reachability heuristics good for detecting dead-ends
