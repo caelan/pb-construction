@@ -142,8 +142,8 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
         'test-stiffness': from_test(test_stiffness),
         'test-cfree-traj-conf': from_test(lambda *args: True),
 
-        'Length': lambda el: 1, # 100*get_element_length(el, node_points),
-        #'Distance': lamb
+        'Length': lambda e: get_element_length(e, node_points),
+        'Distance': lambda r, t: t.get_link_distance(),
     }
 
     init = [
@@ -234,13 +234,13 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
     print('Init:', pddlstream_problem.init)
     print('Goal:', pddlstream_problem.goal)
 
-    #solution = solve_incremental(pddlstream_problem, planner='add-random-lazy', max_time=600,
-    #                             max_planner_time=300, debug=True)
+    min_length = min(get_element_length(e, node_points) for e in element_bodies)
+    print('Min length:', min_length)
     stream_info = {
         'sample-print': StreamInfo(PartialInputs(unique=True)),
         'test-cfree-traj-conf': StreamInfo(p_success=1e-2, negate=True), #, verbose=False),
-        'Length': FunctionInfo(eager=True),  # Need to eagerly evaluate otherwise 0 duration (failure)
-        'Distance': FunctionInfo(eager=True),  # Need to eagerly evaluate otherwise 0 duration (failure)
+        'Length': FunctionInfo(eager=True),  # Need to eagerly evaluate otherwise 0 makespan (failure)
+        'Distance': FunctionInfo(opt_fn=lambda r, t: min_length, eager=True), # TODO: use the corresponding element length
     }
 
     # TODO: goal serialization
@@ -251,9 +251,10 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
     planner = 'ff-eager-tiebreak' # Need to use a eager search, otherwise doesn't incorporate child cost
     #planner = 'max-astar'
     # TODO: limit the branching factor if necessary
-    #solution = solve_incremental(pddlstream_problem)
+    #solution = solve_incremental(pddlstream_problem, planner='add-random-lazy', max_time=600,
+    #                             max_planner_time=300, debug=True)
     solution = solve_focused(pddlstream_problem, stream_info=stream_info, max_time=max_time,
-                             effort_weight=1, unit_efforts=True, max_skeletons=None, unit_costs=False, bind=False,
+                             effort_weight=None, unit_efforts=True, max_skeletons=None, unit_costs=False, bind=False,
                              planner=planner, max_planner_time=60, debug=True, reorder=False,
                              initial_complexity=1)
     # Reachability heuristics good for detecting dead-ends
@@ -267,8 +268,9 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
 
     if plan and not isinstance(plan[0], DurativeAction):
         plan = retime_plan(plan)
-    duration = compute_duration(plan)
-    print('Duration: {:.3f}'.format(duration))
+
+    makespan = compute_duration(plan)
+    print('Makespan: {:.3f}'.format(makespan))
     time_step = 0.1
 
     trajectories = [t for action in reversed(plan) if action.name == 'print'
@@ -278,20 +280,23 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
         #simulate_printing(node_points, trajectories)
         #display_trajectories(node_points, ground_nodes, trajectories)
 
-        print_trajectories = []
+        trajectories = []
         for action in plan:
             command = action.args[-1]
-            for traj in command.trajectories:
-                if isinstance(traj, PrintTrajectory):
-                    traj.retime(start_time=action.start)
-                    print_trajectories.append(traj)
+            #start_time = action.start
+            start_time = makespan - action.start
+            command.retime(start_time=start_time)
+            #print(action)
+            #print(action.start, action.start + action.makespan, action.makespan)
+            #print(command.start_time, command.end_time, command.makespan)
+            trajectories.extend(command.trajectories)
 
-        for t in inclusive_range(0, duration, time_step):
-            print('t={:.3f}/{:.3f}'.format(t, duration))
+        for t in inclusive_range(0, makespan, time_step):
+            print('t={:.3f}/{:.3f}'.format(t, makespan))
             #if action.start <= t <= get_end(action):
-            for traj in print_trajectories:
+            for traj in trajectories:
                 traj.at(t)
-            wait_for_duration(time_step)
+            wait_for_duration(time_step / 5.)
 
     return None, data
     #return trajectories, data
