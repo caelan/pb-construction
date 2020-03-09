@@ -246,6 +246,8 @@ class Trajectory(object):
     def retime(self, **kwargs):
         # TODO: could also retime using the given end time
         from scipy.interpolate import interp1d
+        #if self.spline is not None:
+        #    return self.spline
         #tool_path = self.tool_path
         tool_path = self.get_link_path()
         positions = list(map(point_from_pose, tool_path))
@@ -308,6 +310,7 @@ class PrintTrajectory(Trajectory): # TODO: add element body?
         current_conf = super(PrintTrajectory, self).at(time_from_start)
         if current_conf is None:
             if self.last_point is not None:
+                #set_configuration(self.robot, INITIAL_CONF) # TODO: return here
                 end_point = point_from_pose(self.tool_path[-1])
                 self.handles.append(add_line(self.last_point, end_point, color=RED))
                 self.last_point = None

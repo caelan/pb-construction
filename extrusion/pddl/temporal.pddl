@@ -40,7 +40,7 @@
         (at start (Printed ?e))
         (at start (Idle ?r))
         (at start (forall (?e2) (imply (Order ?e ?e2) (Removed ?e2))))
-        ;(at start (forall (?e2) (imply (Collision ?t ?e2) (Removed ?e2))))
+        (at start (forall (?e2) (imply (Collision ?t ?e2) (Removed ?e2))))
    )
    :effect (and
         (at start (not (Idle ?r)))

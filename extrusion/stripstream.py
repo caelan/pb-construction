@@ -9,7 +9,7 @@ from extrusion.heuristics import compute_layer_from_vertex, compute_layer_from_e
 from extrusion.stream import get_print_gen_fn, USE_CONMECH
 from extrusion.utils import load_robot, get_other_node, get_node_neighbors, PrintTrajectory, get_midpoint, \
     get_element_length, TOOL_VELOCITY
-from extrusion.visualization import display_trajectories
+from extrusion.visualization import display_trajectories, draw_model
 from pddlstream.algorithms.downward import set_cost_scale
 from pddlstream.algorithms.incremental import solve_incremental
 from pddlstream.algorithms.focused import solve_focused #, CURRENT_STREAM_PLAN
@@ -24,6 +24,23 @@ from pybullet_tools.utils import get_configuration, set_pose, Pose, Euler, Point
     wait_for_duration, get_length, INF
 
 STRIPSTREAM_ALGORITHM = 'stripstream'
+ROBOT_TEMPLATE = 'r{}'
+
+# ----- Small -----
+# extreme_beam_test
+# extrusion_exp_L75.0
+# four-frame
+# simple_frame
+# topopt-205_long_beam_test
+# long_beam_test
+
+# ----- Medium -----
+# robarch_tree_S, robarch_tree_M
+# topopt-101_tiny
+# semi_sphere
+# compas_fea_beam_tree_simp, compas_fea_beam_tree_S_simp, compas_fea_beam_tree_M_simp
+
+##################################################
 
 def simulate_printing(node_points, trajectories, time_step=0.1, speed_up=10.):
     print_trajectories = [traj for traj in trajectories if isinstance(traj, PrintTrajectory)]
@@ -55,23 +72,30 @@ def simulate_printing(node_points, trajectories, time_step=0.1, speed_up=10.):
     wait_if_gui()
     return handles
 
+def simulate_parallel(plan, time_step=0.1, speed_up=5.):
+    makespan = compute_duration(plan)
+    print('\nMakespan: {:.3f}'.format(makespan))
+    trajectories = []
+    for action in plan:
+        command = action.args[-1]
+        # start_time = action.start
+        start_time = makespan - action.start
+        command.retime(start_time=start_time)
+        # print(action)
+        # print(action.start, action.start + action.makespan, action.makespan)
+        # print(command.start_time, command.end_time, command.makespan)
+        trajectories.extend(command.trajectories)
+
+    wait_if_gui('Begin?')
+    for t in inclusive_range(0, makespan, time_step):
+        print('t={:.3f}/{:.3f}'.format(t, makespan))
+        # if action.start <= t <= get_end(action):
+        for traj in trajectories:
+            traj.at(t)
+        wait_for_duration(time_step / speed_up)
+    wait_if_gui('Finish?')
+
 ##################################################
-
-ROBOT_TEMPLATE = 'r{}'
-
-# ----- Small -----
-# extreme_beam_test
-# extrusion_exp_L75.0
-# four-frame
-# simple_frame
-# topopt-205_long_beam_test
-# long_beam_test
-
-# ----- Medium -----
-# robarch_tree_S, robarch_tree_M
-# topopt-101_tiny
-# semi_sphere
-# compas_fea_beam_tree_simp, compas_fea_beam_tree_S_simp, compas_fea_beam_tree_M_simp
 
 def compute_directions(elements, layer_from_n):
     directions = set()
@@ -204,18 +228,24 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
 
 def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
                   trajectories=[], collisions=True, disable=False, max_time=30, checker=None):
-    # TODO: fail if wild stream produces unexpected facts
-    # TODO: try search at different cost levels (i.e. w/ and w/o abstract)
-    # TODO: only consider axioms that could be relevant
     if trajectories is None:
         return None
+    # TODO: try search at different cost levels (i.e. w/ and w/o abstract)
+    # TODO: only consider axioms that could be relevant
     # TODO: iterated search using random restarts
     # TODO: most of the time seems to be spent extracting the stream plan
     # TODO: NEGATIVE_SUFFIX to make axioms easier
     # TODO: sort by action cost heuristic
     # http://www.fast-downward.org/Doc/Evaluator#Max_evaluator
 
+    scale = 2
     centroid = np.average(node_points, axis=0)
+    # min_z = np.min(node_points, axis=0)[2] #- 1e-2
+    # reference = np.append(centroid[:2], [min_z])
+    # node_points = [scale*(point - reference) + reference + np.array([0., 0., 2e-2]) for point in node_points]
+    # draw_model(element_bodies, node_points, ground_nodes, color=RED)
+    # wait_if_gui()
+
     #print(centroid)
     #print(get_point(robot1))
     robot2 = load_robot()
@@ -267,36 +297,23 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
         return None, data
 
     if plan and not isinstance(plan[0], DurativeAction):
-        plan = retime_plan(plan)
+        time_from_start = 0.
+        retimed_plan = []
+        for name, args in plan:
+            command = args[-1]
+            command.retime(start_time=time_from_start)
+            duration = command.duration
+            retimed_plan.append(DurativeAction(name, args, time_from_start, duration))
+            time_from_start += duration
+        plan = retimed_plan
 
-    makespan = compute_duration(plan)
-    print('Makespan: {:.3f}'.format(makespan))
-    time_step = 0.1
-
-    trajectories = [t for action in reversed(plan) if action.name == 'print'
-                    for t in action.args[-1].trajectories]
     if has_gui():
         saver.restore()
+        #trajectories = [t for action in reversed(plan) if action.name == 'print'
+        #                for t in action.args[-1].trajectories]
         #simulate_printing(node_points, trajectories)
         #display_trajectories(node_points, ground_nodes, trajectories)
-
-        trajectories = []
-        for action in plan:
-            command = action.args[-1]
-            #start_time = action.start
-            start_time = makespan - action.start
-            command.retime(start_time=start_time)
-            #print(action)
-            #print(action.start, action.start + action.makespan, action.makespan)
-            #print(command.start_time, command.end_time, command.makespan)
-            trajectories.extend(command.trajectories)
-
-        for t in inclusive_range(0, makespan, time_step):
-            print('t={:.3f}/{:.3f}'.format(t, makespan))
-            #if action.start <= t <= get_end(action):
-            for traj in trajectories:
-                traj.at(t)
-            wait_for_duration(time_step / 5.)
+        simulate_parallel(plan)
 
     return None, data
     #return trajectories, data
