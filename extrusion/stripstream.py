@@ -1,7 +1,7 @@
 from __future__ import print_function
 
 from collections import defaultdict, Counter
-from itertools import product
+from itertools import product, permutations
 
 import numpy as np
 
@@ -9,7 +9,7 @@ from extrusion.validator import check_plan
 from extrusion.heuristics import compute_layer_from_vertex, compute_layer_from_element
 from extrusion.stream import get_print_gen_fn, USE_CONMECH, APPROACH_DISTANCE
 from extrusion.utils import load_robot, get_other_node, get_node_neighbors, PrintTrajectory, get_midpoint, \
-    get_element_length, TOOL_VELOCITY, recover_sequence, flatten_commands, INITIAL_CONF, Command, MotionTrajectory
+    get_element_length, TOOL_VELOCITY, recover_sequence, flatten_commands, INITIAL_CONF, Command, MotionTrajectory, nodes_from_elements
 from extrusion.visualization import draw_ordered, label_nodes, set_extrusion_camera
 from examples.pybullet.turtlebots.run import get_test_cfree_traj_traj
 from pddlstream.algorithms.downward import set_cost_scale
@@ -41,6 +41,9 @@ ROBOT_TEMPLATE = 'r{}'
 # topopt-101_tiny
 # semi_sphere
 # compas_fea_beam_tree_simp, compas_fea_beam_tree_S_simp, compas_fea_beam_tree_M_simp
+
+def index_from_name(robots, name):
+    return robots[int(name[1:])]
 
 ##################################################
 
@@ -160,6 +163,7 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
                    trajectories=[], temporal=True, local=False, **kwargs):
     # TODO: TFD submodule
     elements = set(element_bodies)
+    nodes = nodes_from_elements(elements)
     layer_from_n = compute_layer_from_vertex(element_bodies, node_points, ground_nodes)
 
     directions = compute_directions(elements, layer_from_n)
@@ -191,21 +195,26 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
         #'test-cfree-traj-traj': from_test(get_cfree_test(**kwargs)),
 
         'TrajTrajCollision': get_collision_test(robots, **kwargs),
-        #'Length': lambda e: get_element_length(e, node_points),
+        'Length': lambda e: get_element_length(e, node_points),
         'Distance': lambda r, t: t.get_link_distance(),
         'Duration': lambda r, t: t.get_link_distance() / TOOL_VELOCITY,
+        'Euclidean': lambda n1, n2: get_element_length((n1, n2), node_points),
     }
 
     init = [
         Equal(('Speed',), TOOL_VELOCITY),
     ]
-    for robot, conf in initial_confs.items():
+    for name, conf in initial_confs.items():
+        robot = index_from_name(robots, name)
+        init_node = -robot
         init.extend([
-            ('Robot', robot),
-            ('Conf', robot, conf),
-            ('AtConf', robot, conf),
-            ('Idle', robot),
-            #('CanMove', robot),
+            #('Node', init_node),
+            ('AtNode', name, init_node),
+            ('Robot', name),
+            ('Conf', name, conf),
+            ('AtConf', name, conf),
+            ('Idle', name),
+            #('CanMove', name),
         ])
 
     assignments = set()
@@ -220,6 +229,11 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
         assert closest_robot is not None
         # TODO: assign to several robots if close to the best distance
         assignments.add((closest_robot, element))
+
+    # Could use the partial orders instead
+    # for n1, n2 in permutations(nodes, r=2):
+    #     if layer_from_n[n2] - layer_from_n[n1] in [0, 1]:
+    #         print(n1, n2)
 
     init.extend(('Grounded', n) for n in ground_nodes)
     init.extend(('Direction',) + triplet for triplet in directions)
@@ -305,6 +319,8 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
         'Length': FunctionInfo(eager=True),  # Need to eagerly evaluate otherwise 0 makespan (failure)
         'Distance': FunctionInfo(opt_fn=lambda r, t: opt_distance, eager=True), # TODO: use the corresponding element length
         'Duration': FunctionInfo(opt_fn=lambda r, t: opt_distance / TOOL_VELOCITY, eager=True),
+        'Euclidean': FunctionInfo(eager=True),
+
     }
 
     # TODO: goal serialization
@@ -367,9 +383,6 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
 
 ##################################################
 
-def index_from_name(robots, name):
-    return robots[int(name[1:])]
-
 def get_wild_move_gen_fn(robots, obstacles, element_bodies, partial_orders=set(), collisions=True, **kwargs):
     def wild_gen_fn(name, conf1, conf2):
         robot = index_from_name(robots, name)
@@ -412,6 +425,7 @@ def get_collision_test(robots, collisions=True, **kwargs):
         if (robot1 == robot2) or not collisions:
             return False
         for traj1, traj2 in randomize(product(command1.trajectories, command2.trajectories)):
+            # TODO: use for element checks
             aabbs1, aabbs2 = traj1.get_aabbs(), traj2.get_aabbs()
             swept_aabbs1 = {link: aabb_union(link_aabbs[link] for link_aabbs in aabbs1) for link in aabbs1[0]}
             swept_aabbs2 = {link: aabb_union(link_aabbs[link] for link_aabbs in aabbs2) for link in aabbs2[0]}

@@ -53,6 +53,24 @@
    )
   )
 
+  ; TODO: connect to just the initial state
+  ;(:durative-action teleport
+  ; :parameters (?r ?n1 ?n2)
+  ; :duration (= ?duration (/ (Euclidean ?n1 ?n2) (Speed)))
+  ; :condition (and
+  ;      (at start (Transit ?r ?n1 ?n2))
+  ;      ;(at start (Conf ?r ?q2))
+  ;      (at start (Idle ?r))
+  ;      (at start (AtNode ?r ?n2))
+  ; )
+  ; :effect (and
+  ;      (at start (not (Idle ?r)))
+  ;      (at start (not (AtNode ?r ?n2)))
+  ;      (at end (AtNode ?r ?n1))
+  ;      (at end (Idle ?r))
+  ; )
+  ;)
+
   (:durative-action print
    :parameters (?r ?n1 ?e ?n2 ?q1 ?q2 ?t)
    ;:duration (= ?duration 1)
@@ -63,6 +81,7 @@
         (at start (Assigned ?r ?e))
         (at start (Printed ?e))
         (at start (Idle ?r))
+        ;(at start (AtNode ?r ?n2))
         ;(at start (AtConf ?r ?q2))
         ; TODO: remove universal quantifiers to reschedule
         ;(at start (not (Premature ?e))) ; normalized to be a universal quantifier
@@ -74,7 +93,9 @@
         (at start (not (Idle ?r)))
         (at start (not (Printed ?e)))
         (at start (Executing ?r ?t))
+        (at start (not (AtNode ?r ?n2)))
         (at start (not (AtConf ?r ?q2)))
+        (at end (AtNode ?r ?n1))
         (at end (AtConf ?r ?q1))
         (at end (not (Executing ?r ?t)))
         (at end (Removed ?e))
