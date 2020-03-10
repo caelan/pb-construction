@@ -5,7 +5,7 @@ import numpy as np
 
 from extrusion.equilibrium import compute_node_reactions
 from extrusion.parsing import load_extrusion
-from extrusion.utils import get_node_neighbors, is_ground, load_world, PrintTrajectory
+from extrusion.utils import get_node_neighbors, is_ground, load_world, PrintTrajectory, recover_sequence
 from extrusion.stiffness import force_from_reaction
 from pybullet_tools.utils import add_text, draw_pose, get_pose, wait_for_user, add_line, remove_debug, has_gui, \
     draw_point, LockRenderer, set_camera_pose, set_color, apply_alpha, RED, BLUE, GREEN, get_visual_data, connect, \
@@ -182,7 +182,7 @@ def display_trajectories(node_points, ground_nodes, trajectories, animate=True, 
     if trajectories is None:
         return
     set_extrusion_camera(node_points)
-    planned_elements = [traj.element for traj in trajectories if isinstance(traj, PrintTrajectory)]
+    planned_elements = recover_sequence(trajectories)
     colors = sample_colors(len(planned_elements))
     # if not animate:
     #     draw_ordered(planned_elements, node_points)

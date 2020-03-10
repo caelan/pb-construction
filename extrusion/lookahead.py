@@ -20,8 +20,7 @@ from pybullet_tools.utils import INF, has_gui, elapsed_time, LockRenderer, rando
 
 
 def retrace_elements(visited, current_state, **kwargs):
-    return [traj.element for traj in retrace_trajectories(visited, current_state, **kwargs)
-            if isinstance(traj, PrintTrajectory)]
+    return recover_sequence(retrace_trajectories(visited, current_state, **kwargs))
 
 ##################################################
 

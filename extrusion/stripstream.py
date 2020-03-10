@@ -1,27 +1,26 @@
 from __future__ import print_function
 
 from collections import defaultdict
-from itertools import product, islice
+from itertools import product
 
 import numpy as np
 
 from extrusion.heuristics import compute_layer_from_vertex, compute_layer_from_element
 from extrusion.stream import get_print_gen_fn, USE_CONMECH
 from extrusion.utils import load_robot, get_other_node, get_node_neighbors, PrintTrajectory, get_midpoint, \
-    get_element_length, TOOL_VELOCITY
-from extrusion.visualization import display_trajectories, draw_model
+    get_element_length, TOOL_VELOCITY, recover_sequence, flatten_commands
+from extrusion.visualization import draw_ordered, label_nodes
 from pddlstream.algorithms.downward import set_cost_scale
-from pddlstream.algorithms.incremental import solve_incremental
 from pddlstream.algorithms.focused import solve_focused #, CURRENT_STREAM_PLAN
 from pddlstream.language.constants import And, PDDLProblem, print_solution, DurativeAction, Equal
 from pddlstream.language.generator import from_test
 from pddlstream.language.stream import StreamInfo, PartialInputs, WildOutput
 from pddlstream.language.function import FunctionInfo
 from pddlstream.utils import read, get_file_path, inclusive_range
-from pddlstream.language.temporal import retime_plan, compute_duration, get_end
+from pddlstream.language.temporal import compute_duration, get_end
 from pybullet_tools.utils import get_configuration, set_pose, Pose, Euler, Point, get_point, \
     get_movable_joints, set_joint_position, has_gui, WorldSaver, wait_if_gui, add_line, RED, \
-    wait_for_duration, get_length, INF
+    wait_for_duration, get_length, INF, step_simulation
 
 STRIPSTREAM_ALGORITHM = 'stripstream'
 ROBOT_TEMPLATE = 'r{}'
@@ -73,25 +72,33 @@ def simulate_printing(node_points, trajectories, time_step=0.1, speed_up=10.):
     return handles
 
 def simulate_parallel(plan, time_step=0.1, speed_up=5.):
+    # TODO: ensure the step size is appropriate
     makespan = compute_duration(plan)
     print('\nMakespan: {:.3f}'.format(makespan))
     trajectories = []
     for action in plan:
         command = action.args[-1]
-        # start_time = action.start
-        start_time = makespan - action.start
+        # Regression planning
+        start_time = makespan - get_end(action)
+        #end_time = makespan - action.start
         command.retime(start_time=start_time)
-        # print(action)
-        # print(action.start, action.start + action.makespan, action.makespan)
-        # print(command.start_time, command.end_time, command.makespan)
+        #print(action)
+        #print(start_time, end_time, action.duration)
+        #print(command.start_time, command.end_time, command.duration)
+        #for traj in command.trajectories:
+        #    print(traj, traj.start_time, traj.end_time, traj.duration)
         trajectories.extend(command.trajectories)
+    #print(sum(traj.duration for traj in trajectories))
 
     wait_if_gui('Begin?')
     for t in inclusive_range(0, makespan, time_step):
         print('t={:.3f}/{:.3f}'.format(t, makespan))
         # if action.start <= t <= get_end(action):
         for traj in trajectories:
-            traj.at(t)
+            conf = traj.at(t)
+            #if conf is not None:
+            #    print(traj, conf)
+        #step_simulation()
         wait_for_duration(time_step / speed_up)
     wait_if_gui('Finish?')
 
@@ -198,6 +205,7 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
     init.extend(('Direction',) + triplet for triplet in directions)
     init.extend(('Order',) + pair for pair in partial_orders)
     init.extend(('Assigned',) + pair for pair in assignments)
+    # TODO: only move actions between adjacent layers
 
     for e in elements:
         n1, n2 = e
@@ -225,6 +233,19 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
 
     return PDDLProblem(domain_pddl, constant_map, stream_pddl, stream_map, init, goal)
 
+def mirror_robot(robot1, node_points):
+    centroid = np.average(node_points, axis=0)
+    # print(centroid)
+    # print(get_point(robot1))
+    robot2 = load_robot()
+    set_pose(robot2, Pose(point=Point(*2 * centroid[:2]), euler=Euler(yaw=np.pi)))
+
+    # robots = [robot1]
+    robots = [robot1, robot2]
+    for robot in robots:
+        joint1 = get_movable_joints(robot)[0]
+        set_joint_position(robot, joint1, np.pi / 8)
+    return robots
 
 def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
                   trajectories=[], collisions=True, disable=False, max_time=30, checker=None):
@@ -238,39 +259,26 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
     # TODO: sort by action cost heuristic
     # http://www.fast-downward.org/Doc/Evaluator#Max_evaluator
 
-    scale = 2
-    centroid = np.average(node_points, axis=0)
-    # min_z = np.min(node_points, axis=0)[2] #- 1e-2
-    # reference = np.append(centroid[:2], [min_z])
-    # node_points = [scale*(point - reference) + reference + np.array([0., 0., 2e-2]) for point in node_points]
-    # draw_model(element_bodies, node_points, ground_nodes, color=RED)
-    # wait_if_gui()
-
-    #print(centroid)
-    #print(get_point(robot1))
-    robot2 = load_robot()
-    set_pose(robot2, Pose(point=Point(*2*centroid[:2]), euler=Euler(yaw=np.pi)))
-
-    #robots = [robot1]
-    robots = [robot1, robot2]
-    for robot in robots:
-        joint1 = get_movable_joints(robot)[0]
-        set_joint_position(robot, joint1, np.pi/8)
+    robots = mirror_robot(robot1, node_points)
     saver = WorldSaver()
-
     pddlstream_problem = get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
                                         trajectories=trajectories, collisions=collisions, disable=disable,
                                         precompute_collisions=True)
     print('Init:', pddlstream_problem.init)
     print('Goal:', pddlstream_problem.goal)
 
+
     min_length = min(get_element_length(e, node_points) for e in element_bodies)
-    print('Min length:', min_length)
+    max_length = min(get_element_length(e, node_points) for e in element_bodies)
+    print('Min length: {} | Max length: {}'.format(min_length, max_length))
+    #opt_distance = min_length # Admissible
+    opt_distance = max_length # Inadmissible/greedy
+
     stream_info = {
         'sample-print': StreamInfo(PartialInputs(unique=True)),
         'test-cfree-traj-conf': StreamInfo(p_success=1e-2, negate=True), #, verbose=False),
         'Length': FunctionInfo(eager=True),  # Need to eagerly evaluate otherwise 0 makespan (failure)
-        'Distance': FunctionInfo(opt_fn=lambda r, t: min_length, eager=True), # TODO: use the corresponding element length
+        'Distance': FunctionInfo(opt_fn=lambda r, t: opt_distance, eager=True), # TODO: use the corresponding element length
     }
 
     # TODO: goal serialization
@@ -290,7 +298,6 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
     # Reachability heuristics good for detecting dead-ends
     # Infeasibility from the start means disconnected or collision
     print_solution(solution)
-
     plan, _, _ = solution
     data = {}
     if plan is None:
@@ -309,8 +316,13 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
 
     if has_gui():
         saver.restore()
-        #trajectories = [t for action in reversed(plan) if action.name == 'print'
-        #                for t in action.args[-1].trajectories]
+        # label_nodes(node_points)
+        # commands = [action.args[-1] for action in reversed(plan) if action.name == 'print']
+        # trajectories = flatten_commands(commands)
+        # elements = recover_sequence(trajectories)
+        # draw_ordered(elements, node_points)
+        # wait_if_gui('Continue?')
+
         #simulate_printing(node_points, trajectories)
         #display_trajectories(node_points, ground_nodes, trajectories)
         simulate_parallel(plan)

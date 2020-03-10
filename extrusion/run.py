@@ -36,7 +36,7 @@ from extrusion.stiffness import plan_stiffness, create_stiffness_checker
 from pybullet_tools.utils import connect, disconnect, get_movable_joints, get_joint_positions, LockRenderer, \
     unit_pose, reset_simulation, draw_pose, apply_alpha, BLACK, Pose, Euler, has_gui, set_numpy_seed, \
     set_random_seed, INF, wait_for_user, link_from_name, get_link_pose, point_from_pose, WorldSaver, elapsed_time, \
-    timeout, get_configuration
+    timeout, get_configuration, RED, wait_if_gui
 
 
 ##################################################
@@ -54,6 +54,20 @@ def sample_trajectories(robot, obstacles, node_points, element_bodies, ground_no
         if not trajectories:
             return None
     return all_trajectories
+
+##################################################
+
+# Introduce support scaffolding fixities and then require that they be removed
+# Robot spiderweb printing weaving hook which may slide
+def scale_assembly(elements, node_points, ground_nodes, scale=1):
+    # TODO: more general affine transformations
+    centroid = np.average(node_points, axis=0)
+    min_z = np.min(node_points, axis=0)[2] #- 1e-2
+    reference = np.append(centroid[:2], [min_z])
+    scaled_node_points = [scale*(point - reference) + reference for point in node_points] # + np.array([0., 0., 2e-2])
+    #draw_model(elements, scaled_node_points, ground_nodes, color=RED)
+    #wait_if_gui()
+    return scaled_node_points
 
 def rotate_problem(problem_path, roll=np.pi):
     tform = Pose(euler=Euler(roll=roll))
@@ -132,8 +146,10 @@ def plan_extrusion(args_list, viewer=False, verify=False, verbose=False, watch=F
     #extrusion_path = rotate_problem(extrusion_path)
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path, verbose=True)
     elements = sorted(element_from_id.values())
+
     #elements = downsample_structure(elements, node_points, ground_nodes, num=None)
     #elements, ground_nodes = downsample_nodes(elements, node_points, ground_nodes)
+    node_points = scale_assembly(elements, node_points, ground_nodes, scale=2)
 
     connect(use_gui=viewer, shadows=SHADOWS, color=BACKGROUND_COLOR)
     with LockRenderer(lock=True):
@@ -143,12 +159,12 @@ def plan_extrusion(args_list, viewer=False, verify=False, verbose=False, watch=F
         #wait_for_user()
         color = apply_alpha(BLACK, alpha=0) # 0, 1
         #color = None
-        element_bodies = dict(zip(elements, create_elements_bodies(
-            node_points, elements, color=color)))
+        element_bodies = dict(zip(elements, create_elements_bodies(node_points, elements, color=color)))
         set_extrusion_camera(node_points)
         #if viewer:
         #    label_nodes(node_points)
         saver = WorldSaver()
+
     checker = create_stiffness_checker(extrusion_path, verbose=False) # if stiffness else None
     #visualize_stiffness(extrusion_path)
     #debug_elements(robot, node_points, node_order, elements)
@@ -252,16 +268,13 @@ def main():
     args.seed = hash(time.time())
     print('Arguments:', args)
 
-    if args.problem == 'all':
-        for problem in enumerate_problems():
-            args.problem = problem
-            plan_extrusion([args], verbose=True, watch=False)
-    else:
-        plan_extrusion([args], viewer=args.viewer, verbose=True, watch=True)
+    # if args.problem == 'all':
+    #     for problem in enumerate_problems():
+    #         args.problem = problem
+    #         plan_extrusion([args], verbose=True, watch=False)
+    # else:
+    plan_extrusion([args], viewer=args.viewer, verbose=True, watch=True)
 
 
 if __name__ == '__main__':
     main()
-
-# Introduce support scaffolding fixities and then require that they be removed
-# Robot spiderweb printing weaving hook which may slide

@@ -359,6 +359,8 @@ def flatten_commands(commands):
         return None
     return [traj for command in commands for traj in command.trajectories]
 
+##################################################
+
 class Command(object):
     def __init__(self, trajectories=[], safe_per_element={}):
         self.trajectories = list(trajectories)
