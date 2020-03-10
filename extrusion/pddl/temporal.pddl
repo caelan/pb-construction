@@ -18,6 +18,7 @@
     (AtConf ?r ?q)
     (CanMove ?r)
     (CFreeTrajConf ?r ?t ?r2 ?q2)
+    (CFreeTrajTraj ?r1 ?t1 ?r2 ?t2)
     (UnsafeTraj ?r ?t)
     (Idle ?r)
     (Executing ?r ?t)
@@ -39,8 +40,11 @@
         (at start (Assigned ?r ?e))
         (at start (Printed ?e))
         (at start (Idle ?r))
+        ; TODO: remove universal quantifiers to reschedule
+        ;(at start (not (Premature ?e))) ; normalized to be a universal quantifier
         (at start (forall (?e2) (imply (Order ?e ?e2) (Removed ?e2))))
         (at start (forall (?e2) (imply (Collision ?t ?e2) (Removed ?e2))))
+        (over all (not (UnsafeTraj ?r ?t)))
    )
    :effect (and
         (at start (not (Idle ?r)))
@@ -54,12 +58,13 @@
    )
   )
 
-  ;(:derived (UnsafeTraj ?r1 ?t1)
-  ;  (and (Robot ?r1) (exists (?r2) (and (Robot ?r2) (not (= ?r1 ?r2)) (or
-  ;    (and (Traj ?t1) (OnTraj ?r2 ?t1))
-  ;    (exists (?q2) (and (TrajConfCollision ?t1 ?q2)
-  ;                       (AtConf ?r2 ?q2)))
-  ;    (exists (?t2) (and (TrajTrajCollision ?t1 ?t2)
-  ;                       (OnTraj ?r2 ?t2))))))))
+  ;(:derived (Premature ?e)
+  ;    (exists (?e2) (and (Order ?e ?e2)
+  ;                       (not (Removed ?e2))))) ; Positive form instead
 
+  (:derived (UnsafeTraj ?r1 ?t1) (and (Traj ?r1 ?t1)
+      (exists (?r2 ?t2) (and (Traj ?r2 ?t2) (not (= ?r1 ?r2))
+                             ;(not (CFreeTrajTraj ?r1 ?t1 ?r2 ?t2))
+                             (TrajTrajCollision ?r1 ?t1 ?r2 ?t2)
+                             (Executing ?r2 ?t2)))))
 )

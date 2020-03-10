@@ -10,6 +10,7 @@ from extrusion.stream import get_print_gen_fn, USE_CONMECH
 from extrusion.utils import load_robot, get_other_node, get_node_neighbors, PrintTrajectory, get_midpoint, \
     get_element_length, TOOL_VELOCITY, recover_sequence, flatten_commands
 from extrusion.visualization import draw_ordered, label_nodes
+from examples.pybullet.turtlebots.run import get_test_cfree_traj_traj
 from pddlstream.algorithms.downward import set_cost_scale
 from pddlstream.algorithms.focused import solve_focused #, CURRENT_STREAM_PLAN
 from pddlstream.language.constants import And, PDDLProblem, print_solution, DurativeAction, Equal
@@ -20,7 +21,7 @@ from pddlstream.utils import read, get_file_path, inclusive_range
 from pddlstream.language.temporal import compute_duration, get_end
 from pybullet_tools.utils import get_configuration, set_pose, Pose, Euler, Point, get_point, \
     get_movable_joints, set_joint_position, has_gui, WorldSaver, wait_if_gui, add_line, RED, \
-    wait_for_duration, get_length, INF, step_simulation, LockRenderer
+    wait_for_duration, get_length, INF, step_simulation, LockRenderer, randomize, pairwise_collision, set_configuration
 
 STRIPSTREAM_ALGORITHM = 'stripstream'
 ROBOT_TEMPLATE = 'r{}'
@@ -148,12 +149,14 @@ def compute_global_orders(element_bodies, node_points, ground_nodes):
 
 def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
                    trajectories=[], temporal=True, local=False, **kwargs):
+    # TODO: TFD submodule
     elements = set(element_bodies)
     layer_from_n = compute_layer_from_vertex(element_bodies, node_points, ground_nodes)
 
     directions = compute_directions(elements, layer_from_n)
     #partial_orders = set()
     if local:
+        # makespan seems more effective than CEA
         partial_orders = compute_local_orders(elements, layer_from_n) # makes the makespan heuristic slow
     else:
         partial_orders = compute_global_orders(element_bodies, node_points, ground_nodes)
@@ -173,10 +176,12 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
         #'sample-print': from_gen_fn(get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes)),
         'sample-print': get_wild_print_gen_fn(robots, obstacles, node_points, element_bodies, ground_nodes,
                                               partial_orders=partial_orders, **kwargs),
-        'test-stiffness': from_test(test_stiffness),
-        'test-cfree-traj-conf': from_test(lambda *args: True),
+        #'test-stiffness': from_test(test_stiffness),
+        #'test-cfree-traj-conf': from_test(lambda *args: True),
+        'test-cfree-traj-traj': from_test(get_cfree_test(**kwargs)),
 
-        'Length': lambda e: get_element_length(e, node_points),
+        'TrajTrajCollision': lambda *args: False,
+        #'Length': lambda e: get_element_length(e, node_points),
         'Distance': lambda r, t: t.get_link_distance(),
     }
 
@@ -280,6 +285,8 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
     stream_info = {
         'sample-print': StreamInfo(PartialInputs(unique=True)),
         'test-cfree-traj-conf': StreamInfo(p_success=1e-2, negate=True), #, verbose=False),
+        'test-cfree-traj-traj': StreamInfo(p_success=1e-2, negate=True),
+        'TrajTrajCollision': FunctionInfo(p_success=1e-1, overhead=1), # TODO: verbose
         'Length': FunctionInfo(eager=True),  # Need to eagerly evaluate otherwise 0 makespan (failure)
         'Distance': FunctionInfo(opt_fn=lambda r, t: opt_distance, eager=True), # TODO: use the corresponding element length
     }
@@ -361,6 +368,24 @@ def get_wild_print_gen_fn(robots, obstacles, node_points, element_bodies, ground
             yield WildOutput(outputs, facts)
     return wild_gen_fn
 
+def get_cfree_test(collisions=True, **kwargs):
+    def test(robot1, traj1, robot2, traj2):
+        quit()
+        if (robot1 == robot2) or not collisions:
+            return True
+        return True
+        for conf1 in randomize(traj1.iterate()):
+            #if not aabb_overlap(get_turtle_traj_aabb(conf1), get_turtle_traj_aabb(traj2)):
+            #    continue
+            set_configuration(robot1, conf1)
+            for conf2 in randomize(traj2.iterate()):
+                #if not aabb_overlap(get_turtle_traj_aabb(conf1), get_turtle_traj_aabb(conf2)):
+                #    continue
+                set_configuration(robot2, conf2)
+                if pairwise_collision(robot1, robot2):
+                    return False
+        return True
+    return test
 
 def test_stiffness(fluents=[]):
     assert all(fact[0] == 'printed' for fact in fluents)
