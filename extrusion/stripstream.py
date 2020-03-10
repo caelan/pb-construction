@@ -178,9 +178,9 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
                                               partial_orders=partial_orders, **kwargs),
         #'test-stiffness': from_test(test_stiffness),
         #'test-cfree-traj-conf': from_test(lambda *args: True),
-        'test-cfree-traj-traj': from_test(get_cfree_test(**kwargs)),
+        #'test-cfree-traj-traj': from_test(get_cfree_test(**kwargs)),
 
-        'TrajTrajCollision': lambda *args: False,
+        'TrajTrajCollision': get_collision_test(robots, *kwargs),
         #'Length': lambda e: get_element_length(e, node_points),
         'Distance': lambda r, t: t.get_link_distance(),
     }
@@ -345,6 +345,9 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
 
 ##################################################
 
+def index_from_name(robots, name):
+    return robots[int(name[1:])]
+
 def get_wild_print_gen_fn(robots, obstacles, node_points, element_bodies, ground_nodes,
                           collisions=True, **kwargs):
     # TODO: could reuse end-effector trajectories
@@ -358,7 +361,7 @@ def get_wild_print_gen_fn(robots, obstacles, node_points, element_bodies, ground
         # TODO: this might need to be recomputed per iteration
         # TODO: condition on plan/downstream constraints
         # TODO: stream fusion
-        robot = robots[int(name[1:])]
+        robot = index_from_name(robots, name)
         #generator = gen_fn_from_robot[robot](node1, element)
         for command, in gen_fn_from_robot[robot](node1, element):
             q1 = np.array(command.start_conf)
@@ -368,23 +371,24 @@ def get_wild_print_gen_fn(robots, obstacles, node_points, element_bodies, ground
             yield WildOutput(outputs, facts)
     return wild_gen_fn
 
-def get_cfree_test(collisions=True, **kwargs):
-    def test(robot1, traj1, robot2, traj2):
-        quit()
+def get_collision_test(robots, collisions=True, *args, **kwargs):
+    # TODO: remove *args
+    def test(name1, traj1, name2, traj2):
+        robot1 = index_from_name(robots, name1)
+        robot2 = index_from_name(robots, name2)
         if (robot1 == robot2) or not collisions:
-            return True
-        return True
-        for conf1 in randomize(traj1.iterate()):
+            return False
+        for conf1 in randomize(traj1.trajectories[1].path):
             #if not aabb_overlap(get_turtle_traj_aabb(conf1), get_turtle_traj_aabb(traj2)):
             #    continue
             set_configuration(robot1, conf1)
-            for conf2 in randomize(traj2.iterate()):
+            for conf2 in randomize(traj2.trajectories[1].path):
                 #if not aabb_overlap(get_turtle_traj_aabb(conf1), get_turtle_traj_aabb(conf2)):
                 #    continue
                 set_configuration(robot2, conf2)
                 if pairwise_collision(robot1, robot2):
-                    return False
-        return True
+                    return True
+        return False
     return test
 
 def test_stiffness(fluents=[]):
