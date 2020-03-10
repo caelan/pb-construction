@@ -1,15 +1,15 @@
 from __future__ import print_function
 
-from collections import defaultdict
+from collections import defaultdict, Counter
 from itertools import product
 
 import numpy as np
 
 from extrusion.heuristics import compute_layer_from_vertex, compute_layer_from_element
-from extrusion.stream import get_print_gen_fn, USE_CONMECH
+from extrusion.stream import get_print_gen_fn, USE_CONMECH, APPROACH_DISTANCE
 from extrusion.utils import load_robot, get_other_node, get_node_neighbors, PrintTrajectory, get_midpoint, \
-    get_element_length, TOOL_VELOCITY, recover_sequence, flatten_commands
-from extrusion.visualization import draw_ordered, label_nodes
+    get_element_length, TOOL_VELOCITY, recover_sequence, flatten_commands, INITIAL_CONF
+from extrusion.visualization import draw_ordered, label_nodes, set_extrusion_camera
 from examples.pybullet.turtlebots.run import get_test_cfree_traj_traj
 from pddlstream.algorithms.downward import set_cost_scale
 from pddlstream.algorithms.focused import solve_focused #, CURRENT_STREAM_PLAN
@@ -21,7 +21,8 @@ from pddlstream.utils import read, get_file_path, inclusive_range
 from pddlstream.language.temporal import compute_duration, get_end
 from pybullet_tools.utils import get_configuration, set_pose, Pose, Euler, Point, get_point, \
     get_movable_joints, set_joint_position, has_gui, WorldSaver, wait_if_gui, add_line, RED, \
-    wait_for_duration, get_length, INF, step_simulation, LockRenderer, randomize, pairwise_collision, set_configuration
+    wait_for_duration, get_length, INF, step_simulation, LockRenderer, randomize, pairwise_collision, \
+    set_configuration, draw_pose, Pose, Point, aabb_overlap
 
 STRIPSTREAM_ALGORITHM = 'stripstream'
 ROBOT_TEMPLATE = 'r{}'
@@ -72,7 +73,7 @@ def simulate_printing(node_points, trajectories, time_step=0.1, speed_up=10.):
     wait_if_gui()
     return handles
 
-def simulate_parallel(plan, time_step=0.1, speed_up=10.):
+def simulate_parallel(robots, plan, time_step=0.1, speed_up=10.):
     # TODO: ensure the step size is appropriate
     makespan = compute_duration(plan)
     print('\nMakespan: {:.3f}'.format(makespan))
@@ -93,12 +94,15 @@ def simulate_parallel(plan, time_step=0.1, speed_up=10.):
 
     wait_if_gui('Begin?')
     for t in inclusive_range(0, makespan, time_step):
-        print('t={:.3f}/{:.3f}'.format(t, makespan))
         # if action.start <= t <= get_end(action):
-        for traj in trajectories:
-            conf = traj.at(t)
-            #if conf is not None:
-            #    print(traj, conf)
+        executing = Counter(traj.robot  for traj in trajectories if traj.at(t) is not None)
+        print('t={:.3f}/{:.3f} | {}'.format(t, makespan, len(executing)))
+        for robot in robots:
+            num = executing.get(robot, 0)
+            if 2 <= num:
+                raise RuntimeError('Robot {} simultaneously executing {} trajectories'.format(robot, num))
+            elif num == 0:
+                set_configuration(robot, INITIAL_CONF)
         #step_simulation()
         wait_for_duration(time_step / speed_up)
     wait_if_gui('Finish?')
@@ -180,7 +184,7 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
         #'test-cfree-traj-conf': from_test(lambda *args: True),
         #'test-cfree-traj-traj': from_test(get_cfree_test(**kwargs)),
 
-        'TrajTrajCollision': get_collision_test(robots, *kwargs),
+        'TrajTrajCollision': get_collision_test(robots, **kwargs),
         #'Length': lambda e: get_element_length(e, node_points),
         'Distance': lambda r, t: t.get_link_distance(),
     }
@@ -243,7 +247,11 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
     return PDDLProblem(domain_pddl, constant_map, stream_pddl, stream_map, init, goal)
 
 def mirror_robot(robot1, node_points):
+    set_extrusion_camera(node_points, theta=-np.pi/2)
+    #draw_pose(Pose())
     centroid = np.average(node_points, axis=0)
+    #draw_pose(Pose(point=centroid))
+
     # print(centroid)
     # print(get_point(robot1))
     robot2 = load_robot()
@@ -280,7 +288,7 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
     max_length = max(get_element_length(e, node_points) for e in element_bodies)
     print('Min length: {} | Max length: {}'.format(min_length, max_length))
     #opt_distance = min_length # Admissible
-    opt_distance = max_length # Inadmissible/greedy
+    opt_distance = max_length + 2*APPROACH_DISTANCE # Inadmissible/greedy
 
     stream_info = {
         'sample-print': StreamInfo(PartialInputs(unique=True)),
@@ -301,8 +309,10 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
     #planner = 'ff-lazy-tiebreak' # Branching factor becomes large. Rely on preferred. Preferred should also be cheaper
     planner = 'ff-eager-tiebreak' # Need to use a eager search, otherwise doesn't incorporate child cost
     #planner = 'max-astar'
+    # TODO: postprocess with a less greedy strategy
+    # TODO: ensure that function costs aren't prunning plans
 
-    with LockRenderer(lock=False):
+    with LockRenderer(lock=True):
         #solution = solve_incremental(pddlstream_problem, planner='add-random-lazy', max_time=600,
         #                             max_planner_time=300, debug=True)
         solution = solve_focused(pddlstream_problem, stream_info=stream_info, max_time=max_time,
@@ -338,7 +348,7 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
 
         #simulate_printing(node_points, trajectories)
         #display_trajectories(node_points, ground_nodes, trajectories)
-        simulate_parallel(plan)
+        simulate_parallel(robots, plan)
 
     return None, data
     #return trajectories, data
@@ -371,8 +381,7 @@ def get_wild_print_gen_fn(robots, obstacles, node_points, element_bodies, ground
             yield WildOutput(outputs, facts)
     return wild_gen_fn
 
-def get_collision_test(robots, collisions=True, *args, **kwargs):
-    # TODO: remove *args
+def get_collision_test(robots, collisions=True, **kwargs):
     def test(name1, traj1, name2, traj2):
         robot1 = index_from_name(robots, name1)
         robot2 = index_from_name(robots, name2)

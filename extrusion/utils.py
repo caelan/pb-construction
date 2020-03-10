@@ -13,7 +13,7 @@ from pybullet_tools.utils import get_link_pose, BodySaver, set_point, multiply, 
     get_distance, get_relative_pose, get_link_subtree, clone_body, randomize, get_movable_joints, get_all_links, \
     get_bodies_in_region, pairwise_link_collision, \
     set_static, BASE_LINK, INF, create_plane, apply_alpha, point_from_pose, get_distance_fn, get_memory_in_kb, \
-    get_pairs, Saver, set_configuration, add_line, RED
+    get_pairs, Saver, set_configuration, add_line, RED, aabb_union
 from pddlstream.utils import get_connected_components
 
 KUKA_DIR = '../conrob_pybullet/models/kuka_kr6_r900/urdf/'
@@ -190,6 +190,7 @@ class Trajectory(object):
         self.path_from_link = {}
         self.intersecting = []
         self.spline = None
+        self.aabbs = None
     @property
     def start_conf(self):
         if not self.path:
@@ -243,6 +244,16 @@ class Trajectory(object):
         for conf in self.path[1:]:
             set_joint_positions(self.robot, self.joints, conf)
             yield conf
+    def get_aabbs(self):
+        #traj.aabb = aabb_union(map(get_turtle_traj_aabb, traj.iterate())) # TODO: union
+        if self.aabbs is not None:
+            return self.aabbs
+        links = get_all_links(self.robot)
+        with BodySaver(self.robot):
+            for conf in self.path:
+                set_joint_positions(self.robot, self.joints, conf)
+                self.aabbs.append({link: get_aabb(self.robot, link) for link in links})
+        return self.aabbs
     def retime(self, **kwargs):
         # TODO: could also retime using the given end time
         from scipy.interpolate import interp1d
