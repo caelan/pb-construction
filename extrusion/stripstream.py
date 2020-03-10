@@ -22,7 +22,7 @@ from pddlstream.language.temporal import compute_duration, get_end
 from pybullet_tools.utils import get_configuration, set_pose, Pose, Euler, Point, get_point, \
     get_movable_joints, set_joint_position, has_gui, WorldSaver, wait_if_gui, add_line, RED, \
     wait_for_duration, get_length, INF, step_simulation, LockRenderer, randomize, pairwise_collision, \
-    set_configuration, draw_pose, Pose, Point, aabb_overlap
+    set_configuration, draw_pose, Pose, Point, aabb_overlap, pairwise_link_collision, aabb_union
 
 STRIPSTREAM_ALGORITHM = 'stripstream'
 ROBOT_TEMPLATE = 'r{}'
@@ -312,7 +312,7 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
     # TODO: postprocess with a less greedy strategy
     # TODO: ensure that function costs aren't prunning plans
 
-    with LockRenderer(lock=True):
+    with LockRenderer(lock=False):
         #solution = solve_incremental(pddlstream_problem, planner='add-random-lazy', max_time=600,
         #                             max_planner_time=300, debug=True)
         solution = solve_focused(pddlstream_problem, stream_info=stream_info, max_time=max_time,
@@ -382,21 +382,31 @@ def get_wild_print_gen_fn(robots, obstacles, node_points, element_bodies, ground
     return wild_gen_fn
 
 def get_collision_test(robots, collisions=True, **kwargs):
-    def test(name1, traj1, name2, traj2):
-        robot1 = index_from_name(robots, name1)
-        robot2 = index_from_name(robots, name2)
+    def test(name1, command1, name2, command2):
+        robot1, robot2 = index_from_name(robots, name1), index_from_name(robots, name2)
         if (robot1 == robot2) or not collisions:
             return False
-        for conf1 in randomize(traj1.trajectories[1].path):
-            #if not aabb_overlap(get_turtle_traj_aabb(conf1), get_turtle_traj_aabb(traj2)):
-            #    continue
-            set_configuration(robot1, conf1)
-            for conf2 in randomize(traj2.trajectories[1].path):
-                #if not aabb_overlap(get_turtle_traj_aabb(conf1), get_turtle_traj_aabb(conf2)):
-                #    continue
-                set_configuration(robot2, conf2)
-                if pairwise_collision(robot1, robot2):
-                    return True
+        for traj1, traj2 in randomize(product(command1.trajectories, command2.trajectories)):
+            aabbs1, aabbs2 = traj1.get_aabbs(), traj2.get_aabbs()
+            swept_aabbs1 = {link: aabb_union(link_aabbs[link] for link_aabbs in aabbs1) for link in aabbs1[0]}
+            swept_aabbs2 = {link: aabb_union(link_aabbs[link] for link_aabbs in aabbs2) for link in aabbs2[0]}
+            swept_overlap = [(link1, link2) for link1, link2 in product(swept_aabbs1, swept_aabbs2)
+                             if aabb_overlap(swept_aabbs1[link1], swept_aabbs2[link2])]
+            if not swept_overlap:
+                continue
+            for index1, index2 in product(randomize(range(len(traj1.path))), randomize(range(len(traj2.path)))):
+                overlap = [(link1, link2) for link1, link2 in swept_overlap
+                           if aabb_overlap(aabbs1[index1][link1], aabbs2[index2][link2])]
+                #overlap = list(product(aabbs1[index1], aabbs2[index2]))
+                if not overlap:
+                    continue
+                set_configuration(robot1, traj1.path[index1])
+                set_configuration(robot2, traj2.path[index2])
+                #if pairwise_collision(robot1, robot2):
+                #    return True
+                for link1, link2 in overlap:
+                    if pairwise_link_collision(robot1, link1, robot2, link2):
+                        return True
         return False
     return test
 

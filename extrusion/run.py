@@ -177,7 +177,7 @@ def plan_extrusion(args_list, viewer=False, verify=False, verbose=False, watch=F
             start_time = time.time()
             plan, data = None, {}
             with timeout(args.max_time):
-                with Profiler(num=10, cumulative=True):
+                with Profiler(num=10, cumulative=False):
                     plan, data = solve_extrusion(robot, obstacles, element_from_id, node_points, element_bodies,
                                                  extrusion_path, ground_nodes, args, checker=checker)
             runtime = elapsed_time(start_time)

@@ -248,6 +248,7 @@ class Trajectory(object):
         #traj.aabb = aabb_union(map(get_turtle_traj_aabb, traj.iterate())) # TODO: union
         if self.aabbs is not None:
             return self.aabbs
+        self.aabbs = []
         links = get_all_links(self.robot)
         with BodySaver(self.robot):
             for conf in self.path:
