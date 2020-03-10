@@ -17,6 +17,14 @@
   ;  :certified (CFreeTrajTraj ?r1 ?t1 ?r2 ?t2)
   ;)
 
+  ;(:stream sample-move
+  ;  :inputs (?r ?q1 ?q2)
+  ;  :domain (and (Conf ?r ?q1) (Conf ?r ?q2))
+  ;  :outputs (?t)
+  ;  :certified (and (MoveAction ?r ?q1 ?q2 ?t)
+  ;                  (Traj ?r ?t))
+  ;)
+
   (:stream sample-print
     :inputs (?r ?n1 ?e ?n2)
     :domain (and (Robot ?r) (Direction ?n1 ?e ?n2) (Assigned ?r ?e))
@@ -34,6 +42,9 @@
   ;  (and (Element ?e))
   ;)
   (:function (Distance ?r ?t)
+    (Traj ?r ?t)
+  )
+  (:function (Duration ?r ?t)
     (Traj ?r ?t)
   )
 )

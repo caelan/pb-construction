@@ -5,10 +5,11 @@ from itertools import product
 
 import numpy as np
 
+from extrusion.validator import check_plan
 from extrusion.heuristics import compute_layer_from_vertex, compute_layer_from_element
 from extrusion.stream import get_print_gen_fn, USE_CONMECH, APPROACH_DISTANCE
 from extrusion.utils import load_robot, get_other_node, get_node_neighbors, PrintTrajectory, get_midpoint, \
-    get_element_length, TOOL_VELOCITY, recover_sequence, flatten_commands, INITIAL_CONF
+    get_element_length, TOOL_VELOCITY, recover_sequence, flatten_commands, INITIAL_CONF, Command, MotionTrajectory
 from extrusion.visualization import draw_ordered, label_nodes, set_extrusion_camera
 from examples.pybullet.turtlebots.run import get_test_cfree_traj_traj
 from pddlstream.algorithms.downward import set_cost_scale
@@ -73,6 +74,13 @@ def simulate_printing(node_points, trajectories, time_step=0.1, speed_up=10.):
     wait_if_gui()
     return handles
 
+def reverse_plan(plan):
+    if plan is None:
+        return None
+    makespan = compute_duration(plan)
+    print('\nLength: {} | Makespan: {:.3f}'.format(len(plan), makespan))
+    return [DurativeAction(action.name, action.args, makespan - get_end(action), action.duration) for action in plan]
+
 def simulate_parallel(robots, plan, time_step=0.1, speed_up=10.):
     # TODO: ensure the step size is appropriate
     makespan = compute_duration(plan)
@@ -80,10 +88,7 @@ def simulate_parallel(robots, plan, time_step=0.1, speed_up=10.):
     trajectories = []
     for action in plan:
         command = action.args[-1]
-        # Regression planning
-        start_time = makespan - get_end(action)
-        #end_time = makespan - action.start
-        command.retime(start_time=start_time)
+        command.retime(start_time=action.start)
         #print(action)
         #print(start_time, end_time, action.duration)
         #print(command.start_time, command.end_time, command.duration)
@@ -96,7 +101,7 @@ def simulate_parallel(robots, plan, time_step=0.1, speed_up=10.):
     for t in inclusive_range(0, makespan, time_step):
         # if action.start <= t <= get_end(action):
         executing = Counter(traj.robot  for traj in trajectories if traj.at(t) is not None)
-        print('t={:.3f}/{:.3f} | {}'.format(t, makespan, len(executing)))
+        print('t={:.3f}/{:.3f} | executing={}'.format(t, makespan, len(executing)))
         for robot in robots:
             num = executing.get(robot, 0)
             if 2 <= num:
@@ -178,6 +183,7 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
     stream_map = {
         #'test-cfree': from_test(get_test_cfree(element_bodies)),
         #'sample-print': from_gen_fn(get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes)),
+        'sample-move': get_wild_move_gen_fn(robots, obstacles, element_bodies, partial_orders=partial_orders, **kwargs),
         'sample-print': get_wild_print_gen_fn(robots, obstacles, node_points, element_bodies, ground_nodes,
                                               partial_orders=partial_orders, **kwargs),
         #'test-stiffness': from_test(test_stiffness),
@@ -187,6 +193,7 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
         'TrajTrajCollision': get_collision_test(robots, **kwargs),
         #'Length': lambda e: get_element_length(e, node_points),
         'Distance': lambda r, t: t.get_link_distance(),
+        'Duration': lambda r, t: t.get_link_distance() / TOOL_VELOCITY,
     }
 
     init = [
@@ -297,6 +304,7 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
         'TrajTrajCollision': FunctionInfo(p_success=1e-1, overhead=1), # TODO: verbose
         'Length': FunctionInfo(eager=True),  # Need to eagerly evaluate otherwise 0 makespan (failure)
         'Distance': FunctionInfo(opt_fn=lambda r, t: opt_distance, eager=True), # TODO: use the corresponding element length
+        'Duration': FunctionInfo(opt_fn=lambda r, t: opt_distance / TOOL_VELOCITY, eager=True),
     }
 
     # TODO: goal serialization
@@ -332,10 +340,14 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
         for name, args in plan:
             command = args[-1]
             command.retime(start_time=time_from_start)
-            duration = command.duration
-            retimed_plan.append(DurativeAction(name, args, time_from_start, duration))
-            time_from_start += duration
+            retimed_plan.append(DurativeAction(name, args, time_from_start, command.duration))
+            time_from_start += command.duration
         plan = retimed_plan
+    plan = reverse_plan(plan)
+
+    #planned_elements = [args[2] for name, args, _, _ in sorted(plan, key=lambda a: get_end(a))] # TODO: remove approach
+    #if not check_plan(extrusion_path, planned_elements):
+    #    return None, data
 
     if has_gui():
         saver.restore()
@@ -357,6 +369,19 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
 
 def index_from_name(robots, name):
     return robots[int(name[1:])]
+
+def get_wild_move_gen_fn(robots, obstacles, element_bodies, partial_orders=set(), collisions=True, **kwargs):
+    def wild_gen_fn(name, conf1, conf2):
+        robot = index_from_name(robots, name)
+        joints = get_movable_joints(robot)
+        path = [conf1, conf2]
+        traj = MotionTrajectory(robot, joints, path)
+        command = Command([traj])
+        outputs = [(command,)]
+        facts = []
+        #facts = [('Collision', command, e2) for e2 in command.colliding] if collisions else []
+        yield WildOutput(outputs, facts)
+    return wild_gen_fn
 
 def get_wild_print_gen_fn(robots, obstacles, node_points, element_bodies, ground_nodes,
                           collisions=True, **kwargs):

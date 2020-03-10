@@ -8,6 +8,7 @@
     (Printed ?e)
     (Removed ?e)
     (Traj ?r ?t)
+    (MoveAction ?r ?q1 ?q2 ?t)
     (PrintAction ?r ?n1 ?e ?n2 ?q1 ?q2 ?t)
     (Collision ?t ?e)
     (Grounded ?n)
@@ -30,6 +31,28 @@
     (Distance ?r ?t)
   )
 
+  (:durative-action move
+   :parameters (?r ?q1 ?q2 ?t)
+   :duration (= ?duration (/ (Distance ?r ?t) (Speed))) ; TODO: trajectory time
+   :condition (and
+        (at start (MoveAction ?r ?q1 ?q2 ?t))
+        ;(at start (Conf ?r ?q1))
+        ;(at start (Conf ?r ?q2))
+        (at start (Idle ?r))
+        (at start (AtConf ?r ?q2))
+        ;(over all (not (UnsafeTraj ?r ?t)))
+        ;(CanMove ?r)
+   )
+   :effect (and
+        (at start (not (Idle ?r)))
+        (at start (Executing ?r ?t))
+        (at start (not (AtConf ?r ?q2)))
+        (at end (AtConf ?r ?q1))
+        (at end (not (Executing ?r ?t)))
+        (at end (Idle ?r))
+   )
+  )
+
   (:durative-action print
    :parameters (?r ?n1 ?e ?n2 ?q1 ?q2 ?t)
    ;:duration (= ?duration 1)
@@ -40,6 +63,7 @@
         (at start (Assigned ?r ?e))
         (at start (Printed ?e))
         (at start (Idle ?r))
+        ;(at start (AtConf ?r ?q2))
         ; TODO: remove universal quantifiers to reschedule
         ;(at start (not (Premature ?e))) ; normalized to be a universal quantifier
         (at start (forall (?e2) (imply (Order ?e ?e2) (Removed ?e2))))
@@ -50,8 +74,8 @@
         (at start (not (Idle ?r)))
         (at start (not (Printed ?e)))
         (at start (Executing ?r ?t))
-        (at start (not (AtConf ?r ?q1)))
-        (at end (AtConf ?r ?q2))
+        (at start (not (AtConf ?r ?q2)))
+        (at end (AtConf ?r ?q1))
         (at end (not (Executing ?r ?t)))
         (at end (Removed ?e))
         (at end (Idle ?r))
