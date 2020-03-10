@@ -165,7 +165,8 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
     elements = set(element_bodies)
     nodes = nodes_from_elements(elements)
     layer_from_n = compute_layer_from_vertex(element_bodies, node_points, ground_nodes)
-
+    max_layer = max(layer_from_n.values())
+    print('Max layer: {}'.format(max_layer))
     directions = compute_directions(elements, layer_from_n)
     #partial_orders = set()
     if local:
@@ -201,22 +202,6 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
         'Euclidean': lambda n1, n2: get_element_length((n1, n2), node_points),
     }
 
-    init = [
-        Equal(('Speed',), TOOL_VELOCITY),
-    ]
-    for name, conf in initial_confs.items():
-        robot = index_from_name(robots, name)
-        init_node = -robot
-        init.extend([
-            #('Node', init_node),
-            ('AtNode', name, init_node),
-            ('Robot', name),
-            ('Conf', name, conf),
-            ('AtConf', name, conf),
-            ('Idle', name),
-            #('CanMove', name),
-        ])
-
     assignments = set()
     for element in elements:
         point = get_midpoint(node_points, element)
@@ -230,15 +215,48 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
         # TODO: assign to several robots if close to the best distance
         assignments.add((closest_robot, element))
 
+    # TODO: do for element/node pairs instead
+    nodes_from_robot = {name: set() for name in initial_confs}
+    for robot, element in assignments:
+        nodes_from_robot[robot].update(element)
+
+    # TODO: remove any extrusion pairs
     # Could use the partial orders instead
-    # for n1, n2 in permutations(nodes, r=2):
-    #     if layer_from_n[n2] - layer_from_n[n1] in [0, 1]:
-    #         print(n1, n2)
+    transit = set()
+    for robot in nodes_from_robot:
+        for n1, n2 in permutations(nodes_from_robot[robot], r=2):
+            if layer_from_n[n2] - layer_from_n[n1] in [0, 1]:
+                transit.add((robot, n1, n2))
+    #transit = set()
+
+    init = [
+        Equal(('Speed',), TOOL_VELOCITY),
+    ]
+    for name, conf in initial_confs.items():
+        robot = index_from_name(robots, name)
+        init_node = -robot
+        init.extend([
+            #('Node', init_node),
+            ('Associated', name, init_node, conf),
+            ('AtNode', name, init_node),
+            ('Robot', name),
+            ('Conf', name, conf),
+            ('AtConf', name, conf),
+            ('Idle', name),
+            #('CanMove', name),
+        ])
+        for n in nodes_from_robot[name]:
+            if layer_from_n[n] == 0:
+                transit.add((name, init_node, n))
+                pass
+            if layer_from_n[n] == max_layer:
+                transit.add((name, n, init_node))
 
     init.extend(('Grounded', n) for n in ground_nodes)
     init.extend(('Direction',) + triplet for triplet in directions)
     init.extend(('Order',) + pair for pair in partial_orders)
     init.extend(('Assigned',) + pair for pair in assignments)
+    init.extend(('Transit',) + triplet for triplet in transit)
     # TODO: only move actions between adjacent layers
 
     for e in elements:
@@ -320,7 +338,6 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
         'Distance': FunctionInfo(opt_fn=lambda r, t: opt_distance, eager=True), # TODO: use the corresponding element length
         'Duration': FunctionInfo(opt_fn=lambda r, t: opt_distance / TOOL_VELOCITY, eager=True),
         'Euclidean': FunctionInfo(eager=True),
-
     }
 
     # TODO: goal serialization
@@ -360,6 +377,9 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
             time_from_start += command.duration
         plan = retimed_plan
     plan = reverse_plan(plan)
+    # TODO: retime using the TFD duration
+    # TODO: attempt to resolve once without any optimistic facts to see if a solution exists
+    # TODO: choose a better initial config
 
     #planned_elements = [args[2] for name, args, _, _ in sorted(plan, key=lambda a: get_end(a))] # TODO: remove approach
     #if not check_plan(extrusion_path, planned_elements):
@@ -384,7 +404,8 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
 ##################################################
 
 def get_wild_move_gen_fn(robots, obstacles, element_bodies, partial_orders=set(), collisions=True, **kwargs):
-    def wild_gen_fn(name, conf1, conf2):
+    #def wild_gen_fn(name, conf1, conf2):
+    def wild_gen_fn(name, node1, conf1, node2, conf2):
         robot = index_from_name(robots, name)
         joints = get_movable_joints(robot)
         path = [conf1, conf2]
