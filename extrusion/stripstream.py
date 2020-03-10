@@ -20,7 +20,7 @@ from pddlstream.utils import read, get_file_path, inclusive_range
 from pddlstream.language.temporal import compute_duration, get_end
 from pybullet_tools.utils import get_configuration, set_pose, Pose, Euler, Point, get_point, \
     get_movable_joints, set_joint_position, has_gui, WorldSaver, wait_if_gui, add_line, RED, \
-    wait_for_duration, get_length, INF, step_simulation
+    wait_for_duration, get_length, INF, step_simulation, LockRenderer
 
 STRIPSTREAM_ALGORITHM = 'stripstream'
 ROBOT_TEMPLATE = 'r{}'
@@ -71,7 +71,7 @@ def simulate_printing(node_points, trajectories, time_step=0.1, speed_up=10.):
     wait_if_gui()
     return handles
 
-def simulate_parallel(plan, time_step=0.1, speed_up=5.):
+def simulate_parallel(plan, time_step=0.1, speed_up=10.):
     # TODO: ensure the step size is appropriate
     makespan = compute_duration(plan)
     print('\nMakespan: {:.3f}'.format(makespan))
@@ -116,7 +116,6 @@ def compute_directions(elements, layer_from_n):
 def compute_local_orders(elements, layer_from_n):
     # TODO: could make level objects
     # Could update whether a node is connected, but it's slightly tricky
-    # Local ordering
     partial_orders = set()
     for n1, neighbors in get_node_neighbors(elements).items():
         below, equal, above = [], [], []  # wrt n1
@@ -133,6 +132,8 @@ def compute_local_orders(elements, layer_from_n):
     return partial_orders
 
 def compute_global_orders(element_bodies, node_points, ground_nodes):
+    # TODO: further bucket
+    # TODO: separate orders per robot
     layer_from_e = compute_layer_from_element(element_bodies, node_points, ground_nodes)
     elements_from_layer = defaultdict(list)
     for e, l in layer_from_e.items():
@@ -146,14 +147,16 @@ def compute_global_orders(element_bodies, node_points, ground_nodes):
 ##################################################
 
 def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
-                   trajectories=[], temporal=True, **kwargs):
+                   trajectories=[], temporal=True, local=False, **kwargs):
     elements = set(element_bodies)
     layer_from_n = compute_layer_from_vertex(element_bodies, node_points, ground_nodes)
 
     directions = compute_directions(elements, layer_from_n)
     #partial_orders = set()
-    partial_orders = compute_local_orders(elements, layer_from_n) # makes the makespan heuristic slow
-    #partial_orders = compute_global_orders(element_bodies, node_points, ground_nodes)
+    if local:
+        partial_orders = compute_local_orders(elements, layer_from_n) # makes the makespan heuristic slow
+    else:
+        partial_orders = compute_global_orders(element_bodies, node_points, ground_nodes)
 
     #print(supports)
     # draw_model(supporters, node_points, ground_nodes, color=RED)
@@ -189,7 +192,7 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
             #('CanMove', robot),
         ])
 
-    assignments = set() # TODO: could assign to several robots
+    assignments = set()
     for element in elements:
         point = get_midpoint(node_points, element)
         closest_robot, closest_distance = None, INF
@@ -199,6 +202,7 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
             if distance < closest_distance:
                 closest_robot, closest_distance = ROBOT_TEMPLATE.format(i), distance
         assert closest_robot is not None
+        # TODO: assign to several robots if close to the best distance
         assignments.add((closest_robot, element))
 
     init.extend(('Grounded', n) for n in ground_nodes)
@@ -267,9 +271,8 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
     print('Init:', pddlstream_problem.init)
     print('Goal:', pddlstream_problem.goal)
 
-
     min_length = min(get_element_length(e, node_points) for e in element_bodies)
-    max_length = min(get_element_length(e, node_points) for e in element_bodies)
+    max_length = max(get_element_length(e, node_points) for e in element_bodies)
     print('Min length: {} | Max length: {}'.format(min_length, max_length))
     #opt_distance = min_length # Admissible
     opt_distance = max_length # Inadmissible/greedy
@@ -283,20 +286,23 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
 
     # TODO: goal serialization
     # TODO: could revert back to goal count now that no deadends
+    # TODO: limit the branching factor if necessary
+    # Reachability heuristics good for detecting dead-ends
+    # Infeasibility from the start means disconnected or collision
     set_cost_scale(1)
     #planner = 'ff-ehc'
     #planner = 'ff-lazy-tiebreak' # Branching factor becomes large. Rely on preferred. Preferred should also be cheaper
     planner = 'ff-eager-tiebreak' # Need to use a eager search, otherwise doesn't incorporate child cost
     #planner = 'max-astar'
-    # TODO: limit the branching factor if necessary
-    #solution = solve_incremental(pddlstream_problem, planner='add-random-lazy', max_time=600,
-    #                             max_planner_time=300, debug=True)
-    solution = solve_focused(pddlstream_problem, stream_info=stream_info, max_time=max_time,
-                             effort_weight=None, unit_efforts=True, max_skeletons=None, unit_costs=False, bind=False,
-                             planner=planner, max_planner_time=60, debug=True, reorder=False,
-                             initial_complexity=1)
-    # Reachability heuristics good for detecting dead-ends
-    # Infeasibility from the start means disconnected or collision
+
+    with LockRenderer(lock=False):
+        #solution = solve_incremental(pddlstream_problem, planner='add-random-lazy', max_time=600,
+        #                             max_planner_time=300, debug=True)
+        solution = solve_focused(pddlstream_problem, stream_info=stream_info, max_time=max_time,
+                                 effort_weight=None, unit_efforts=True, max_skeletons=None, unit_costs=False, bind=False,
+                                 planner=planner, max_planner_time=60, debug=True, reorder=False,
+                                 initial_complexity=1)
+
     print_solution(solution)
     plan, _, _ = solution
     data = {}

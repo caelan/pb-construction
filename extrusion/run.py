@@ -149,7 +149,7 @@ def plan_extrusion(args_list, viewer=False, verify=False, verbose=False, watch=F
 
     #elements = downsample_structure(elements, node_points, ground_nodes, num=None)
     #elements, ground_nodes = downsample_nodes(elements, node_points, ground_nodes)
-    node_points = scale_assembly(elements, node_points, ground_nodes, scale=2)
+    node_points = scale_assembly(elements, node_points, ground_nodes, scale=5)
 
     connect(use_gui=viewer, shadows=SHADOWS, color=BACKGROUND_COLOR)
     with LockRenderer(lock=True):
