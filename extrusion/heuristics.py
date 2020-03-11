@@ -80,7 +80,7 @@ def compute_distance_from_node(elements, node_points, ground_nodes):
     #              for edge in elements}
     edge_costs.update({edge[::-1]: distance for edge, distance in edge_costs.items()})
     successor_fn = lambda v: neighbors[v]
-    cost_fn = lambda v1, v2: edge_costs[v1, v2]
+    cost_fn = lambda v1, v2: edge_costs[v1, v2] # TODO: z on cost function
     return dijkstra(ground_nodes & nodes, successor_fn, cost_fn)
 
 def compute_layer_from_vertex(elements, node_points, ground_nodes):

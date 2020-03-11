@@ -6,13 +6,13 @@ from itertools import product, permutations
 import numpy as np
 
 from extrusion.validator import check_plan
-from extrusion.heuristics import compute_layer_from_vertex, compute_layer_from_element
+from extrusion.heuristics import compute_layer_from_vertex, compute_layer_from_element, compute_distance_from_node
 from extrusion.stream import get_print_gen_fn, USE_CONMECH, APPROACH_DISTANCE, SELF_COLLISIONS, \
     JOINT_WEIGHTS, RESOLUTION
 from extrusion.utils import load_robot, get_other_node, get_node_neighbors, PrintTrajectory, get_midpoint, \
     get_element_length, TOOL_VELOCITY, recover_sequence, flatten_commands, Command, MotionTrajectory, \
     nodes_from_elements, get_disabled_collisions
-from extrusion.visualization import draw_ordered, label_nodes, set_extrusion_camera
+from extrusion.visualization import draw_ordered, label_nodes, set_extrusion_camera, sample_colors, draw_model
 from examples.pybullet.turtlebots.run import get_test_cfree_traj_traj
 from pddlstream.algorithms.downward import set_cost_scale
 from pddlstream.algorithms.focused import solve_focused #, CURRENT_STREAM_PLAN
@@ -50,6 +50,9 @@ DUAL_CONF = [np.pi/8, -np.pi/4, np.pi/2, 0, np.pi/4, -np.pi/2]
 
 def index_from_name(robots, name):
     return robots[int(name[1:])]
+
+#def name_from_index(i):
+#    return ROBOT_TEMPLATE.format(i)
 
 ##################################################
 
@@ -155,10 +158,11 @@ def compute_local_orders(elements, layer_from_n):
         partial_orders.update(product(equal, above))
     return partial_orders
 
-def compute_global_orders(element_bodies, node_points, ground_nodes):
+def compute_global_orders(element_bodies, node_points, ground_nodes, layer_from_n):
     # TODO: further bucket
     # TODO: separate orders per robot
-    layer_from_e = compute_layer_from_element(element_bodies, node_points, ground_nodes)
+    #layer_from_e = compute_layer_from_element(element_bodies, node_points, ground_nodes)
+    layer_from_e = {e: min(layer_from_n[v] for v in e) for e in element_bodies}
     elements_from_layer = defaultdict(list)
     for e, l in layer_from_e.items():
         elements_from_layer[l].append(e)
@@ -170,12 +174,76 @@ def compute_global_orders(element_bodies, node_points, ground_nodes):
 
 ##################################################
 
+def cluster_vertices(elements, node_points, ground_nodes, ratio=0.25, weight=0.):
+    # TODO: incorporate x,y,z proximity with a lower weight as well
+    from sklearn.cluster import KMeans
+    #nodes = nodes_from_elements(elements)
+    node_from_vertex = compute_distance_from_node(elements, node_points, ground_nodes)
+    nodes = sorted(node_from_vertex)
+    costs = [node_from_vertex[node].cost for node in nodes]
+    # TODO: use element midpoints
+
+    num = int(np.ceil(ratio*len(nodes)))
+    model = KMeans(n_clusters=num, n_init=10, max_iter=300, tol=1e-4)
+    xx = [[cost] for cost in costs]
+    pp = model.fit_predict(xx)
+
+    frequencies = Counter(pp)
+    print('# nodes: {} | # elements: {} | max clusters: {} | # clusters: {}'.format(
+        len(nodes), len(elements), num, len(frequencies)))
+    #print(frequencies)
+    #print(sorted(costs))
+    #print(sorted(model.cluster_centers_))
+
+    clusters = sorted(range(len(model.cluster_centers_)), key=lambda c: model.cluster_centers_[c][0])
+    index_from_cluster = dict(zip(clusters, range(len(clusters))))
+
+    cluster_from_node = {node: index_from_cluster[cluster] for node, cluster in zip(nodes, pp)}
+    elements_from_clusters = {}
+    for element in elements:
+        cluster = min(map(cluster_from_node.get, element))
+        elements_from_clusters.setdefault(cluster, set()).add(element)
+    #directions = compute_directions(elements, cluster_from_node)
+
+    #colors = sample_colors(len(elements_from_clusters))
+    #for cluster, color in zip(sorted(elements_from_clusters), colors):
+    #    draw_model(elements_from_clusters[cluster], node_points, ground_nodes, color=color)
+    #wait_if_gui()
+    return cluster_from_node
+
+def compute_assignments(robots, elements, node_points, initial_confs):
+    assignments = {name: set() for name in initial_confs}
+    for element in elements:
+        point = get_midpoint(node_points, element)
+        closest_robot, closest_distance = None, INF
+        for i, robot in enumerate(robots):
+            base_point = get_point(robot)
+            distance = get_length((base_point - point)[:2])
+            if distance < closest_distance:
+                closest_robot, closest_distance = ROBOT_TEMPLATE.format(i), distance
+        assert closest_robot is not None
+        # TODO: assign to several robots if close to the best distance
+        assignments[closest_robot].add(element)
+    return assignments
+
+def compute_transits(layer_from_n, directions):
+    # TODO: remove any extrusion pairs
+    # TODO: use the partial orders instead
+    transits = []
+    for (n0, e1, n1), (n2, e2, _) in permutations(directions, r=2):
+        # TODO: an individual robot technically could jump two levels
+        if layer_from_n[n2] - layer_from_n[n0] in [0, 1]: # TODO: robot centric?
+            transits.append((e1, n1, n2, e2))
+    return transits
+
+##################################################
+
 def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
-                   trajectories=[], temporal=True, local=False, **kwargs):
+                   trajectories=[], temporal=True, local=False, transit=False, **kwargs):
     # TODO: TFD submodule
     elements = set(element_bodies)
-    nodes = nodes_from_elements(elements)
-    layer_from_n = compute_layer_from_vertex(element_bodies, node_points, ground_nodes)
+    #layer_from_n = compute_layer_from_vertex(element_bodies, node_points, ground_nodes)
+    layer_from_n = cluster_vertices(elements, node_points, ground_nodes)
     max_layer = max(layer_from_n.values())
     print('Max layer: {}'.format(max_layer))
     directions = compute_directions(elements, layer_from_n)
@@ -184,7 +252,7 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
         # makespan seems more effective than CEA
         partial_orders = compute_local_orders(elements, layer_from_n) # makes the makespan heuristic slow
     else:
-        partial_orders = compute_global_orders(element_bodies, node_points, ground_nodes)
+        partial_orders = compute_global_orders(element_bodies, node_points, ground_nodes, layer_from_n)
     # TODO: bias samples to be near the initial config
 
     #print(supports)
@@ -214,30 +282,14 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
         'Euclidean': lambda n1, n2: get_element_length((n1, n2), node_points),
     }
 
-    assignments = {name: set() for name in initial_confs}
-    for element in elements:
-        point = get_midpoint(node_points, element)
-        closest_robot, closest_distance = None, INF
-        for i, robot in enumerate(robots):
-            base_point = get_point(robot)
-            distance = get_length((base_point - point)[:2])
-            if distance < closest_distance:
-                closest_robot, closest_distance = ROBOT_TEMPLATE.format(i), distance
-        assert closest_robot is not None
-        # TODO: assign to several robots if close to the best distance
-        assignments[closest_robot].add(element)
-
-    # TODO: remove any extrusion pairs
-    # TODO: use the partial orders instead
-    transits = []
-    for (_, e1, n1), (n2, e2, _) in permutations(directions, r=2):
-        # TODO: an individual robot technically could jump two levels
-        if layer_from_n[n1] - layer_from_n[n2] in [0, 1]: # TODO: robot centric?
-            transits.append((e1, n1, n2, e2))
+    assignments = compute_assignments(robots, elements, node_points, initial_confs)
+    transits = compute_transits(layer_from_n, directions)
 
     init = [
         Equal(('Speed',), TOOL_VELOCITY),
     ]
+    if transit:
+        init.append(('Transit',))
     for name, conf in initial_confs.items():
         robot = index_from_name(robots, name)
         #init_node = -robot
@@ -428,6 +480,7 @@ def get_wild_move_gen_fn(robots, obstacles, element_bodies, partial_orders=set()
         robot = index_from_name(robots, name)
         joints = get_movable_joints(robot)
         set_joint_positions(robot, joints, conf1)
+        # TODO: break into pieces at the furthest part from the structure
 
         weights = JOINT_WEIGHTS
         resolutions = np.divide(RESOLUTION * np.ones(weights.shape), weights)
