@@ -11,7 +11,7 @@ from extrusion.stream import get_print_gen_fn, USE_CONMECH, APPROACH_DISTANCE, S
     JOINT_WEIGHTS, RESOLUTION
 from extrusion.utils import load_robot, get_other_node, get_node_neighbors, PrintTrajectory, get_midpoint, \
     get_element_length, TOOL_VELOCITY, recover_sequence, flatten_commands, Command, MotionTrajectory, \
-    nodes_from_elements, get_disabled_collisions
+    nodes_from_elements, get_disabled_collisions, retrace_supporters
 from extrusion.visualization import draw_ordered, label_nodes, set_extrusion_camera, sample_colors, draw_model
 from examples.pybullet.turtlebots.run import get_test_cfree_traj_traj
 from pddlstream.algorithms.downward import set_cost_scale
@@ -21,7 +21,7 @@ from pddlstream.language.constants import And, PDDLProblem, print_solution, Dura
 from pddlstream.language.generator import from_test
 from pddlstream.language.stream import StreamInfo, PartialInputs, WildOutput
 from pddlstream.language.function import FunctionInfo
-from pddlstream.utils import read, get_file_path, inclusive_range
+from pddlstream.utils import read, get_file_path, inclusive_range, neighbors_from_orders
 from pddlstream.language.temporal import compute_duration, get_end
 from pybullet_tools.utils import get_configuration, set_pose, Pose, Euler, Point, get_point, \
     get_movable_joints, set_joint_position, has_gui, WorldSaver, wait_if_gui, add_line, RED, \
@@ -53,6 +53,20 @@ def index_from_name(robots, name):
 
 #def name_from_index(i):
 #    return ROBOT_TEMPLATE.format(i)
+
+class Conf(object):
+    def __init__(self, robot, positions=None, node=None, element=None):
+        self.robot = robot
+        self.joints = get_movable_joints(self.robot)
+        if positions is None:
+            positions = get_configuration(self.robot)
+        self.positions = positions
+        self.node = node
+        self.element = element
+    def assign(self):
+        set_configuration(self.robot, self.positions)
+    def __repr__(self):
+        return '{}({})'.format(self.__class__.__name__, self.node)
 
 ##################################################
 
@@ -102,7 +116,7 @@ def simulate_parallel(robots, plan, time_step=0.1, speed_up=10.):
     trajectories = []
     for action in plan:
         command = action.args[-1]
-        if (action.name == 'move') and (command.start_conf is action.args[-2]):
+        if (action.name == 'move') and (command.start_conf is action.args[-2].positions):
             command = command.reverse()
         command.retime(start_time=action.start)
         #print(action)
@@ -257,7 +271,7 @@ def get_opt_distance_fn(element_bodies, node_points):
     return fn
 
 def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
-                   trajectories=[], temporal=True, local=False, transit=True, **kwargs):
+                   trajectories=[], temporal=True, local=False, transit=False, **kwargs):
     # TODO: TFD submodule
     elements = set(element_bodies)
     #layer_from_n = compute_layer_from_vertex(element_bodies, node_points, ground_nodes)
@@ -277,7 +291,7 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
     # draw_model(supporters, node_points, ground_nodes, color=RED)
     # wait_if_gui()
 
-    initial_confs = {ROBOT_TEMPLATE.format(i): np.array(get_configuration(robot)) for i, robot in enumerate(robots)}
+    initial_confs = {ROBOT_TEMPLATE.format(i): Conf(robot) for i, robot in enumerate(robots)}
 
     domain_pddl = read(get_file_path(__file__, 'pddl/temporal.pddl' if temporal else 'pddl/domain.pddl'))
     stream_pddl = read(get_file_path(__file__, 'pddl/stream.pddl'))
@@ -287,7 +301,8 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
     stream_map = {
         #'test-cfree': from_test(get_test_cfree(element_bodies)),
         #'sample-print': from_gen_fn(get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes)),
-        'sample-move': get_wild_move_gen_fn(robots, obstacles, element_bodies, partial_orders=partial_orders, **kwargs),
+        'sample-move': get_wild_move_gen_fn(robots, obstacles, element_bodies,
+                                            partial_orders=partial_orders, **kwargs),
         'sample-print': get_wild_print_gen_fn(robots, obstacles, node_points, element_bodies, ground_nodes,
                                               partial_orders=partial_orders, **kwargs),
         #'test-stiffness': from_test(test_stiffness),
@@ -485,25 +500,39 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
 
 ##################################################
 
-def get_wild_move_gen_fn(robots, obstacles, element_bodies, partial_orders=set(), collisions=True, **kwargs):
+def get_wild_move_gen_fn(robots, static_obstacles, element_bodies, partial_orders=set(), collisions=True, **kwargs):
+    incoming_supporters, _ = neighbors_from_orders(partial_orders)
+
     #def wild_gen_fn(name, conf1, conf2):
     def wild_gen_fn(name, conf1, conf2, *args):
-        # TODO: condition on the structure
+        is_start = (conf1.element is None) and (conf2.element is not None)
+        is_end = (conf1.element is not None) and (conf2.element is None)
+        if is_start:
+            supporters = []
+        elif is_end:
+            supporters = list(element_bodies)
+        else:
+            supporters = [conf1.element]  # TODO: can also do according to levels
+            retrace_supporters(conf1.element, incoming_supporters, supporters)
+        element_obstacles = [element_bodies[e] for e in supporters]
+        obstacles = static_obstacles + element_obstacles
+
         robot = index_from_name(robots, name)
+        conf1.assign()
         joints = get_movable_joints(robot)
-        set_joint_positions(robot, joints, conf1)
         # TODO: break into pieces at the furthest part from the structure
 
         weights = JOINT_WEIGHTS
         resolutions = np.divide(RESOLUTION * np.ones(weights.shape), weights)
         disabled_collisions = get_disabled_collisions(robot)
         #path = [conf1, conf2]
-        path = plan_joint_motion(robot, joints, conf2, obstacles=obstacles,
+        path = plan_joint_motion(robot, joints, conf2.positions, obstacles=obstacles,
                                  self_collisions=SELF_COLLISIONS, disabled_collisions=disabled_collisions,
                                  weights=weights, resolutions=resolutions,
                                  restarts=3, iterations=100, smooth=100)
         if not path:
             return
+        path = [conf1.positions] + path[1:-1] + [conf2.positions]
         traj = MotionTrajectory(robot, joints, path)
         command = Command([traj])
         outputs = [(command,)]
@@ -512,10 +541,10 @@ def get_wild_move_gen_fn(robots, obstacles, element_bodies, partial_orders=set()
         yield WildOutput(outputs, [('Dummy',)] + facts) # To force to be wild
     return wild_gen_fn
 
-def get_wild_print_gen_fn(robots, obstacles, node_points, element_bodies, ground_nodes,
+def get_wild_print_gen_fn(robots, static_obstacles, node_points, element_bodies, ground_nodes,
                           collisions=True, **kwargs):
     # TODO: could reuse end-effector trajectories
-    gen_fn_from_robot = {robot: get_print_gen_fn(robot, obstacles, node_points, element_bodies,
+    gen_fn_from_robot = {robot: get_print_gen_fn(robot, static_obstacles, node_points, element_bodies,
                                                  ground_nodes, **kwargs) for robot in robots}
     def wild_gen_fn(name, node1, element, node2):
         # TODO: could cache this
@@ -528,8 +557,8 @@ def get_wild_print_gen_fn(robots, obstacles, node_points, element_bodies, ground
         robot = index_from_name(robots, name)
         #generator = gen_fn_from_robot[robot](node1, element)
         for command, in gen_fn_from_robot[robot](node1, element):
-            q1 = np.array(command.start_conf)
-            q2 = np.array(command.end_conf)
+            q1 = Conf(robot, command.start_conf, node=node1, element=element)
+            q2 = Conf(robot, command.end_conf, node=node2, element=element)
             outputs = [(q1, q2, command)]
             facts = [('Collision', command, e2) for e2 in command.colliding] if collisions else []
             yield WildOutput(outputs, [('Dummy',)] + facts)
