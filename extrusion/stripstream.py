@@ -7,9 +7,11 @@ import numpy as np
 
 from extrusion.validator import check_plan
 from extrusion.heuristics import compute_layer_from_vertex, compute_layer_from_element
-from extrusion.stream import get_print_gen_fn, USE_CONMECH, APPROACH_DISTANCE
+from extrusion.stream import get_print_gen_fn, USE_CONMECH, APPROACH_DISTANCE, SELF_COLLISIONS, \
+    JOINT_WEIGHTS, RESOLUTION
 from extrusion.utils import load_robot, get_other_node, get_node_neighbors, PrintTrajectory, get_midpoint, \
-    get_element_length, TOOL_VELOCITY, recover_sequence, flatten_commands, Command, MotionTrajectory, nodes_from_elements
+    get_element_length, TOOL_VELOCITY, recover_sequence, flatten_commands, Command, MotionTrajectory, \
+    nodes_from_elements, get_disabled_collisions
 from extrusion.visualization import draw_ordered, label_nodes, set_extrusion_camera
 from examples.pybullet.turtlebots.run import get_test_cfree_traj_traj
 from pddlstream.algorithms.downward import set_cost_scale
@@ -24,7 +26,8 @@ from pddlstream.language.temporal import compute_duration, get_end
 from pybullet_tools.utils import get_configuration, set_pose, Pose, Euler, Point, get_point, \
     get_movable_joints, set_joint_position, has_gui, WorldSaver, wait_if_gui, add_line, RED, \
     wait_for_duration, get_length, INF, step_simulation, LockRenderer, randomize, pairwise_collision, \
-    set_configuration, draw_pose, Pose, Point, aabb_overlap, pairwise_link_collision, aabb_union
+    set_configuration, draw_pose, Pose, Point, aabb_overlap, pairwise_link_collision, \
+    aabb_union, plan_joint_motion, set_joint_positions
 
 STRIPSTREAM_ALGORITHM = 'stripstream'
 ROBOT_TEMPLATE = 'r{}'
@@ -237,24 +240,24 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
     ]
     for name, conf in initial_confs.items():
         robot = index_from_name(robots, name)
-        init_node = -robot
+        #init_node = -robot
+        init_node = '{}-q0'.format(robot)
         init.extend([
             #('Node', init_node),
             ('BackoffConf', name, conf),
-            ('Associated', name, init_node, conf),
             ('Robot', name),
             ('Conf', name, conf),
             ('AtConf', name, conf),
             ('Idle', name),
             #('CanMove', name),
-            ('Start', name, None, init_node, conf),
-            ('End', name, init_node, None, conf),
+            ('Start', name, init_node, None, conf),
+            ('End', name, None, init_node, conf),
         ])
         for (n1, e, n2) in directions:
             if layer_from_n[n1] == 0:
                 transits.append((None, init_node, n1, e))
             if layer_from_n[n2] == max_layer:
-                transits.append((e, n2, None, init_node))
+                transits.append((e, n2, init_node, None))
 
     init.extend(('Grounded', n) for n in ground_nodes)
     init.extend(('Direction',) + tup for tup in directions)
@@ -281,9 +284,8 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
     #     ])
 
     goal_literals = [
-        #('AtConf', robot, initial_conf),
     ]
-    #goal_literals.extend(('AtConf', r, q) for r, q in initial_confs.items())
+    goal_literals.extend(('AtConf', r, q) for r, q in initial_confs.items())
     goal_literals.extend(('Removed', e) for e in element_bodies)
     goal = And(*goal_literals)
 
@@ -335,6 +337,7 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
     opt_distance = max_length + 2*APPROACH_DISTANCE # Inadmissible/greedy
 
     stream_info = {
+        # TODO: stream effort
         'sample-print': StreamInfo(PartialInputs(unique=True)),
         'sample-move': StreamInfo(PartialInputs(unique=True)),
 
@@ -424,7 +427,18 @@ def get_wild_move_gen_fn(robots, obstacles, element_bodies, partial_orders=set()
         # TODO: condition on the structure
         robot = index_from_name(robots, name)
         joints = get_movable_joints(robot)
-        path = [conf1, conf2]
+        set_joint_positions(robot, joints, conf1)
+
+        weights = JOINT_WEIGHTS
+        resolutions = np.divide(RESOLUTION * np.ones(weights.shape), weights)
+        disabled_collisions = get_disabled_collisions(robot)
+        #path = [conf1, conf2]
+        path = plan_joint_motion(robot, joints, conf2, obstacles=obstacles,
+                                 self_collisions=SELF_COLLISIONS, disabled_collisions=disabled_collisions,
+                                 weights=weights, resolutions=resolutions,
+                                 restarts=3, iterations=100, smooth=0)
+        if not path:
+            return
         traj = MotionTrajectory(robot, joints, path)
         command = Command([traj])
         outputs = [(command,)]
