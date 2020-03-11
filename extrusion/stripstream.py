@@ -9,11 +9,12 @@ from extrusion.validator import check_plan
 from extrusion.heuristics import compute_layer_from_vertex, compute_layer_from_element
 from extrusion.stream import get_print_gen_fn, USE_CONMECH, APPROACH_DISTANCE
 from extrusion.utils import load_robot, get_other_node, get_node_neighbors, PrintTrajectory, get_midpoint, \
-    get_element_length, TOOL_VELOCITY, recover_sequence, flatten_commands, INITIAL_CONF, Command, MotionTrajectory, nodes_from_elements
+    get_element_length, TOOL_VELOCITY, recover_sequence, flatten_commands, Command, MotionTrajectory, nodes_from_elements
 from extrusion.visualization import draw_ordered, label_nodes, set_extrusion_camera
 from examples.pybullet.turtlebots.run import get_test_cfree_traj_traj
 from pddlstream.algorithms.downward import set_cost_scale
 from pddlstream.algorithms.focused import solve_focused #, CURRENT_STREAM_PLAN
+from pddlstream.algorithms.disabled import process_stream_plan
 from pddlstream.language.constants import And, PDDLProblem, print_solution, DurativeAction, Equal
 from pddlstream.language.generator import from_test
 from pddlstream.language.stream import StreamInfo, PartialInputs, WildOutput
@@ -27,6 +28,8 @@ from pybullet_tools.utils import get_configuration, set_pose, Pose, Euler, Point
 
 STRIPSTREAM_ALGORITHM = 'stripstream'
 ROBOT_TEMPLATE = 'r{}'
+
+DUAL_CONF = [np.pi/8, -np.pi/4, np.pi/2, 0, np.pi/4, -np.pi/2]
 
 # ----- Small -----
 # extreme_beam_test
@@ -88,29 +91,34 @@ def simulate_parallel(robots, plan, time_step=0.1, speed_up=10.):
     # TODO: ensure the step size is appropriate
     makespan = compute_duration(plan)
     print('\nMakespan: {:.3f}'.format(makespan))
+    if plan is None:
+        return
     trajectories = []
     for action in plan:
         command = action.args[-1]
+        if (action.name == 'move') and (command.start_conf is action.args[-2]):
+            command = command.reverse()
         command.retime(start_time=action.start)
         #print(action)
-        #print(start_time, end_time, action.duration)
+        #print(action.start, get_end(action), action.duration)
         #print(command.start_time, command.end_time, command.duration)
         #for traj in command.trajectories:
         #    print(traj, traj.start_time, traj.end_time, traj.duration)
         trajectories.extend(command.trajectories)
     #print(sum(traj.duration for traj in trajectories))
+    num_motion = sum(action.name == 'move' for action in plan)
 
     wait_if_gui('Begin?')
     for t in inclusive_range(0, makespan, time_step):
         # if action.start <= t <= get_end(action):
         executing = Counter(traj.robot  for traj in trajectories if traj.at(t) is not None)
-        print('t={:.3f}/{:.3f} | executing={}'.format(t, makespan, len(executing)))
+        print('t={:.3f}/{:.3f} | executing={}'.format(t, makespan, executing))
         for robot in robots:
             num = executing.get(robot, 0)
-            if 2 <= num:
-                raise RuntimeError('Robot {} simultaneously executing {} trajectories'.format(robot, num))
-            elif num == 0:
-                set_configuration(robot, INITIAL_CONF)
+            #if 2 <= num:
+            #    raise RuntimeError('Robot {} simultaneously executing {} trajectories'.format(robot, num))
+            if (num_motion == 0) and (num == 0):
+                set_configuration(robot, DUAL_CONF)
         #step_simulation()
         wait_for_duration(time_step / speed_up)
     wait_if_gui('Finish?')
@@ -174,6 +182,7 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
         partial_orders = compute_local_orders(elements, layer_from_n) # makes the makespan heuristic slow
     else:
         partial_orders = compute_global_orders(element_bodies, node_points, ground_nodes)
+    # TODO: bias samples to be near the initial config
 
     #print(supports)
     # draw_model(supporters, node_points, ground_nodes, color=RED)
@@ -237,8 +246,8 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
         init_node = -robot
         init.extend([
             #('Node', init_node),
+            ('BackoffConf', name, conf),
             ('Associated', name, init_node, conf),
-            ('AtNode', name, init_node),
             ('Robot', name),
             ('Conf', name, conf),
             ('AtConf', name, conf),
@@ -299,8 +308,9 @@ def mirror_robot(robot1, node_points):
     # robots = [robot1]
     robots = [robot1, robot2]
     for robot in robots:
-        joint1 = get_movable_joints(robot)[0]
-        set_joint_position(robot, joint1, np.pi / 8)
+        set_configuration(robot, DUAL_CONF)
+        # joint1 = get_movable_joints(robot)[0]
+        # set_joint_position(robot, joint1, np.pi / 8)
     return robots
 
 def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
@@ -331,9 +341,12 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
 
     stream_info = {
         'sample-print': StreamInfo(PartialInputs(unique=True)),
+        'sample-move': StreamInfo(PartialInputs(unique=True)),
+
         'test-cfree-traj-conf': StreamInfo(p_success=1e-2, negate=True), #, verbose=False),
         'test-cfree-traj-traj': StreamInfo(p_success=1e-2, negate=True),
         'TrajTrajCollision': FunctionInfo(p_success=1e-1, overhead=1), # TODO: verbose
+
         'Length': FunctionInfo(eager=True),  # Need to eagerly evaluate otherwise 0 makespan (failure)
         'Distance': FunctionInfo(opt_fn=lambda r, t: opt_distance, eager=True), # TODO: use the corresponding element length
         'Duration': FunctionInfo(opt_fn=lambda r, t: opt_distance / TOOL_VELOCITY, eager=True),
@@ -357,12 +370,18 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
         #solution = solve_incremental(pddlstream_problem, planner='add-random-lazy', max_time=600,
         #                             max_planner_time=300, debug=True)
         solution = solve_focused(pddlstream_problem, stream_info=stream_info, max_time=max_time,
-                                 effort_weight=None, unit_efforts=True, max_skeletons=None, unit_costs=False, bind=False,
+                                 effort_weight=None, unit_efforts=True, unit_costs=False,
+                                 max_skeletons=None, bind=True, max_failures=INF,
                                  planner=planner, max_planner_time=60, debug=True, reorder=False,
                                  initial_complexity=1)
 
     print_solution(solution)
-    plan, _, _ = solution
+    plan, _, certificate = solution
+    #print(certificate.all_facts)
+    #print(certificate.preimage_facts)
+    # TODO: post-process by calling planner again
+    # TODO: could solve for trajectories conditioned on the sequence
+
     data = {}
     if plan is None:
         return None, data
@@ -405,7 +424,8 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
 
 def get_wild_move_gen_fn(robots, obstacles, element_bodies, partial_orders=set(), collisions=True, **kwargs):
     #def wild_gen_fn(name, conf1, conf2):
-    def wild_gen_fn(name, node1, conf1, node2, conf2):
+    def wild_gen_fn(name, conf1, conf2, *args):
+        # TODO: condition on the structure
         robot = index_from_name(robots, name)
         joints = get_movable_joints(robot)
         path = [conf1, conf2]
@@ -414,7 +434,7 @@ def get_wild_move_gen_fn(robots, obstacles, element_bodies, partial_orders=set()
         outputs = [(command,)]
         facts = []
         #facts = [('Collision', command, e2) for e2 in command.colliding] if collisions else []
-        yield WildOutput(outputs, facts)
+        yield WildOutput(outputs, [('Dummy',)] + facts) # To force to be wild
     return wild_gen_fn
 
 def get_wild_print_gen_fn(robots, obstacles, node_points, element_bodies, ground_nodes,
@@ -437,7 +457,7 @@ def get_wild_print_gen_fn(robots, obstacles, node_points, element_bodies, ground
             q2 = np.array(command.end_conf)
             outputs = [(q1, q2, command)]
             facts = [('Collision', command, e2) for e2 in command.colliding] if collisions else []
-            yield WildOutput(outputs, facts)
+            yield WildOutput(outputs, [('Dummy',)] + facts)
     return wild_gen_fn
 
 def get_collision_test(robots, collisions=True, **kwargs):
