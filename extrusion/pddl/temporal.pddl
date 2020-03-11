@@ -61,7 +61,7 @@
         (at start (Assigned ?r ?e))
         (at start (Printed ?e))
         (at start (Idle ?r))
-        (at start (imply (Transit) (AtConf ?r ?q2)))
+        (at start (imply (Move) (AtConf ?r ?q2)))
         ; TODO: remove universal quantifiers to reschedule
         ;(at start (not (Premature ?e))) ; normalized to be a universal quantifier
         (at start (forall (?e2) (imply (Order ?e ?e2) (Removed ?e2))))

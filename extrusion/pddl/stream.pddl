@@ -23,7 +23,7 @@
     ;:domain (and (BackoffConf ?r ?q1) (Conf ?r ?q2))
     :inputs (?r ?q1 ?q2 ?e1 ?n1 ?n2 ?e2)
     :domain (and (End ?r ?e1 ?n1 ?q1) (Start ?r ?n2 ?e2 ?q2)
-                 (Transit ?e1 ?n1 ?n2 ?e2) (Transit))
+                 (Transit ?e1 ?n1 ?n2 ?e2) (Move))
     :outputs (?t)
     :certified (and (MoveAction ?r ?q1 ?q2 ?t)
                     ;(MoveAction ?r ?q2 ?q1 ?t)

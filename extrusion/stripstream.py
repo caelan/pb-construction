@@ -238,8 +238,26 @@ def compute_transits(layer_from_n, directions):
 
 ##################################################
 
+def get_opt_distance_fn(element_bodies, node_points):
+    min_length = min(get_element_length(e, node_points) for e in element_bodies)
+    max_length = max(get_element_length(e, node_points) for e in element_bodies)
+    print('Min length: {} | Max length: {}'.format(min_length, max_length))
+    # opt_distance = min_length # Admissible
+    opt_distance = max_length + 2 * APPROACH_DISTANCE  # Inadmissible/greedy
+
+    def fn(robot, command):
+        # TODO: use the corresponding element length
+        if command.stream == 'sample-move':
+            e1, n1, n2, e2 = command.input_objects[-4:]
+            return 2.
+        elif command.stream == 'sample-print':
+            return opt_distance
+        else:
+            raise NotImplementedError(command.stream)
+    return fn
+
 def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
-                   trajectories=[], temporal=True, local=False, transit=False, **kwargs):
+                   trajectories=[], temporal=True, local=False, transit=True, **kwargs):
     # TODO: TFD submodule
     elements = set(element_bodies)
     #layer_from_n = compute_layer_from_vertex(element_bodies, node_points, ground_nodes)
@@ -265,6 +283,7 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
     stream_pddl = read(get_file_path(__file__, 'pddl/stream.pddl'))
     constant_map = {}
 
+    # TODO: don't evaluate TrajTrajCollision until the plan is retimed
     stream_map = {
         #'test-cfree': from_test(get_test_cfree(element_bodies)),
         #'sample-print': from_gen_fn(get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes)),
@@ -289,7 +308,7 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
         Equal(('Speed',), TOOL_VELOCITY),
     ]
     if transit:
-        init.append(('Transit',))
+        init.append(('Move',))
     for name, conf in initial_confs.items():
         robot = index_from_name(robots, name)
         #init_node = -robot
@@ -335,8 +354,7 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
     #         ('PrintAction', t.n1, t.element, t),
     #     ])
 
-    goal_literals = [
-    ]
+    goal_literals = []
     goal_literals.extend(('AtConf', r, q) for r, q in initial_confs.items())
     goal_literals.extend(('Removed', e) for e in element_bodies)
     goal = And(*goal_literals)
@@ -382,12 +400,6 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
     print('Init:', pddlstream_problem.init)
     print('Goal:', pddlstream_problem.goal)
 
-    min_length = min(get_element_length(e, node_points) for e in element_bodies)
-    max_length = max(get_element_length(e, node_points) for e in element_bodies)
-    print('Min length: {} | Max length: {}'.format(min_length, max_length))
-    #opt_distance = min_length # Admissible
-    opt_distance = max_length + 2*APPROACH_DISTANCE # Inadmissible/greedy
-
     stream_info = {
         # TODO: stream effort
         'sample-print': StreamInfo(PartialInputs(unique=True)),
@@ -397,10 +409,10 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
         'test-cfree-traj-traj': StreamInfo(p_success=1e-2, negate=True),
         'TrajTrajCollision': FunctionInfo(p_success=1e-1, overhead=1), # TODO: verbose
 
-        'Length': FunctionInfo(eager=True),  # Need to eagerly evaluate otherwise 0 makespan (failure)
-        'Distance': FunctionInfo(opt_fn=lambda r, t: opt_distance, eager=True), # TODO: use the corresponding element length
-        'Duration': FunctionInfo(opt_fn=lambda r, t: opt_distance / TOOL_VELOCITY, eager=True),
-        'Euclidean': FunctionInfo(eager=True),
+        'Distance': FunctionInfo(opt_fn=get_opt_distance_fn(element_bodies, node_points), eager=True)
+        #'Length': FunctionInfo(eager=True),  # Need to eagerly evaluate otherwise 0 makespan (failure)
+        #'Duration': FunctionInfo(opt_fn=lambda r, t: opt_distance / TOOL_VELOCITY, eager=True),
+        #'Euclidean': FunctionInfo(eager=True),
     }
 
     # TODO: goal serialization
@@ -489,7 +501,7 @@ def get_wild_move_gen_fn(robots, obstacles, element_bodies, partial_orders=set()
         path = plan_joint_motion(robot, joints, conf2, obstacles=obstacles,
                                  self_collisions=SELF_COLLISIONS, disabled_collisions=disabled_collisions,
                                  weights=weights, resolutions=resolutions,
-                                 restarts=3, iterations=100, smooth=0)
+                                 restarts=3, iterations=100, smooth=100)
         if not path:
             return
         traj = MotionTrajectory(robot, joints, path)

@@ -9,10 +9,10 @@ from pybullet_tools.utils import get_movable_joints, get_joint_positions, multip
     set_joint_positions, inverse_kinematics, get_link_pose, get_distance, point_from_pose, wrap_angle, get_sample_fn, \
     link_from_name, get_pose, get_collision_fn, set_pose, pairwise_collision, Pose, Euler, Point, interval_generator, \
     randomize, get_extend_fn, user_input, INF, elapsed_time, get_bodies_in_region, get_aabb, get_all_links, \
-    pairwise_link_collision, step_simulation, BASE_LINK
+    pairwise_link_collision, step_simulation, BASE_LINK, get_configuration
 from extrusion.utils import TOOL_LINK, get_disabled_collisions, get_node_neighbors, \
     PrintTrajectory, retrace_supporters, prune_dominated, Command, MotionTrajectory, RESOLUTION, \
-    JOINT_WEIGHTS, EE_LINK, EndEffector, is_ground, is_end, is_reversed, reverse_element
+    JOINT_WEIGHTS, EE_LINK, EndEffector, is_ground, is_end, is_reversed, reverse_element, set_configuration
 from pddlstream.utils import neighbors_from_orders, irange
 
 try:
@@ -282,7 +282,7 @@ class Extrusion(object):
 
 ##################################################
 
-def compute_direction_path(tool_traj, collision_fn, ee_only=False):
+def compute_direction_path(tool_traj, collision_fn, initial_conf=None, ee_only=False):
     """
     :param robot:
     :param length: element's length
@@ -313,9 +313,16 @@ def compute_direction_path(tool_traj, collision_fn, ee_only=False):
         # TODO: plan_approach
         return Command([print_traj])
 
+    initial_conf = None # TODO: do with some probability
+    max_error = TRANSLATION_TOLERANCE
+    nearby = initial_conf is not None
+    if nearby:
+        max_error = INF
+        set_configuration(robot, initial_conf)
+
     initial_angle, current_conf = optimize_angle(end_effector, element_pose,
                                                  translation_path[0], direction, reverse, initial_angles,
-                                                 collision_fn, nearby=False)
+                                                 collision_fn, nearby=False, max_error=max_error)
     if current_conf is None:
         return None
     # TODO: constrain maximum conf displacement
@@ -397,6 +404,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
     node_neighbors = get_node_neighbors(element_bodies)
     incoming_supporters, _ = neighbors_from_orders(partial_orders)
 
+    initial_conf = get_configuration(robot)
     end_effector = EndEffector(robot, ee_link=link_from_name(robot, EE_LINK),
                                tool_link=link_from_name(robot, TOOL_LINK),
                                visual=False, collision=False)
@@ -442,7 +450,8 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                 for _ in range(max_attempts):
                     if max_time <= elapsed_time(start_time):
                         return
-                    command = compute_direction_path(tool_traj, collision_fn, ee_only=ee_only, **kwargs)
+                    command = compute_direction_path(tool_traj, collision_fn, ee_only=ee_only,
+                                                     initial_conf=initial_conf, **kwargs)
                     if command is None:
                         continue
 
