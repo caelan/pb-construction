@@ -115,8 +115,8 @@ def simulate_parallel(robots, plan, time_step=0.1, speed_up=10.):
         print('t={:.3f}/{:.3f} | executing={}'.format(t, makespan, executing))
         for robot in robots:
             num = executing.get(robot, 0)
-            #if 2 <= num:
-            #    raise RuntimeError('Robot {} simultaneously executing {} trajectories'.format(robot, num))
+            if 2 <= num:
+                raise RuntimeError('Robot {} simultaneously executing {} trajectories'.format(robot, num))
             if (num_motion == 0) and (num == 0):
                 set_configuration(robot, DUAL_CONF)
         #step_simulation()
@@ -211,7 +211,7 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
         'Euclidean': lambda n1, n2: get_element_length((n1, n2), node_points),
     }
 
-    assignments = set()
+    assignments = {name: set() for name in initial_confs}
     for element in elements:
         point = get_midpoint(node_points, element)
         closest_robot, closest_distance = None, INF
@@ -222,21 +222,15 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
                 closest_robot, closest_distance = ROBOT_TEMPLATE.format(i), distance
         assert closest_robot is not None
         # TODO: assign to several robots if close to the best distance
-        assignments.add((closest_robot, element))
-
-    # TODO: do for element/node pairs instead
-    nodes_from_robot = {name: set() for name in initial_confs}
-    for robot, element in assignments:
-        nodes_from_robot[robot].update(element)
+        assignments[closest_robot].add(element)
 
     # TODO: remove any extrusion pairs
-    # Could use the partial orders instead
-    transit = set()
-    for robot in nodes_from_robot:
-        for n1, n2 in permutations(nodes_from_robot[robot], r=2):
-            if layer_from_n[n2] - layer_from_n[n1] in [0, 1]:
-                transit.add((robot, n1, n2))
-    #transit = set()
+    # TODO: use the partial orders instead
+    transits = []
+    for (_, e1, n1), (n2, e2, _) in permutations(directions, r=2):
+        # TODO: an individual robot technically could jump two levels
+        if layer_from_n[n1] - layer_from_n[n2] in [0, 1]: # TODO: robot centric?
+            transits.append((e1, n1, n2, e2))
 
     init = [
         Equal(('Speed',), TOOL_VELOCITY),
@@ -253,19 +247,20 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
             ('AtConf', name, conf),
             ('Idle', name),
             #('CanMove', name),
+            ('Start', name, None, init_node, conf),
+            ('End', name, init_node, None, conf),
         ])
-        for n in nodes_from_robot[name]:
-            if layer_from_n[n] == 0:
-                transit.add((name, init_node, n))
-                pass
-            if layer_from_n[n] == max_layer:
-                transit.add((name, n, init_node))
+        for (n1, e, n2) in directions:
+            if layer_from_n[n1] == 0:
+                transits.append((None, init_node, n1, e))
+            if layer_from_n[n2] == max_layer:
+                transits.append((e, n2, None, init_node))
 
     init.extend(('Grounded', n) for n in ground_nodes)
-    init.extend(('Direction',) + triplet for triplet in directions)
-    init.extend(('Order',) + pair for pair in partial_orders)
-    init.extend(('Assigned',) + pair for pair in assignments)
-    init.extend(('Transit',) + triplet for triplet in transit)
+    init.extend(('Direction',) + tup for tup in directions)
+    init.extend(('Order',) + tup for tup in partial_orders)
+    init.extend(('Assigned', r, e) for r in assignments for e in assignments[r])
+    init.extend(('Transit',) + tup for tup in transits)
     # TODO: only move actions between adjacent layers
 
     for e in elements:
@@ -295,7 +290,7 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
     return PDDLProblem(domain_pddl, constant_map, stream_pddl, stream_map, init, goal)
 
 def mirror_robot(robot1, node_points):
-    set_extrusion_camera(node_points, theta=-np.pi/2)
+    set_extrusion_camera(node_points, theta=-np.pi/3)
     #draw_pose(Pose())
     centroid = np.average(node_points, axis=0)
     #draw_pose(Pose(point=centroid))
@@ -399,6 +394,7 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
     # TODO: retime using the TFD duration
     # TODO: attempt to resolve once without any optimistic facts to see if a solution exists
     # TODO: choose a better initial config
+    # TODO: decompose into layers hierarchically
 
     #planned_elements = [args[2] for name, args, _, _ in sorted(plan, key=lambda a: get_end(a))] # TODO: remove approach
     #if not check_plan(extrusion_path, planned_elements):

@@ -20,12 +20,13 @@
   (:stream sample-move
     :inputs (?r ?q1 ?q2)
     ;:domain (and (Conf ?r ?q1) (Conf ?r ?q2))
-    :domain (and (BackoffConf ?r ?q1) (Conf ?r ?q2))
-    ;:inputs (?r ?q1 ?q2 ?n1 ?e1 ?n2 ?e2)
-    ;:domain (and (Associated ?r ?n1 ?e1 ?q1) (Associated ?r ?n2 ?e2 ?q2)
-    ;             (Transit ?r ?n1 ?e1 ?n2 ?e2))
+    ;:domain (and (BackoffConf ?r ?q1) (Conf ?r ?q2))
+    :inputs (?r ?q1 ?q2 ?e1 ?n1 ?n2 ?e2)
+    :domain (and (End ?r ?e1 ?n1 ?q1) (Start ?r ?n2 ?e2 ?q2)
+                 (Transit ?e1 ?n1 ?n2 ?e2))
     :outputs (?t)
-    :certified (and (MoveAction ?r ?q1 ?q2 ?t) (MoveAction ?r ?q2 ?q1 ?t)
+    :certified (and (MoveAction ?r ?q1 ?q2 ?t)
+                    ;(MoveAction ?r ?q2 ?q1 ?t)
                     (Traj ?r ?t))
   )
 
@@ -35,7 +36,7 @@
     ; :fluents (Printed)
     :outputs (?q1 ?q2 ?t)
     :certified (and (PrintAction ?r ?n1 ?e ?n2 ?q1 ?q2 ?t)
-                    ;(Associated ?r ?n1 ?e ?q1) (Associated ?r ?n2 ?q2)
+                    (Start ?r ?n1 ?e ?q1) (End ?r ?e ?n2 ?q2)
                     (Conf ?r ?q1) (Conf ?r ?q2) (Traj ?r ?t))
   )
 
