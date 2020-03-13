@@ -7,13 +7,13 @@ from collections import namedtuple
 from extrusion.equilibrium import compute_all_reactions, compute_node_reactions
 from extrusion.parsing import load_extrusion
 from extrusion.utils import get_extructed_ids, downselect_elements, compute_z_distance, TOOL_LINK, get_undirected, \
-    reverse_element, get_midpoint, nodes_from_elements, compute_printed_nodes, compute_transit_distance, \
-    compute_sequence_distance, compute_element_distance
+    reverse_element, get_midpoint, nodes_from_elements, compute_transit_distance, \
+    get_element_length
 from extrusion.stiffness import create_stiffness_checker, force_from_reaction, torque_from_reaction, plan_stiffness
-from extrusion.tsp import compute_component_mst, solve_tsp, compute_layer_from_directed
-from pddlstream.utils import adjacent_from_edges, hash_or_id, get_connected_components, outgoing_from_edges
-from pybullet_tools.utils import get_distance, INF, get_joint_positions, get_movable_joints, get_link_pose, \
-    link_from_name, BodySaver, set_joint_positions, point_from_pose, get_pitch, set_configuration
+from extrusion.tsp import solve_tsp, compute_layer_from_directed
+from pddlstream.utils import adjacent_from_edges, hash_or_id, outgoing_from_edges
+from pybullet_tools.utils import get_distance, INF, get_link_pose, \
+    link_from_name, BodySaver, point_from_pose, get_pitch, set_configuration
 
 DISTANCE_HEURISTICS = [
     'z',
@@ -238,7 +238,7 @@ def get_heuristic_fn(robot, extrusion_path, heuristic, forward, checker=None):
             raise NotImplementedError()
         elif heuristic == 'length':
             # Equivalent to mass if uniform density
-            return get_distance(node_points[n2], node_points[n1])
+            return get_element_length(element, node_points)
         elif heuristic == 'distance':
             return tool_distance
         elif heuristic == 'layered-distance':

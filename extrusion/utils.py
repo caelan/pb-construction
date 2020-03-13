@@ -13,7 +13,7 @@ from pybullet_tools.utils import get_link_pose, BodySaver, set_point, multiply, 
     get_distance, get_relative_pose, get_link_subtree, clone_body, randomize, get_movable_joints, get_all_links, \
     get_bodies_in_region, pairwise_link_collision, \
     set_static, BASE_LINK, INF, create_plane, apply_alpha, point_from_pose, get_distance_fn, get_memory_in_kb, \
-    get_pairs, Saver, set_configuration
+    get_pairs, Saver, set_configuration, add_line, RED, aabb_union
 from pddlstream.utils import get_connected_components
 
 KUKA_DIR = '../conrob_pybullet/models/kuka_kr6_r900/urdf/'
@@ -151,6 +151,10 @@ def get_cspace_distance(robot, q1, q2):
     distance_fn = get_distance_fn(robot, joints, weights=JOINT_WEIGHTS)
     return distance_fn(q1, q2)
 
+def retime_waypoints(waypoints, start_time=0.):
+    durations = [start_time] + [get_distance(*pair) / TOOL_VELOCITY for pair in get_pairs(waypoints)]
+    return np.cumsum(durations)
+
 ##################################################
 
 class EndEffector(object):
@@ -185,6 +189,8 @@ class Trajectory(object):
         self.path = path
         self.path_from_link = {}
         self.intersecting = []
+        self.spline = None
+        self.aabbs = None
     @property
     def start_conf(self):
         if not self.path:
@@ -238,6 +244,44 @@ class Trajectory(object):
         for conf in self.path[1:]:
             set_joint_positions(self.robot, self.joints, conf)
             yield conf
+    def get_aabbs(self):
+        #traj.aabb = aabb_union(map(get_turtle_traj_aabb, traj.iterate())) # TODO: union
+        if self.aabbs is not None:
+            return self.aabbs
+        self.aabbs = []
+        links = get_all_links(self.robot)
+        with BodySaver(self.robot):
+            for conf in self.path:
+                set_joint_positions(self.robot, self.joints, conf)
+                self.aabbs.append({link: get_aabb(self.robot, link) for link in links})
+        return self.aabbs
+    def retime(self, **kwargs):
+        # TODO: could also retime using the given end time
+        from scipy.interpolate import interp1d
+        #if self.spline is not None:
+        #    return self.spline
+        #tool_path = self.tool_path
+        tool_path = self.get_link_path()
+        positions = list(map(point_from_pose, tool_path))
+        times_from_start = retime_waypoints(positions, **kwargs)
+        self.spline = interp1d(times_from_start, self.path, kind='linear', axis=0)
+        return self.spline
+    @property
+    def start_time(self):
+        return self.spline.x[0]
+    @property
+    def end_time(self):
+        return self.spline.x[-1]
+    @property
+    def duration(self):
+        return self.end_time - self.start_time
+    def at(self, time_from_start):
+        assert self.spline is not None
+        if (time_from_start < self.start_time) or (self.end_time < time_from_start):
+            return None
+        conf = self.spline(time_from_start)
+        set_joint_positions(self.robot, self.joints, conf)
+        return conf
     def interpolate(self):
         # TODO: linear or spline interpolation
         raise NotImplementedError()
@@ -260,6 +304,8 @@ class PrintTrajectory(Trajectory): # TODO: add element body?
         #assert len(self.path) == len(self.tool_path)
         self.element = element
         self.n1, self.n2 = reversed(element) if self.is_reverse else element
+        self.last_point = None
+        self.handles = []
     @property
     def directed_element(self):
         return (self.n1, self.n2)
@@ -272,12 +318,26 @@ class PrintTrajectory(Trajectory): # TODO: add element body?
                               self.tool_path[::-1], self.element, not self.is_reverse)
     def __repr__(self):
         return 'p({}->{})'.format(self.n1, self.n2)
-    def interpolate_tool(self, node_points, start_time=0.):
+    def at(self, time_from_start):
+        current_conf = super(PrintTrajectory, self).at(time_from_start)
+        if current_conf is None:
+            if self.last_point is not None:
+                #set_configuration(self.robot, INITIAL_CONF) # TODO: return here
+                end_point = point_from_pose(self.tool_path[-1])
+                self.handles.append(add_line(self.last_point, end_point, color=RED))
+                self.last_point = None
+        else:
+            if self.last_point is None:
+                self.last_point = point_from_pose(self.tool_path[0])
+            current_point = point_from_pose(self.end_effector.get_tool_pose())
+            self.handles.append(add_line(self.last_point, current_point, color=RED))
+            self.last_point = current_point
+        return current_conf
+    def interpolate_tool(self, node_points, **kwargs):
         from scipy.interpolate import interp1d
         positions = [node_points[self.n1], node_points[self.n2]]
         #positions = list(map(point_from_pose, self.tool_path))
-        durations = [start_time] + [get_distance(*pair) / TOOL_VELOCITY for pair in get_pairs(positions)]
-        times_from_start = np.cumsum(durations)
+        times_from_start = retime_waypoints(positions, **kwargs)
         return interp1d(times_from_start, positions, kind='linear', axis=0)
     def interpolate(self):
         # TODO: maintain a constant end-effector velocity by retiming
@@ -311,6 +371,8 @@ def flatten_commands(commands):
         return None
     return [traj for command in commands for traj in command.trajectories]
 
+##################################################
+
 class Command(object):
     def __init__(self, trajectories=[], safe_per_element={}):
         self.trajectories = list(trajectories)
@@ -336,6 +398,8 @@ class Command(object):
         return recover_directed_sequence(self.trajectories)
     def get_distance(self):
         return sum(traj.get_distance() for traj in self.trajectories)
+    def get_link_distance(self, **kwargs):
+        return sum(traj.get_link_distance(**kwargs) for traj in self.trajectories)
     def set_safe(self, element):
         assert self.safe_per_element.get(element, True) is True
         self.safe_per_element[element] = True
@@ -378,6 +442,19 @@ class Command(object):
         for trajectory in self.trajectories:
             for output in trajectory.iterate():
                 yield output
+    @property
+    def start_time(self):
+        return self.trajectories[0].start_time
+    @property
+    def end_time(self):
+        return self.trajectories[-1].end_time
+    @property
+    def duration(self):
+        return self.end_time - self.start_time
+    def retime(self, start_time=0, **kwargs):
+        for traj in self.trajectories:
+            traj.retime(start_time=start_time)
+            start_time += traj.duration
     def __repr__(self):
         return 'c[{}]'.format(','.join(map(repr, self.trajectories)))
 
@@ -419,10 +496,14 @@ def is_ground(element, ground_nodes):
 def get_ground_elements(all_elements, ground_nodes):
     return frozenset(filter(lambda e: is_ground(e, ground_nodes), all_elements))
 
+def get_element_length(element, node_points):
+    n1, n2 = element
+    return get_distance(node_points[n2], node_points[n1])
+
 def compute_element_distance(node_points, elements):
     if not elements:
         return 0.
-    return sum(get_distance(node_points[n1], node_points[n2]) for n1, n2 in elements)
+    return sum(get_element_length(element, node_points) for element in elements)
 
 def compute_printed_nodes(ground_nodes, printed):
     return nodes_from_elements(printed) | set(ground_nodes)
