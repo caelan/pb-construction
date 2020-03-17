@@ -4,30 +4,26 @@ from collections import defaultdict, Counter
 from itertools import product, permutations
 
 import numpy as np
+import time
 
-from extrusion.validator import check_plan
-from extrusion.heuristics import compute_layer_from_vertex, compute_layer_from_element, compute_distance_from_node
+from extrusion.heuristics import compute_layer_from_vertex, compute_distance_from_node
 from extrusion.stream import get_print_gen_fn, USE_CONMECH, APPROACH_DISTANCE, SELF_COLLISIONS, \
     JOINT_WEIGHTS, RESOLUTION
 from extrusion.utils import load_robot, get_other_node, get_node_neighbors, PrintTrajectory, get_midpoint, \
-    get_element_length, TOOL_VELOCITY, recover_sequence, flatten_commands, Command, MotionTrajectory, \
-    nodes_from_elements, get_disabled_collisions, retrace_supporters
-from extrusion.visualization import draw_ordered, label_nodes, set_extrusion_camera, sample_colors, draw_model
-from examples.pybullet.turtlebots.run import get_test_cfree_traj_traj
+    get_element_length, TOOL_VELOCITY, Command, MotionTrajectory, \
+    get_disabled_collisions, retrace_supporters
+from extrusion.visualization import set_extrusion_camera
 from pddlstream.algorithms.downward import set_cost_scale
 from pddlstream.algorithms.focused import solve_focused #, CURRENT_STREAM_PLAN
-from pddlstream.algorithms.disabled import process_stream_plan
 from pddlstream.language.constants import And, PDDLProblem, print_solution, DurativeAction, Equal
-from pddlstream.language.generator import from_test
 from pddlstream.language.stream import StreamInfo, PartialInputs, WildOutput
 from pddlstream.language.function import FunctionInfo
 from pddlstream.utils import read, get_file_path, inclusive_range, neighbors_from_orders
-from pddlstream.language.temporal import compute_duration, get_end
-from pybullet_tools.utils import get_configuration, set_pose, Pose, Euler, Point, get_point, \
-    get_movable_joints, set_joint_position, has_gui, WorldSaver, wait_if_gui, add_line, RED, \
-    wait_for_duration, get_length, INF, step_simulation, LockRenderer, randomize, pairwise_collision, \
-    set_configuration, draw_pose, Pose, Point, aabb_overlap, pairwise_link_collision, \
-    aabb_union, plan_joint_motion, set_joint_positions
+from pddlstream.language.temporal import compute_duration, get_end, compute_start, compute_end, apply_start
+from pybullet_tools.utils import get_configuration, set_pose, Euler, get_point, \
+    get_movable_joints, has_gui, WorldSaver, wait_if_gui, add_line, RED, \
+    wait_for_duration, get_length, INF, LockRenderer, randomize, set_configuration, Pose, Point, aabb_overlap, pairwise_link_collision, \
+    aabb_union, plan_joint_motion, SEPARATOR
 
 STRIPSTREAM_ALGORITHM = 'stripstream'
 ROBOT_TEMPLATE = 'r{}'
@@ -122,9 +118,11 @@ def simulate_printing(node_points, trajectories, time_step=0.1, speed_up=10.):
 def reverse_plan(plan):
     if plan is None:
         return None
+    # TODO: possibly move to temporal
     makespan = compute_duration(plan)
     print('\nLength: {} | Makespan: {:.3f}'.format(len(plan), makespan))
     return [DurativeAction(action.name, action.args, makespan - get_end(action), action.duration) for action in plan]
+
 
 def simulate_parallel(robots, plan, time_step=0.1, speed_up=10.):
     # TODO: ensure the step size is appropriate
@@ -194,9 +192,9 @@ def compute_local_orders(elements, layer_from_n):
 def compute_elements_from_layer(elements, layer_from_n):
     #layer_from_e = compute_layer_from_element(element_bodies, node_points, ground_nodes)
     layer_from_e = {e: min(layer_from_n[v] for v in e) for e in elements}
-    elements_from_layer = defaultdict(list)
+    elements_from_layer = defaultdict(set)
     for e, l in layer_from_e.items():
-        elements_from_layer[l].append(e)
+        elements_from_layer[l].add(e)
     return elements_from_layer
 
 def compute_global_orders(elements, layer_from_n):
@@ -292,22 +290,23 @@ def get_opt_distance_fn(element_bodies, node_points):
             raise NotImplementedError(command.stream)
     return fn
 
-def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground_nodes, layer_from_n, printed=set(),
-                   trajectories=[], temporal=True, local=False, transit=False, return_home=True, **kwargs):
+def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
+                   printed=set(), removed=set(), trajectories=[],
+                   temporal=True, local=False, transit=False, return_home=True, checker=None, **kwargs):
     # TODO: TFD submodule
-    elements = set(element_bodies)
-    remaining = elements - printed
+    assert not removed & printed
+    remaining = set(element_bodies) - removed - printed
     element_obstacles = {element_bodies[e] for e in printed}
     obstacles = set(static_obstacles) | element_obstacles
     max_layer = max(layer_from_n.values())
 
-    directions = compute_directions(elements, layer_from_n)
+    directions = compute_directions(remaining, layer_from_n)
     #partial_orders = set()
     if local:
         # makespan seems more effective than CEA
-        partial_orders = compute_local_orders(elements, layer_from_n) # makes the makespan heuristic slow
+        partial_orders = compute_local_orders(remaining, layer_from_n) # makes the makespan heuristic slow
     else:
-        partial_orders = compute_global_orders(elements, layer_from_n)
+        partial_orders = compute_global_orders(remaining, layer_from_n)
     # TODO: bias samples to be near the initial config
 
     #print(supports)
@@ -339,7 +338,7 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
         'Euclidean': lambda n1, n2: get_element_length((n1, n2), node_points),
     }
 
-    assignments = compute_assignments(robots, elements, node_points, initial_confs)
+    assignments = compute_assignments(robots, remaining, node_points, initial_confs)
     transits = compute_transits(layer_from_n, directions)
 
     init = [
@@ -375,7 +374,7 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
     init.extend(('Transit',) + tup for tup in transits)
     # TODO: only move actions between adjacent layers
 
-    for e in elements:
+    for e in remaining:
         n1, n2 = e
         #n1, n2 = ['n{}'.format(i) for i in e]
         init.extend([
@@ -401,7 +400,7 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
     return PDDLProblem(domain_pddl, constant_map, stream_pddl, stream_map, init, goal)
 
 def solve_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
-                     trajectories=[], collisions=True, disable=False, max_time=30, checker=None):
+                     trajectories=[], collisions=True, disable=False, max_time=30, **kwargs):
     # TODO: try search at different cost levels (i.e. w/ and w/o abstract)
     # TODO: only consider axioms that could be relevant
     # TODO: iterated search using random restarts
@@ -414,7 +413,7 @@ def solve_pddlstream(robots, obstacles, node_points, element_bodies, ground_node
 
     pddlstream_problem = get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
                                         trajectories=trajectories, collisions=collisions, disable=disable,
-                                        precompute_collisions=True)
+                                        precompute_collisions=True, **kwargs)
     print('Init:', pddlstream_problem.init)
     print('Goal:', pddlstream_problem.goal)
 
@@ -450,9 +449,9 @@ def solve_pddlstream(robots, obstacles, node_points, element_bodies, ground_node
         # solution = solve_incremental(pddlstream_problem, planner='add-random-lazy', max_time=600,
         #                             max_planner_time=300, debug=True)
         solution = solve_focused(pddlstream_problem, stream_info=stream_info, max_time=max_time,
-                                 effort_weight=None, unit_efforts=True, unit_costs=False,
+                                 effort_weight=None, unit_efforts=True, unit_costs=False, # TODO: effort_weight=None vs 0
                                  max_skeletons=None, bind=True, max_failures=0,  # 0 | INF
-                                 planner=planner, max_planner_time=60, debug=True, reorder=False,
+                                 planner=planner, max_planner_time=60, debug=False, reorder=False,
                                  initial_complexity=1)
 
     print_solution(solution)
@@ -463,17 +462,49 @@ def solve_pddlstream(robots, obstacles, node_points, element_bodies, ground_node
     # TODO: could solve for trajectories conditioned on the sequence
     return plan
 
-def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes, **kwargs):
+def solve_serialized(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n, **kwargs):
+    start_time = time.time()
+    elements = set(element_bodies)
+    elements_from_layers = compute_elements_from_layer(elements, layer_from_n)
+    layers = sorted(elements_from_layers.keys())
+    print('Layers:', layers)
+
+    full_plan = []
+    makespan = 0.
+    removed = set()
+    for layer in reversed(layers):
+        print(SEPARATOR)
+        print('Layer: {}'.format(layer))
+        remaining = elements_from_layers[layer]
+        printed = elements - remaining - removed
+        layer_plan = solve_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
+                                      printed=printed, removed=removed, **kwargs)
+        if layer_plan is None:
+            return None
+        layer_plan = apply_start(layer_plan, makespan)
+        duration = compute_duration(layer_plan)
+        makespan += duration
+        print('\nLength: {} | Start: {:.3f} | End: {:.3f} | Duration: {:.3f} | Makespan: {:.3f}'.format(
+            len(layer_plan), compute_start(layer_plan), compute_end(layer_plan), duration, makespan))
+        full_plan.extend(layer_plan)
+        removed.update(remaining)
+    print(SEPARATOR)
+    return full_plan
+
+def stripstream(robot1, obstacles, node_points, element_bodies, ground_nodes, **kwargs):
     robots = mirror_robot(robot1, node_points)
     elements = set(element_bodies)
     saver = WorldSaver()
 
-    # layer_from_n = compute_layer_from_vertex(element_bodies, node_points, ground_nodes)
-    layer_from_n = cluster_vertices(elements, node_points, ground_nodes)
+    layer_from_n = compute_layer_from_vertex(element_bodies, node_points, ground_nodes)
+    #layer_from_n = cluster_vertices(elements, node_points, ground_nodes) # TODO: increase resolution for small structures
+    # TODO: compute directions from first, layer from second
     max_layer = max(layer_from_n.values())
     print('Max layer: {}'.format(max_layer))
 
-    plan = solve_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n, **kwargs)
+    #plan = solve_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n, **kwargs)
+    plan = solve_serialized(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n, **kwargs)
+
     data = {}
     if plan is None:
         return None, data
@@ -499,7 +530,7 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes, 
 
     if has_gui():
         saver.restore()
-        # label_nodes(node_points)
+        #label_nodes(node_points)
         # commands = [action.args[-1] for action in reversed(plan) if action.name == 'print']
         # trajectories = flatten_commands(commands)
         # elements = recover_sequence(trajectories)
