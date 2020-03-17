@@ -172,14 +172,17 @@ def compute_local_orders(elements, layer_from_n):
         partial_orders.update(product(equal, above))
     return partial_orders
 
-def compute_global_orders(element_bodies, node_points, ground_nodes, layer_from_n):
-    # TODO: further bucket
-    # TODO: separate orders per robot
+def compute_elements_from_layer(elements, layer_from_n):
     #layer_from_e = compute_layer_from_element(element_bodies, node_points, ground_nodes)
-    layer_from_e = {e: min(layer_from_n[v] for v in e) for e in element_bodies}
+    layer_from_e = {e: min(layer_from_n[v] for v in e) for e in elements}
     elements_from_layer = defaultdict(list)
     for e, l in layer_from_e.items():
         elements_from_layer[l].append(e)
+    return elements_from_layer
+
+def compute_global_orders(elements, layer_from_n):
+    # TODO: separate orders per robot
+    elements_from_layer = compute_elements_from_layer(elements, layer_from_n)
     partial_orders = set()
     layers = sorted(elements_from_layer)
     for layer in layers[:-1]:
@@ -270,10 +273,14 @@ def get_opt_distance_fn(element_bodies, node_points):
             raise NotImplementedError(command.stream)
     return fn
 
-def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
-                   trajectories=[], temporal=True, local=False, transit=False, **kwargs):
+def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground_nodes, printed=set(),
+                   trajectories=[], temporal=True, local=False, transit=False, return_home=True, **kwargs):
     # TODO: TFD submodule
     elements = set(element_bodies)
+    remaining = elements - printed
+    element_obstacles = {element_bodies[e] for e in printed}
+    obstacles = set(static_obstacles) | element_obstacles
+
     #layer_from_n = compute_layer_from_vertex(element_bodies, node_points, ground_nodes)
     layer_from_n = cluster_vertices(elements, node_points, ground_nodes)
     max_layer = max(layer_from_n.values())
@@ -284,7 +291,7 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
         # makespan seems more effective than CEA
         partial_orders = compute_local_orders(elements, layer_from_n) # makes the makespan heuristic slow
     else:
-        partial_orders = compute_global_orders(element_bodies, node_points, ground_nodes, layer_from_n)
+        partial_orders = compute_global_orders(elements, layer_from_n)
     # TODO: bias samples to be near the initial config
 
     #print(supports)
@@ -370,8 +377,9 @@ def get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
     #     ])
 
     goal_literals = []
-    goal_literals.extend(('AtConf', r, q) for r, q in initial_confs.items())
-    goal_literals.extend(('Removed', e) for e in element_bodies)
+    if return_home:
+        goal_literals.extend(('AtConf', r, q) for r, q in initial_confs.items())
+    goal_literals.extend(('Removed', e) for e in remaining)
     goal = And(*goal_literals)
 
     return PDDLProblem(domain_pddl, constant_map, stream_pddl, stream_map, init, goal)
@@ -448,7 +456,7 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
         #                             max_planner_time=300, debug=True)
         solution = solve_focused(pddlstream_problem, stream_info=stream_info, max_time=max_time,
                                  effort_weight=None, unit_efforts=True, unit_costs=False,
-                                 max_skeletons=None, bind=True, max_failures=INF,
+                                 max_skeletons=None, bind=True, max_failures=0, # 0 | INF
                                  planner=planner, max_planner_time=60, debug=True, reorder=False,
                                  initial_complexity=1)
 
@@ -503,19 +511,20 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
 def get_wild_move_gen_fn(robots, static_obstacles, element_bodies, partial_orders=set(), collisions=True, **kwargs):
     incoming_supporters, _ = neighbors_from_orders(partial_orders)
 
-    #def wild_gen_fn(name, conf1, conf2):
     def wild_gen_fn(name, conf1, conf2, *args):
-        is_start = (conf1.element is None) and (conf2.element is not None)
-        is_end = (conf1.element is not None) and (conf2.element is None)
-        if is_start:
+        is_initial = (conf1.element is None) and (conf2.element is not None)
+        is_goal = (conf1.element is not None) and (conf2.element is None)
+        if is_initial:
             supporters = []
-        elif is_end:
+        elif is_goal:
             supporters = list(element_bodies)
         else:
             supporters = [conf1.element]  # TODO: can also do according to levels
             retrace_supporters(conf1.element, incoming_supporters, supporters)
-        element_obstacles = [element_bodies[e] for e in supporters]
-        obstacles = static_obstacles + element_obstacles
+        element_obstacles = {element_bodies[e] for e in supporters}
+        obstacles = set(static_obstacles) | element_obstacles
+        if not collisions:
+            obstacles = set()
 
         robot = index_from_name(robots, name)
         conf1.assign()
@@ -590,6 +599,7 @@ def get_collision_test(robots, collisions=True, **kwargs):
                 #    return True
                 for link1, link2 in overlap:
                     if pairwise_link_collision(robot1, link1, robot2, link2):
+                        #wait_if_gui()
                         return True
         return False
     return test
