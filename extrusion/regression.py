@@ -124,6 +124,9 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
         #     # TODO: cache and reuse prior stiffness plans
         #     print('Failed stiffness plan') # TODO: require just a short horizon
         #     continue
+        if revisit:
+            heapq.heappush(queue, (visits + 1, priority, printed, directed, current_conf))
+
         command, = next(print_gen_fn(node1, element, extruded=next_printed), (None,))
         if command is None:
             extrusion_failures += 1
@@ -170,8 +173,6 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
             # if plan is not None:
             #     break
         add_successors(next_printed, node_points[node1], command.start_conf)
-        if revisit:
-            heapq.heappush(queue, (visits + 1, priority, printed, directed, current_conf))
     #del checker
 
     data = {

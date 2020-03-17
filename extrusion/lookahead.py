@@ -208,6 +208,8 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
             stiffness_failures += 1
             print('Partial structure is not stiff!')
             continue
+        if revisit:
+            heapq.heappush(queue, (visits + 1, priority, printed, element, current_conf))
 
         #condition = frozenset()
         #condition = set(retrace_elements(visited, printed, horizon=2))
@@ -268,8 +270,6 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
             #     break
         add_successors(queue, all_elements, node_points, ground_nodes, priority_fn,
                        next_printed, node_points[directed[1]], end_conf, partial_orders=partial_orders)
-        if revisit:
-            heapq.heappush(queue, (visits + 1, priority, printed, element, current_conf))
 
     data = {
         'num_evaluated': num_evaluated,

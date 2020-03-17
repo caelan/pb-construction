@@ -155,6 +155,9 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
                 extrusion_path, element_from_id, next_printed, checker=checker)):
             stiffness_failures += 1
             continue
+        if revisit: # could also prevent revisiting if command is not None
+            heapq.heappush(queue, (visits + 1, priority, printed, directed, current_conf))
+
         node1, node2 = directed
         command, = next(print_gen_fn(node1, element, extruded=printed), (None,))
         if command is None:
@@ -195,8 +198,6 @@ def progression(robot, obstacles, element_bodies, extrusion_path, partial_orders
             #     break
         add_successors(queue, all_elements, node_points, ground_nodes, heuristic_fn,
                        next_printed, node_points[node2], command.end_conf, partial_orders=partial_orders)
-        if revisit:
-            heapq.heappush(queue, (visits + 1, priority, printed, directed, current_conf))
 
     data = {
         'num_evaluated': num_evaluated,
