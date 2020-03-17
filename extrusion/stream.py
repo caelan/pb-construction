@@ -393,7 +393,7 @@ def get_element_collision_fn(robot, obstacles):
 SKIP_PERCENTAGE = 0.0 # 0.0 | 0.95
 
 def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground_nodes,
-                     precompute_collisions=False, partial_orders=set(),
+                     precompute_collisions=False, partial_orders=set(), removed=set(),
                      collisions=True, disable=False, ee_only=False, allow_failures=False,
                      max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS, max_time=INF, **kwargs):
     # TODO: print on full sphere and just check for collisions with the printed element
@@ -417,7 +417,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
         assert not is_reversed(element_bodies, element)
         idle_time = 0
         reverse = is_end(node1, element)
-        if disable or len(extruded) < SKIP_PERCENTAGE*len(element_bodies): # For quick visualization
+        if disable or (len(extruded) < SKIP_PERCENTAGE*len(element_bodies)): # For quick visualization
             path, tool_path = [], []
             traj = PrintTrajectory(end_effector, get_movable_joints(robot), path, tool_path, element, reverse)
             command = Command([traj])
@@ -437,8 +437,10 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
             obstacles = set()
             #obstacles = set(fixed_obstacles)
 
-        elements_order = [e for e in element_bodies if (e != element) and (element_bodies[e] not in obstacles)]
+        elements_order = [e for e in element_bodies if (e != element) and (e not in removed)
+                          and (element_bodies[e] not in obstacles)]
         collision_fn = get_element_collision_fn(robot, obstacles)
+        #print(len(fixed_obstacles), len(element_obstacles), len(elements_order))
 
         trajectories = list(trajectories)
         for num in irange(INF):

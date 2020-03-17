@@ -12,7 +12,7 @@ from extrusion.stream import get_print_gen_fn, USE_CONMECH, APPROACH_DISTANCE, S
 from extrusion.utils import load_robot, get_other_node, get_node_neighbors, PrintTrajectory, get_midpoint, \
     get_element_length, TOOL_VELOCITY, Command, MotionTrajectory, \
     get_disabled_collisions, retrace_supporters
-from extrusion.visualization import set_extrusion_camera
+from extrusion.visualization import set_extrusion_camera, draw_model
 from pddlstream.algorithms.downward import set_cost_scale
 from pddlstream.algorithms.focused import solve_focused #, CURRENT_STREAM_PLAN
 from pddlstream.language.constants import And, PDDLProblem, print_solution, DurativeAction, Equal
@@ -23,7 +23,7 @@ from pddlstream.language.temporal import compute_duration, get_end, compute_star
 from pybullet_tools.utils import get_configuration, set_pose, Euler, get_point, \
     get_movable_joints, has_gui, WorldSaver, wait_if_gui, add_line, RED, \
     wait_for_duration, get_length, INF, LockRenderer, randomize, set_configuration, Pose, Point, aabb_overlap, pairwise_link_collision, \
-    aabb_union, plan_joint_motion, SEPARATOR
+    aabb_union, plan_joint_motion, SEPARATOR, user_input, remove_all_debug, GREEN
 
 STRIPSTREAM_ALGORITHM = 'stripstream'
 ROBOT_TEMPLATE = 'r{}'
@@ -301,7 +301,6 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
     max_layer = max(layer_from_n.values())
 
     directions = compute_directions(remaining, layer_from_n)
-    #partial_orders = set()
     if local:
         # makespan seems more effective than CEA
         partial_orders = compute_local_orders(remaining, layer_from_n) # makes the makespan heuristic slow
@@ -326,7 +325,7 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
         'sample-move': get_wild_move_gen_fn(robots, obstacles, element_bodies,
                                             partial_orders=partial_orders, **kwargs),
         'sample-print': get_wild_print_gen_fn(robots, obstacles, node_points, element_bodies, ground_nodes,
-                                              partial_orders=partial_orders, **kwargs),
+                                              partial_orders=partial_orders, removed=removed, **kwargs),
         #'test-stiffness': from_test(test_stiffness),
         #'test-cfree-traj-conf': from_test(lambda *args: True),
         #'test-cfree-traj-traj': from_test(get_cfree_test(**kwargs)),
@@ -460,7 +459,7 @@ def solve_pddlstream(robots, obstacles, node_points, element_bodies, ground_node
     # print(certificate.preimage_facts)
     # TODO: post-process by calling planner again
     # TODO: could solve for trajectories conditioned on the sequence
-    return plan
+    return plan, certificate
 
 def solve_serialized(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n, **kwargs):
     start_time = time.time()
@@ -477,8 +476,11 @@ def solve_serialized(robots, obstacles, node_points, element_bodies, ground_node
         print('Layer: {}'.format(layer))
         remaining = elements_from_layers[layer]
         printed = elements - remaining - removed
-        layer_plan = solve_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
-                                      printed=printed, removed=removed, **kwargs)
+        draw_model(remaining, node_points, ground_nodes, color=GREEN)
+        draw_model(printed, node_points, ground_nodes, color=RED)
+        layer_plan, certificate = solve_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
+                                                   printed=printed, removed=removed, return_home=False, **kwargs)
+        remove_all_debug()
         if layer_plan is None:
             return None
         layer_plan = apply_start(layer_plan, makespan)
@@ -489,11 +491,12 @@ def solve_serialized(robots, obstacles, node_points, element_bodies, ground_node
         full_plan.extend(layer_plan)
         removed.update(remaining)
     print(SEPARATOR)
-    return full_plan
+    return full_plan, None
 
 def stripstream(robot1, obstacles, node_points, element_bodies, ground_nodes, **kwargs):
     robots = mirror_robot(robot1, node_points)
     elements = set(element_bodies)
+    initial_confs = {ROBOT_TEMPLATE.format(i): Conf(robot) for i, robot in enumerate(robots)}
     saver = WorldSaver()
 
     layer_from_n = compute_layer_from_vertex(element_bodies, node_points, ground_nodes)
@@ -502,8 +505,8 @@ def stripstream(robot1, obstacles, node_points, element_bodies, ground_nodes, **
     max_layer = max(layer_from_n.values())
     print('Max layer: {}'.format(max_layer))
 
-    #plan = solve_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n, **kwargs)
-    plan = solve_serialized(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n, **kwargs)
+    #plan, certificate = solve_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n, **kwargs)
+    plan, certificate = solve_serialized(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n, **kwargs)
 
     data = {}
     if plan is None:
