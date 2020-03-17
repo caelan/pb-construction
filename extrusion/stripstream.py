@@ -68,6 +68,25 @@ class Conf(object):
     def __repr__(self):
         return '{}({})'.format(self.__class__.__name__, self.node)
 
+def mirror_robot(robot1, node_points):
+    set_extrusion_camera(node_points, theta=-np.pi/3)
+    #draw_pose(Pose())
+    centroid = np.average(node_points, axis=0)
+    #draw_pose(Pose(point=centroid))
+
+    # print(centroid)
+    # print(get_point(robot1))
+    robot2 = load_robot()
+    set_pose(robot2, Pose(point=Point(*2 * centroid[:2]), euler=Euler(yaw=np.pi)))
+
+    # robots = [robot1]
+    robots = [robot1, robot2]
+    for robot in robots:
+        set_configuration(robot, DUAL_CONF)
+        # joint1 = get_movable_joints(robot)[0]
+        # set_joint_position(robot, joint1, np.pi / 8)
+    return robots
+
 ##################################################
 
 def simulate_printing(node_points, trajectories, time_step=0.1, speed_up=10.):
@@ -273,18 +292,15 @@ def get_opt_distance_fn(element_bodies, node_points):
             raise NotImplementedError(command.stream)
     return fn
 
-def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground_nodes, printed=set(),
+def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground_nodes, layer_from_n, printed=set(),
                    trajectories=[], temporal=True, local=False, transit=False, return_home=True, **kwargs):
     # TODO: TFD submodule
     elements = set(element_bodies)
     remaining = elements - printed
     element_obstacles = {element_bodies[e] for e in printed}
     obstacles = set(static_obstacles) | element_obstacles
-
-    #layer_from_n = compute_layer_from_vertex(element_bodies, node_points, ground_nodes)
-    layer_from_n = cluster_vertices(elements, node_points, ground_nodes)
     max_layer = max(layer_from_n.values())
-    print('Max layer: {}'.format(max_layer))
+
     directions = compute_directions(elements, layer_from_n)
     #partial_orders = set()
     if local:
@@ -384,29 +400,8 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
 
     return PDDLProblem(domain_pddl, constant_map, stream_pddl, stream_map, init, goal)
 
-def mirror_robot(robot1, node_points):
-    set_extrusion_camera(node_points, theta=-np.pi/3)
-    #draw_pose(Pose())
-    centroid = np.average(node_points, axis=0)
-    #draw_pose(Pose(point=centroid))
-
-    # print(centroid)
-    # print(get_point(robot1))
-    robot2 = load_robot()
-    set_pose(robot2, Pose(point=Point(*2 * centroid[:2]), euler=Euler(yaw=np.pi)))
-
-    # robots = [robot1]
-    robots = [robot1, robot2]
-    for robot in robots:
-        set_configuration(robot, DUAL_CONF)
-        # joint1 = get_movable_joints(robot)[0]
-        # set_joint_position(robot, joint1, np.pi / 8)
-    return robots
-
-def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
-                  trajectories=[], collisions=True, disable=False, max_time=30, checker=None):
-    if trajectories is None:
-        return None
+def solve_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
+                     trajectories=[], collisions=True, disable=False, max_time=30, checker=None):
     # TODO: try search at different cost levels (i.e. w/ and w/o abstract)
     # TODO: only consider axioms that could be relevant
     # TODO: iterated search using random restarts
@@ -414,10 +409,10 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
     # TODO: NEGATIVE_SUFFIX to make axioms easier
     # TODO: sort by action cost heuristic
     # http://www.fast-downward.org/Doc/Evaluator#Max_evaluator
+    if trajectories is None:
+        return None
 
-    robots = mirror_robot(robot1, node_points)
-    saver = WorldSaver()
-    pddlstream_problem = get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes,
+    pddlstream_problem = get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
                                         trajectories=trajectories, collisions=collisions, disable=disable,
                                         precompute_collisions=True)
     print('Init:', pddlstream_problem.init)
@@ -428,14 +423,14 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
         'sample-print': StreamInfo(PartialInputs(unique=True)),
         'sample-move': StreamInfo(PartialInputs(unique=True)),
 
-        'test-cfree-traj-conf': StreamInfo(p_success=1e-2, negate=True), #, verbose=False),
+        'test-cfree-traj-conf': StreamInfo(p_success=1e-2, negate=True),  # , verbose=False),
         'test-cfree-traj-traj': StreamInfo(p_success=1e-2, negate=True),
-        'TrajTrajCollision': FunctionInfo(p_success=1e-1, overhead=1), # TODO: verbose
+        'TrajTrajCollision': FunctionInfo(p_success=1e-1, overhead=1),  # TODO: verbose
 
         'Distance': FunctionInfo(opt_fn=get_opt_distance_fn(element_bodies, node_points), eager=True)
-        #'Length': FunctionInfo(eager=True),  # Need to eagerly evaluate otherwise 0 makespan (failure)
-        #'Duration': FunctionInfo(opt_fn=lambda r, t: opt_distance / TOOL_VELOCITY, eager=True),
-        #'Euclidean': FunctionInfo(eager=True),
+        # 'Length': FunctionInfo(eager=True),  # Need to eagerly evaluate otherwise 0 makespan (failure)
+        # 'Duration': FunctionInfo(opt_fn=lambda r, t: opt_distance / TOOL_VELOCITY, eager=True),
+        # 'Euclidean': FunctionInfo(eager=True),
     }
 
     # TODO: goal serialization
@@ -444,29 +439,41 @@ def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes,
     # Reachability heuristics good for detecting dead-ends
     # Infeasibility from the start means disconnected or collision
     set_cost_scale(1)
-    #planner = 'ff-ehc'
-    #planner = 'ff-lazy-tiebreak' # Branching factor becomes large. Rely on preferred. Preferred should also be cheaper
-    planner = 'ff-eager-tiebreak' # Need to use a eager search, otherwise doesn't incorporate child cost
-    #planner = 'max-astar'
+    # planner = 'ff-ehc'
+    # planner = 'ff-lazy-tiebreak' # Branching factor becomes large. Rely on preferred. Preferred should also be cheaper
+    planner = 'ff-eager-tiebreak'  # Need to use a eager search, otherwise doesn't incorporate child cost
+    # planner = 'max-astar'
     # TODO: postprocess with a less greedy strategy
     # TODO: ensure that function costs aren't prunning plans
 
     with LockRenderer(lock=False):
-        #solution = solve_incremental(pddlstream_problem, planner='add-random-lazy', max_time=600,
+        # solution = solve_incremental(pddlstream_problem, planner='add-random-lazy', max_time=600,
         #                             max_planner_time=300, debug=True)
         solution = solve_focused(pddlstream_problem, stream_info=stream_info, max_time=max_time,
                                  effort_weight=None, unit_efforts=True, unit_costs=False,
-                                 max_skeletons=None, bind=True, max_failures=0, # 0 | INF
+                                 max_skeletons=None, bind=True, max_failures=0,  # 0 | INF
                                  planner=planner, max_planner_time=60, debug=True, reorder=False,
                                  initial_complexity=1)
 
     print_solution(solution)
     plan, _, certificate = solution
-    #print(certificate.all_facts)
-    #print(certificate.preimage_facts)
+    # print(certificate.all_facts)
+    # print(certificate.preimage_facts)
     # TODO: post-process by calling planner again
     # TODO: could solve for trajectories conditioned on the sequence
+    return plan
 
+def plan_sequence(robot1, obstacles, node_points, element_bodies, ground_nodes, **kwargs):
+    robots = mirror_robot(robot1, node_points)
+    elements = set(element_bodies)
+    saver = WorldSaver()
+
+    # layer_from_n = compute_layer_from_vertex(element_bodies, node_points, ground_nodes)
+    layer_from_n = cluster_vertices(elements, node_points, ground_nodes)
+    max_layer = max(layer_from_n.values())
+    print('Max layer: {}'.format(max_layer))
+
+    plan = solve_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n, **kwargs)
     data = {}
     if plan is None:
         return None, data
@@ -563,6 +570,7 @@ def get_wild_print_gen_fn(robots, static_obstacles, node_points, element_bodies,
         # TODO: this might need to be recomputed per iteration
         # TODO: condition on plan/downstream constraints
         # TODO: stream fusion
+        # TODO: split element into several edges
         robot = index_from_name(robots, name)
         #generator = gen_fn_from_robot[robot](node1, element)
         for command, in gen_fn_from_robot[robot](node1, element):
@@ -578,6 +586,8 @@ def get_collision_test(robots, collisions=True, **kwargs):
         robot1, robot2 = index_from_name(robots, name1), index_from_name(robots, name2)
         if (robot1 == robot2) or not collisions:
             return False
+        # TODO: check collisions between pairs of inflated adjacent element
+        # TODO: check end-effector collisions first
         for traj1, traj2 in randomize(product(command1.trajectories, command2.trajectories)):
             # TODO: use for element checks
             aabbs1, aabbs2 = traj1.get_aabbs(), traj2.get_aabbs()

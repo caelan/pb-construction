@@ -36,7 +36,7 @@ from extrusion.stiffness import plan_stiffness, create_stiffness_checker
 from pybullet_tools.utils import connect, disconnect, get_movable_joints, get_joint_positions, LockRenderer, \
     unit_pose, reset_simulation, draw_pose, apply_alpha, BLACK, Pose, Euler, has_gui, set_numpy_seed, \
     set_random_seed, INF, wait_for_user, link_from_name, get_link_pose, point_from_pose, WorldSaver, elapsed_time, \
-    timeout, get_configuration, RED, wait_if_gui
+    timeout, get_configuration, RED, wait_if_gui, apply_affine, invert, multiply
 
 
 ##################################################
@@ -57,17 +57,31 @@ def sample_trajectories(robot, obstacles, node_points, element_bodies, ground_no
 
 ##################################################
 
+def get_base_centroid(node_points, ground_nodes):
+    # TODO: could do this just for the ground nodes
+    centroid = np.average(node_points, axis=0)
+    min_z = np.min(node_points, axis=0)[2]  # - 1e-2
+    return np.append(centroid[:2], [min_z])
+
 # Introduce support scaffolding fixities and then require that they be removed
 # Robot spiderweb printing weaving hook which may slide
-def scale_assembly(elements, node_points, ground_nodes, scale=1):
-    # TODO: more general affine transformations
-    centroid = np.average(node_points, axis=0)
-    min_z = np.min(node_points, axis=0)[2] #- 1e-2
-    reference = np.append(centroid[:2], [min_z])
-    scaled_node_points = [scale*(point - reference) + reference for point in node_points] # + np.array([0., 0., 2e-2])
+def scale_assembly(elements, node_points, ground_nodes, scale=1.):
+    base_centroid = get_base_centroid(node_points, ground_nodes)
+    scaled_node_points = [scale*(point - base_centroid) + base_centroid
+                          for point in node_points] # + np.array([0., 0., 2e-2])
     #draw_model(elements, scaled_node_points, ground_nodes, color=RED)
     #wait_if_gui()
     return scaled_node_points
+
+def rotate_assembly(elements, node_points, ground_nodes, yaw=0.):
+    # TODO: more general affine transformations
+    world_from_base = Pose(point=get_base_centroid(node_points, ground_nodes))
+    points_base = apply_affine(invert(world_from_base), node_points)
+    rotation = Pose(euler=Euler(yaw=yaw))
+    points_world = list(map(np.array, apply_affine(multiply(world_from_base, rotation), points_base)))
+    #draw_model(elements, scaled_node_points, ground_nodes, color=RED)
+    #wait_if_gui()
+    return points_world
 
 def rotate_problem(problem_path, roll=np.pi):
     tform = Pose(euler=Euler(roll=roll))
@@ -150,6 +164,7 @@ def plan_extrusion(args_list, viewer=False, verify=False, verbose=False, watch=F
     #elements = downsample_structure(elements, node_points, ground_nodes, num=None)
     #elements, ground_nodes = downsample_nodes(elements, node_points, ground_nodes)
     node_points = scale_assembly(elements, node_points, ground_nodes, scale=2.5)
+    node_points = rotate_assembly(elements, node_points, ground_nodes, yaw=np.pi / 8)
 
     connect(use_gui=viewer, shadows=SHADOWS, color=BACKGROUND_COLOR)
     with LockRenderer(lock=True):
