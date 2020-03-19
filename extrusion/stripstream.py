@@ -398,8 +398,7 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
 
     return PDDLProblem(domain_pddl, constant_map, stream_pddl, stream_map, init, goal)
 
-def solve_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
-                     trajectories=[], collisions=True, disable=False, max_time=30, **kwargs):
+def solve_pddlstream(problem, node_points, element_bodies, max_time=30):
     # TODO: try search at different cost levels (i.e. w/ and w/o abstract)
     # TODO: only consider axioms that could be relevant
     # TODO: iterated search using random restarts
@@ -407,14 +406,9 @@ def solve_pddlstream(robots, obstacles, node_points, element_bodies, ground_node
     # TODO: NEGATIVE_SUFFIX to make axioms easier
     # TODO: sort by action cost heuristic
     # http://www.fast-downward.org/Doc/Evaluator#Max_evaluator
-    if trajectories is None:
-        return None
 
-    pddlstream_problem = get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
-                                        trajectories=trajectories, collisions=collisions, disable=disable,
-                                        precompute_collisions=True, **kwargs)
-    print('Init:', pddlstream_problem.init)
-    print('Goal:', pddlstream_problem.goal)
+    print('Init:', problem.init)
+    print('Goal:', problem.goal)
 
     stream_info = {
         # TODO: stream effort
@@ -445,9 +439,9 @@ def solve_pddlstream(robots, obstacles, node_points, element_bodies, ground_node
     # TODO: ensure that function costs aren't prunning plans
 
     with LockRenderer(lock=False):
-        # solution = solve_incremental(pddlstream_problem, planner='add-random-lazy', max_time=600,
-        #                             max_planner_time=300, debug=True)
-        solution = solve_focused(pddlstream_problem, stream_info=stream_info, max_time=max_time,
+        # solution = solve_incremental(problem, planner='add-random-lazy', max_time=600,
+        #                              max_planner_time=300, debug=True)
+        solution = solve_focused(problem, stream_info=stream_info, max_time=max_time,
                                  effort_weight=None, unit_efforts=True, unit_costs=False, # TODO: effort_weight=None vs 0
                                  max_skeletons=None, bind=True, max_failures=0,  # 0 | INF
                                  planner=planner, max_planner_time=60, debug=False, reorder=False,
@@ -461,7 +455,17 @@ def solve_pddlstream(robots, obstacles, node_points, element_bodies, ground_node
     # TODO: could solve for trajectories conditioned on the sequence
     return plan, certificate
 
-def solve_serialized(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n, **kwargs):
+##################################################
+
+def solve_joint(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
+                trajectories=[], collisions=True, disable=False, **kwargs):
+    problem = get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
+                            trajectories=trajectories, collisions=collisions, disable=disable,
+                            precompute_collisions=True, **kwargs)
+    return solve_pddlstream(problem, node_points, element_bodies)
+
+def solve_serialized(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
+                     trajectories=[], collisions=True, disable=False, **kwargs):
     start_time = time.time()
     elements = set(element_bodies)
     elements_from_layers = compute_elements_from_layer(elements, layer_from_n)
@@ -478,8 +482,11 @@ def solve_serialized(robots, obstacles, node_points, element_bodies, ground_node
         printed = elements - remaining - removed
         draw_model(remaining, node_points, ground_nodes, color=GREEN)
         draw_model(printed, node_points, ground_nodes, color=RED)
-        layer_plan, certificate = solve_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
-                                                   printed=printed, removed=removed, return_home=False, **kwargs)
+        problem = get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
+                                 printed=printed, removed=removed, return_home=False,
+                                 trajectories=trajectories, collisions=collisions, disable=disable,
+                                 precompute_collisions=True, **kwargs)
+        layer_plan, certificate = solve_pddlstream(problem, node_points, element_bodies)
         remove_all_debug()
         if layer_plan is None:
             return None
@@ -493,7 +500,41 @@ def solve_serialized(robots, obstacles, node_points, element_bodies, ground_node
     print(SEPARATOR)
     return full_plan, None
 
-def stripstream(robot1, obstacles, node_points, element_bodies, ground_nodes, **kwargs):
+def extract_facts(plan, initial_confs):
+    plan_from_robot = defaultdict(list)
+    for action in plan:
+        plan_from_robot[action.args[0]].append(action)
+    print(plan_from_robot)
+
+    # TODO: use certificate instead
+    static_facts = []
+    partial_orders = set()
+    for robot, actions in plan_from_robot.items():
+        last_element = None
+        last_conf = initial_confs[robot]
+        for i, action in enumerate(actions):
+            if action.name == 'print':
+                r, n1, e, n2, q1, q2, t = action.args
+                static_facts.extend([
+                    ('PrintAction',) + action.args,
+                    ('Assigned', r, e),
+                    ('Conf', r, q1),
+                    ('Conf', r, q2),
+                    ('Traj', r, t),
+                    # (Start ?r ?n1 ?e ?q1) (End ?r ?e ?n2 ?q2)
+                    ('Transition', r, q2, last_conf),
+                ])
+                if last_element is not None:
+                    partial_orders.add((e, last_element))
+                    # static_facts.append(('Order', last_element, e))
+                last_element = e
+                last_conf = q1
+                # TODO: Collision
+            else:
+                raise NotImplementedError(action.name)
+    print(static_facts)
+
+def stripstream(robot1, obstacles, node_points, element_bodies, ground_nodes, serialize=False, **kwargs):
     robots = mirror_robot(robot1, node_points)
     elements = set(element_bodies)
     initial_confs = {ROBOT_TEMPLATE.format(i): Conf(robot) for i, robot in enumerate(robots)}
@@ -505,8 +546,12 @@ def stripstream(robot1, obstacles, node_points, element_bodies, ground_nodes, **
     max_layer = max(layer_from_n.values())
     print('Max layer: {}'.format(max_layer))
 
-    #plan, certificate = solve_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n, **kwargs)
-    plan, certificate = solve_serialized(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n, **kwargs)
+    if serialize:
+        plan, certificate = solve_serialized(robots, obstacles, node_points, element_bodies,
+                                             ground_nodes, layer_from_n, **kwargs)
+    else:
+        plan, certificate = solve_joint(robots, obstacles, node_points, element_bodies,
+                                        ground_nodes, layer_from_n, **kwargs)
 
     data = {}
     if plan is None:
