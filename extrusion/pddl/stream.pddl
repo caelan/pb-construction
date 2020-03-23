@@ -21,7 +21,7 @@
     :inputs (?r ?q1 ?q2)
     ;:domain (and (Conf ?r ?q1) (Conf ?r ?q2))
     ;:domain (and (BackoffConf ?r ?q1) (Conf ?r ?q2))
-    :domain (Transition ?r ?q1 ?q2)
+    :domain (and (Transition ?r ?q1 ?q2) (Move))
     ;:inputs (?r ?q1 ?q2 ?e1 ?n1 ?n2 ?e2)
     ;:domain (and (End ?r ?e1 ?n1 ?q1) (Start ?r ?n2 ?e2 ?q2)
     ;             (Transit ?e1 ?n1 ?n2 ?e2) (Move))
@@ -33,7 +33,7 @@
 
   (:stream sample-print
     :inputs (?r ?n1 ?e ?n2)
-    :domain (and (Robot ?r) (Direction ?n1 ?e ?n2) (Assigned ?r ?e))
+    :domain (and (Robot ?r) (Direction ?n1 ?e ?n2) (Assigned ?r ?e) (Print))
     ; :fluents (Printed)
     :outputs (?q1 ?q2 ?t)
     :certified (and (PrintAction ?r ?n1 ?e ?n2 ?q1 ?q2 ?t)

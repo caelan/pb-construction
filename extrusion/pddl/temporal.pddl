@@ -84,8 +84,8 @@
   ;    (exists (?e2) (and (Order ?e ?e2)
   ;                       (not (Removed ?e2))))) ; Positive form instead
 
-  (:derived (UnsafeTraj ?r1 ?t1) (and (Traj ?r1 ?t1)
-      (exists (?r2 ?t2) (and (Traj ?r2 ?t2) (not (= ?r1 ?r2))
+  (:derived (UnsafeTraj ?r1 ?t1) (and (CTraj ?r1 ?t1)
+      (exists (?r2 ?t2) (and (CTraj ?r2 ?t2) (not (= ?r1 ?r2))
                              ;(not (CFreeTrajTraj ?r1 ?t1 ?r2 ?t2))
                              (TrajTrajCollision ?r1 ?t1 ?r2 ?t2)
                              (Executing ?r2 ?t2)))))

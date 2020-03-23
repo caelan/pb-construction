@@ -291,8 +291,9 @@ def get_opt_distance_fn(element_bodies, node_points):
     return fn
 
 def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
-                   printed=set(), removed=set(), trajectories=[],
-                   temporal=True, local=False, transit=False, return_home=True, checker=None, **kwargs):
+                   printed=set(), removed=set(), additional_init=[], trajectories=[],
+                   temporal=True, local=False, can_print=True, can_transit=False,
+                   return_home=True, checker=None, **kwargs):
     # TODO: TFD submodule
     assert not removed & printed
     remaining = set(element_bodies) - removed - printed
@@ -343,7 +344,10 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
     init = [
         Equal(('Speed',), TOOL_VELOCITY),
     ]
-    if transit:
+    init.extend(additional_init)
+    if can_print:
+        init.append(('Print',))
+    if can_transit:
         init.append(('Move',))
     for name, conf in initial_confs.items():
         robot = index_from_name(robots, name)
@@ -504,7 +508,6 @@ def extract_facts(plan, initial_confs):
     plan_from_robot = defaultdict(list)
     for action in plan:
         plan_from_robot[action.args[0]].append(action)
-    print(plan_from_robot)
 
     # TODO: use certificate instead
     static_facts = []
@@ -532,7 +535,7 @@ def extract_facts(plan, initial_confs):
                 # TODO: Collision
             else:
                 raise NotImplementedError(action.name)
-    print(static_facts)
+    return static_facts
 
 def stripstream(robot1, obstacles, node_points, element_bodies, ground_nodes, serialize=False, **kwargs):
     robots = mirror_robot(robot1, node_points)
@@ -631,9 +634,8 @@ def get_wild_move_gen_fn(robots, static_obstacles, element_bodies, partial_order
         traj = MotionTrajectory(robot, joints, path)
         command = Command([traj])
         outputs = [(command,)]
-        facts = []
-        #facts = [('Collision', command, e2) for e2 in command.colliding] if collisions else []
-        yield WildOutput(outputs, [('Dummy',)] + facts) # To force to be wild
+        facts = [('CTraj', name, command)]  # + [('Dummy',)] # To force to be wild
+        yield WildOutput(outputs, facts)
     return wild_gen_fn
 
 def get_wild_print_gen_fn(robots, static_obstacles, node_points, element_bodies, ground_nodes,
@@ -656,8 +658,11 @@ def get_wild_print_gen_fn(robots, static_obstacles, node_points, element_bodies,
             q1 = Conf(robot, command.start_conf, node=node1, element=element)
             q2 = Conf(robot, command.end_conf, node=node2, element=element)
             outputs = [(q1, q2, command)]
-            facts = [('Collision', command, e2) for e2 in command.colliding] if collisions else []
-            yield WildOutput(outputs, [('Dummy',)] + facts)
+            # Prevents premature collision checks
+            facts = [('CTraj', name, command)] # + [('Dummy',)] # To force to be wild
+            if collisions:
+                facts.extend(('Collision', command, e2) for e2 in command.colliding)
+            yield WildOutput(outputs,  facts)
     return wild_gen_fn
 
 def get_collision_test(robots, collisions=True, **kwargs):
