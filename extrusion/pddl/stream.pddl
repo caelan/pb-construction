@@ -19,7 +19,7 @@
 
   (:stream sample-move
     :inputs (?r ?q1 ?q2)
-    ;:domain (and (Conf ?r ?q1) (Conf ?r ?q2))
+    ;:domain (and (Conf ?r ?q1) (Conf ?r ?q2) (Move))
     ;:domain (and (BackoffConf ?r ?q1) (Conf ?r ?q2))
     :domain (and (Transition ?r ?q1 ?q2) (Move))
     ;:inputs (?r ?q1 ?q2 ?e1 ?n1 ?n2 ?e2)

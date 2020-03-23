@@ -282,7 +282,8 @@ def get_opt_distance_fn(element_bodies, node_points):
     def fn(robot, command):
         # TODO: use the corresponding element length
         if command.stream == 'sample-move':
-            e1, n1, n2, e2 = command.input_objects[-4:]
+            #e1, n1, n2, e2 = command.input_objects[-4:]
+            r, q1, q2 = command.input_objects[:3] # TODO: straight-line distance
             return 2.
         elif command.stream == 'sample-print':
             return opt_distance
@@ -291,7 +292,8 @@ def get_opt_distance_fn(element_bodies, node_points):
     return fn
 
 def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
-                   printed=set(), removed=set(), additional_init=[], trajectories=[],
+                   initial_confs={}, printed=set(), removed=set(),
+                   additional_init=[], additional_orders=set(), trajectories=[],
                    temporal=True, local=False, can_print=True, can_transit=False,
                    return_home=True, checker=None, **kwargs):
     # TODO: TFD submodule
@@ -307,13 +309,9 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
         partial_orders = compute_local_orders(remaining, layer_from_n) # makes the makespan heuristic slow
     else:
         partial_orders = compute_global_orders(remaining, layer_from_n)
-    # TODO: bias samples to be near the initial config
-
-    #print(supports)
+    partial_orders.update(additional_orders)
     # draw_model(supporters, node_points, ground_nodes, color=RED)
     # wait_if_gui()
-
-    initial_confs = {ROBOT_TEMPLATE.format(i): Conf(robot) for i, robot in enumerate(robots)}
 
     domain_pddl = read(get_file_path(__file__, 'pddl/temporal.pddl' if temporal else 'pddl/domain.pddl'))
     stream_pddl = read(get_file_path(__file__, 'pddl/stream.pddl'))
@@ -512,9 +510,9 @@ def extract_facts(plan, initial_confs):
     # TODO: use certificate instead
     static_facts = []
     partial_orders = set()
-    for robot, actions in plan_from_robot.items():
+    for name, actions in plan_from_robot.items():
         last_element = None
-        last_conf = initial_confs[robot]
+        last_conf = initial_confs[name]
         for i, action in enumerate(actions):
             if action.name == 'print':
                 r, n1, e, n2, q1, q2, t = action.args
@@ -524,18 +522,23 @@ def extract_facts(plan, initial_confs):
                     ('Conf', r, q1),
                     ('Conf', r, q2),
                     ('Traj', r, t),
+                    ('CTraj', r, t),
                     # (Start ?r ?n1 ?e ?q1) (End ?r ?e ?n2 ?q2)
                     ('Transition', r, q2, last_conf),
                 ])
                 if last_element is not None:
-                    partial_orders.add((e, last_element))
+                    # TODO: need level orders to synchronize between robots
+                    partial_orders.add((e, last_element)) # TODO: useful for collision checking
                     # static_facts.append(('Order', last_element, e))
                 last_element = e
                 last_conf = q1
-                # TODO: Collision
+                # TODO: save collision information
             else:
                 raise NotImplementedError(action.name)
-    return static_facts
+        static_facts.extend([
+            ('Transition', name, initial_confs[name], last_conf),
+        ])
+    return static_facts, partial_orders
 
 def stripstream(robot1, obstacles, node_points, element_bodies, ground_nodes, serialize=False, **kwargs):
     robots = mirror_robot(robot1, node_points)
@@ -549,14 +552,21 @@ def stripstream(robot1, obstacles, node_points, element_bodies, ground_nodes, se
     max_layer = max(layer_from_n.values())
     print('Max layer: {}'.format(max_layer))
 
+    data = {}
     if serialize:
         plan, certificate = solve_serialized(robots, obstacles, node_points, element_bodies,
-                                             ground_nodes, layer_from_n, **kwargs)
+                                             ground_nodes, layer_from_n, initial_confs=initial_confs, **kwargs)
     else:
         plan, certificate = solve_joint(robots, obstacles, node_points, element_bodies,
-                                        ground_nodes, layer_from_n, **kwargs)
+                                        ground_nodes, layer_from_n, initial_confs=initial_confs, **kwargs)
+    if plan is None:
+        return None, data
 
-    data = {}
+    print(SEPARATOR)
+    static_facts, partial_orders = extract_facts(plan, initial_confs)
+    plan, certificate = solve_joint(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
+                                    initial_confs=initial_confs, can_print=False, can_transit=True,
+                                    additional_init=static_facts, additional_orders=partial_orders, **kwargs)
     if plan is None:
         return None, data
 
@@ -641,6 +651,7 @@ def get_wild_move_gen_fn(robots, static_obstacles, element_bodies, partial_order
 def get_wild_print_gen_fn(robots, static_obstacles, node_points, element_bodies, ground_nodes,
                           collisions=True, **kwargs):
     # TODO: could reuse end-effector trajectories
+    # TODO: bias samples to be near the initial config
     gen_fn_from_robot = {robot: get_print_gen_fn(robot, static_obstacles, node_points, element_bodies,
                                                  ground_nodes, **kwargs) for robot in robots}
     def wild_gen_fn(name, node1, element, node2):
