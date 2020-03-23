@@ -13,9 +13,10 @@ from extrusion.utils import load_robot, get_other_node, get_node_neighbors, Prin
     get_element_length, TOOL_VELOCITY, Command, MotionTrajectory, \
     get_disabled_collisions, retrace_supporters
 from extrusion.visualization import set_extrusion_camera, draw_model
+#from examples.pybullet.turtlebots.run import *
 from pddlstream.algorithms.downward import set_cost_scale
 from pddlstream.algorithms.focused import solve_focused #, CURRENT_STREAM_PLAN
-from pddlstream.language.constants import And, PDDLProblem, print_solution, DurativeAction, Equal
+from pddlstream.language.constants import And, PDDLProblem, print_solution, DurativeAction, Equal, print_plan
 from pddlstream.language.stream import StreamInfo, PartialInputs, WildOutput
 from pddlstream.language.function import FunctionInfo
 from pddlstream.utils import read, get_file_path, inclusive_range, neighbors_from_orders
@@ -23,7 +24,7 @@ from pddlstream.language.temporal import compute_duration, get_end, compute_star
 from pybullet_tools.utils import get_configuration, set_pose, Euler, get_point, \
     get_movable_joints, has_gui, WorldSaver, wait_if_gui, add_line, RED, \
     wait_for_duration, get_length, INF, LockRenderer, randomize, set_configuration, Pose, Point, aabb_overlap, pairwise_link_collision, \
-    aabb_union, plan_joint_motion, SEPARATOR, user_input, remove_all_debug, GREEN
+    aabb_union, plan_joint_motion, SEPARATOR, user_input, remove_all_debug, GREEN, elapsed_time
 
 STRIPSTREAM_ALGORITHM = 'stripstream'
 ROBOT_TEMPLATE = 'r{}'
@@ -330,6 +331,8 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
         #'test-cfree-traj-traj': from_test(get_cfree_test(**kwargs)),
 
         'TrajTrajCollision': get_collision_test(robots, **kwargs),
+        'TrajConfCollision': lambda *args, **kwargs: False, # TODO: could treat conf as length 1 traj
+
         'Length': lambda e: get_element_length(e, node_points),
         'Distance': lambda r, t: t.get_link_distance(),
         'Duration': lambda r, t: t.get_link_distance() / TOOL_VELOCITY,
@@ -353,14 +356,14 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
         init_node = '{}-q0'.format(robot)
         init.extend([
             #('Node', init_node),
-            ('BackoffConf', name, conf),
+            #('BackoffConf', name, conf),
             ('Robot', name),
             ('Conf', name, conf),
             ('AtConf', name, conf),
             ('Idle', name),
             #('CanMove', name),
-            ('Start', name, init_node, None, conf),
-            ('End', name, None, init_node, conf),
+            #('Start', name, init_node, None, conf),
+            #('End', name, None, init_node, conf),
         ])
         for (n1, e, n2) in directions:
             if layer_from_n[n1] == 0:
@@ -368,11 +371,11 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
             if layer_from_n[n2] == max_layer:
                 transits.append((e, n2, init_node, None))
 
-    init.extend(('Grounded', n) for n in ground_nodes)
+    #init.extend(('Grounded', n) for n in ground_nodes)
     init.extend(('Direction',) + tup for tup in directions)
     init.extend(('Order',) + tup for tup in partial_orders)
     init.extend(('Assigned', r, e) for r in assignments for e in assignments[r])
-    init.extend(('Transit',) + tup for tup in transits)
+    #init.extend(('Transit',) + tup for tup in transits)
     # TODO: only move actions between adjacent layers
 
     for e in remaining:
@@ -393,14 +396,14 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
     #     ])
 
     goal_literals = []
-    if return_home:
+    if can_transit: # return_home:
         goal_literals.extend(('AtConf', r, q) for r, q in initial_confs.items())
     goal_literals.extend(('Removed', e) for e in remaining)
     goal = And(*goal_literals)
 
     return PDDLProblem(domain_pddl, constant_map, stream_pddl, stream_map, init, goal)
 
-def solve_pddlstream(problem, node_points, element_bodies, max_time=30):
+def solve_pddlstream(problem, node_points, element_bodies, max_time=60):
     # TODO: try search at different cost levels (i.e. w/ and w/o abstract)
     # TODO: only consider axioms that could be relevant
     # TODO: iterated search using random restarts
@@ -411,6 +414,7 @@ def solve_pddlstream(problem, node_points, element_bodies, max_time=30):
 
     print('Init:', problem.init)
     print('Goal:', problem.goal)
+    print('Max time:', max_time)
 
     stream_info = {
         # TODO: stream effort
@@ -419,6 +423,7 @@ def solve_pddlstream(problem, node_points, element_bodies, max_time=30):
 
         'test-cfree-traj-conf': StreamInfo(p_success=1e-2, negate=True),  # , verbose=False),
         'test-cfree-traj-traj': StreamInfo(p_success=1e-2, negate=True),
+        'TrajConfCollision': FunctionInfo(p_success=1e-1, overhead=1),  # TODO: verbose
         'TrajTrajCollision': FunctionInfo(p_success=1e-1, overhead=1),  # TODO: verbose
 
         'Distance': FunctionInfo(opt_fn=get_opt_distance_fn(element_bodies, node_points), eager=True)
@@ -446,7 +451,7 @@ def solve_pddlstream(problem, node_points, element_bodies, max_time=30):
         solution = solve_focused(problem, stream_info=stream_info, max_time=max_time,
                                  effort_weight=None, unit_efforts=True, unit_costs=False, # TODO: effort_weight=None vs 0
                                  max_skeletons=None, bind=True, max_failures=0,  # 0 | INF
-                                 planner=planner, max_planner_time=60, debug=False, reorder=False,
+                                 planner=planner, max_planner_time=60, debug=True, reorder=False,
                                  initial_complexity=1)
 
     print_solution(solution)
@@ -460,14 +465,14 @@ def solve_pddlstream(problem, node_points, element_bodies, max_time=30):
 ##################################################
 
 def solve_joint(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
-                trajectories=[], collisions=True, disable=False, **kwargs):
+                trajectories=[], collisions=True, disable=False, max_time=INF, **kwargs):
     problem = get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
                             trajectories=trajectories, collisions=collisions, disable=disable,
                             precompute_collisions=True, **kwargs)
-    return solve_pddlstream(problem, node_points, element_bodies)
+    return solve_pddlstream(problem, node_points, element_bodies, max_time=max_time)
 
 def solve_serialized(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
-                     trajectories=[], collisions=True, disable=False, **kwargs):
+                     trajectories=[], collisions=True, disable=False, max_time=INF, **kwargs):
     start_time = time.time()
     elements = set(element_bodies)
     elements_from_layers = compute_elements_from_layer(elements, layer_from_n)
@@ -488,10 +493,12 @@ def solve_serialized(robots, obstacles, node_points, element_bodies, ground_node
                                  printed=printed, removed=removed, return_home=False,
                                  trajectories=trajectories, collisions=collisions, disable=disable,
                                  precompute_collisions=True, **kwargs)
-        layer_plan, certificate = solve_pddlstream(problem, node_points, element_bodies)
+        layer_plan, certificate = solve_pddlstream(problem, node_points, element_bodies,
+                                                   max_time=max_time - elapsed_time(start_time))
         remove_all_debug()
         if layer_plan is None:
             return None
+        # TODO: replan in a cost sensitive way
         layer_plan = apply_start(layer_plan, makespan)
         duration = compute_duration(layer_plan)
         makespan += duration
@@ -500,6 +507,7 @@ def solve_serialized(robots, obstacles, node_points, element_bodies, ground_node
         full_plan.extend(layer_plan)
         removed.update(remaining)
     print(SEPARATOR)
+    print_plan(full_plan)
     return full_plan, None
 
 def extract_facts(plan, initial_confs):
@@ -540,13 +548,14 @@ def extract_facts(plan, initial_confs):
         ])
     return static_facts, partial_orders
 
-def stripstream(robot1, obstacles, node_points, element_bodies, ground_nodes, serialize=False, **kwargs):
+def stripstream(robot1, obstacles, node_points, element_bodies, ground_nodes,
+                serialize=True, hierarchy=False, **kwargs):
     robots = mirror_robot(robot1, node_points)
     elements = set(element_bodies)
     initial_confs = {ROBOT_TEMPLATE.format(i): Conf(robot) for i, robot in enumerate(robots)}
     saver = WorldSaver()
 
-    layer_from_n = compute_layer_from_vertex(element_bodies, node_points, ground_nodes)
+    layer_from_n = compute_layer_from_vertex(elements, node_points, ground_nodes)
     #layer_from_n = cluster_vertices(elements, node_points, ground_nodes) # TODO: increase resolution for small structures
     # TODO: compute directions from first, layer from second
     max_layer = max(layer_from_n.values())
@@ -562,13 +571,14 @@ def stripstream(robot1, obstacles, node_points, element_bodies, ground_nodes, se
     if plan is None:
         return None, data
 
-    print(SEPARATOR)
-    static_facts, partial_orders = extract_facts(plan, initial_confs)
-    plan, certificate = solve_joint(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
-                                    initial_confs=initial_confs, can_print=False, can_transit=True,
-                                    additional_init=static_facts, additional_orders=partial_orders, **kwargs)
-    if plan is None:
-        return None, data
+    if hierarchy:
+        print(SEPARATOR)
+        static_facts, partial_orders = extract_facts(plan, initial_confs)
+        plan, certificate = solve_joint(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
+                                        initial_confs=initial_confs, can_print=False, can_transit=True,
+                                        additional_init=static_facts, additional_orders=partial_orders, **kwargs)
+        if plan is None:
+            return None, data
 
     if plan and not isinstance(plan[0], DurativeAction):
         time_from_start = 0.
@@ -643,8 +653,10 @@ def get_wild_move_gen_fn(robots, static_obstacles, element_bodies, partial_order
         path = [conf1.positions] + path[1:-1] + [conf2.positions]
         traj = MotionTrajectory(robot, joints, path)
         command = Command([traj])
-        outputs = [(command,)]
-        facts = [('CTraj', name, command)]  # + [('Dummy',)] # To force to be wild
+        #outputs = [] # TODO: prevent eager quiting
+        outputs = [(command,)] # TODO: intermediate configs on the trajectory
+        facts = [('Traj', name, command), ('CTraj', name, command),
+                 ('MoveAction', name, conf1, conf2, command)]
         yield WildOutput(outputs, facts)
     return wild_gen_fn
 

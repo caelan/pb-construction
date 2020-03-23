@@ -38,6 +38,12 @@ from pybullet_tools.utils import connect, disconnect, get_movable_joints, get_jo
     set_random_seed, INF, wait_for_user, link_from_name, get_link_pose, point_from_pose, WorldSaver, elapsed_time, \
     timeout, get_configuration, RED, wait_if_gui, apply_affine, invert, multiply
 
+DEFAULT_SCALE = 1.
+
+SCALE_ASSEMBLY = {
+    'simple_frame': 3.5,
+    'topopt-101_tiny': 2.,
+}
 
 ##################################################
 
@@ -163,7 +169,8 @@ def plan_extrusion(args_list, viewer=False, verify=False, verbose=False, watch=F
 
     #elements = downsample_structure(elements, node_points, ground_nodes, num=None)
     #elements, ground_nodes = downsample_nodes(elements, node_points, ground_nodes)
-    node_points = scale_assembly(elements, node_points, ground_nodes, scale=3.5)
+    node_points = scale_assembly(elements, node_points, ground_nodes,
+                                 scale=SCALE_ASSEMBLY.get(problem, DEFAULT_SCALE))
     node_points = rotate_assembly(elements, node_points, ground_nodes, yaw=np.pi / 8)
 
     connect(use_gui=viewer, shadows=SHADOWS, color=BACKGROUND_COLOR)

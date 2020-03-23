@@ -41,6 +41,11 @@
                     (Conf ?r ?q1) (Conf ?r ?q2) (Traj ?r ?t))
   )
 
+  ; TODO: CTraj here?
+  (:predicate (TrajConfCollision ?r1 ?t1 ?r2 ?q2)
+     (and (Traj ?r1 ?t1) (Conf ?r2 ?q2))
+  )
+
   (:predicate (TrajTrajCollision ?r1 ?t1 ?r2 ?t2)
      (and (Traj ?r1 ?t1) (Traj ?r2 ?t2))
   )
