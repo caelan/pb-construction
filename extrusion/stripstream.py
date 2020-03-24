@@ -299,8 +299,9 @@ def get_opt_distance_fn(element_bodies, node_points):
 def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
                    initial_confs={}, printed=set(), removed=set(),
                    additional_init=[], additional_orders=set(), trajectories=[],
-                   temporal=True, local=False, can_print=True, can_transit=False,
-                   return_home=True, checker=None, **kwargs):
+                   temporal=True, sequential=True, local=False,
+                   can_print=True, can_transit=False,
+                   checker=None, **kwargs):
     # TODO: TFD submodule
     assert not removed & printed
     remaining = set(element_bodies) - removed - printed
@@ -347,6 +348,7 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
     transits = compute_transits(layer_from_n, directions)
 
     init = [
+        ('Stationary',),
         Equal(('Speed',), TOOL_VELOCITY),
     ]
     init.extend(additional_init)
@@ -354,13 +356,15 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
         init.append(('Print',))
     if can_transit:
         init.append(('Move',))
+    if sequential:
+        init.append(('Sequential',))
     for name, conf in initial_confs.items():
         robot = index_from_name(robots, name)
         #init_node = -robot
         init_node = '{}-q0'.format(robot)
         init.extend([
             #('Node', init_node),
-            #('BackoffConf', name, conf),
+            ('BackoffConf', name, conf),
             ('Robot', name),
             ('Conf', name, conf),
             ('AtConf', name, conf),
@@ -401,7 +405,7 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
     #     ])
 
     goal_literals = []
-    if can_transit: # return_home:
+    if can_transit:
         goal_literals.extend(('AtConf', r, q) for r, q in initial_confs.items())
     goal_literals.extend(('Removed', e) for e in remaining)
     goal = And(*goal_literals)
@@ -460,10 +464,11 @@ def solve_pddlstream(problem, node_points, element_bodies, planner=GREEDY_PLANNE
     with LockRenderer(lock=False):
         # solution = solve_incremental(problem, planner='add-random-lazy', max_time=600,
         #                              max_planner_time=300, debug=True)
+        # TODO: allow some types of failures
         solution = solve_focused(problem, stream_info=stream_info, max_time=max_time,
                                  effort_weight=None, unit_efforts=True, unit_costs=False, # TODO: effort_weight=None vs 0
                                  max_skeletons=None, bind=True, max_failures=0,  # 0 | INF
-                                 planner=planner, max_planner_time=60, debug=True, reorder=False,
+                                 planner=planner, max_planner_time=60, debug=False, reorder=False,
                                  initial_complexity=1)
 
     print_solution(solution)

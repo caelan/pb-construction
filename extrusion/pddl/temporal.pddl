@@ -36,18 +36,21 @@
    :duration (= ?duration (/ (Distance ?r ?t) (Speed))) ; TODO: trajectory time
    :condition (and
         (at start (MoveAction ?r ?q1 ?q2 ?t))
+        (at start (imply (Sequential) (Stationary)))
         (at start (Idle ?r))
         (at start (AtConf ?r ?q2))
-        ;(over all (not (UnsafeTraj ?r ?t)))
+        (over all (not (UnsafeTraj ?r ?t)))
         ;(CanMove ?r)
    )
    :effect (and
+        (at start (not (Stationary)))
         (at start (not (Idle ?r)))
         (at start (Executing ?r ?t))
         (at start (not (AtConf ?r ?q2)))
         (at end (AtConf ?r ?q1))
         (at end (not (Executing ?r ?t)))
         (at end (Idle ?r))
+        (at end (Stationary))
    )
   )
 
@@ -59,6 +62,7 @@
    :condition (and
         (at start (PrintAction ?r ?n1 ?e ?n2 ?q1 ?q2 ?t))
         (at start (Assigned ?r ?e))
+        (at start (imply (Sequential) (Stationary)))
         (at start (Printed ?e))
         (at start (Idle ?r))
         (at start (imply (Move) (AtConf ?r ?q2)))
@@ -69,6 +73,7 @@
         (over all (not (UnsafeTraj ?r ?t)))
    )
    :effect (and
+        (at start (not (Stationary)))
         (at start (not (Idle ?r)))
         (at start (not (Printed ?e)))
         (at start (Executing ?r ?t))
@@ -77,6 +82,7 @@
         (at end (not (Executing ?r ?t)))
         (at end (Removed ?e))
         (at end (Idle ?r))
+        (at end (Stationary))
    )
   )
 
