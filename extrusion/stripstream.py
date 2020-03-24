@@ -46,6 +46,8 @@ DUAL_CONF = [np.pi/8, -np.pi/4, np.pi/2, 0, np.pi/4, -np.pi/2]
 # semi_sphere
 # compas_fea_beam_tree_simp, compas_fea_beam_tree_S_simp, compas_fea_beam_tree_M_simp
 
+##################################################
+
 def index_from_name(robots, name):
     return robots[int(name[1:])]
 
@@ -472,6 +474,62 @@ def solve_pddlstream(problem, node_points, element_bodies, planner=GREEDY_PLANNE
 
 ##################################################
 
+def partition_plan(plan):
+    plan_from_robot = defaultdict(list)
+    for action in plan:
+        plan_from_robot[action.args[0]].append(action)
+    return plan_from_robot
+
+def compute_total_orders(plan):
+    partial_orders = set()
+    for name, actions in partition_plan(plan).items():
+        last_element = None
+        for i, action in enumerate(actions):
+            if action.name == 'print':
+                r, n1, e, n2, q1, q2, t = action.args
+                if last_element is not None:
+                    # TODO: need level orders to synchronize between robots
+                    # TODO: useful for collision checking
+                    partial_orders.add((e, last_element))
+                last_element = e
+            else:
+                raise NotImplementedError(action.name)
+    return partial_orders
+
+def extract_static_facts(plan, initial_confs):
+    # TODO: use certificate instead
+    plan_from_robot = partition_plan(plan)
+    static_facts = []
+    for name, actions in plan_from_robot.items():
+        last_element = None
+        last_conf = initial_confs[name]
+        for i, action in enumerate(actions):
+            if action.name == 'print':
+                r, n1, e, n2, q1, q2, t = action.args
+                static_facts.extend([
+                    ('PrintAction',) + action.args,
+                    ('Assigned', r, e),
+                    ('Conf', r, q1),
+                    ('Conf', r, q2),
+                    ('Traj', r, t),
+                    ('CTraj', r, t),
+                    # (Start ?r ?n1 ?e ?q1) (End ?r ?e ?n2 ?q2)
+                    ('Transition', r, q2, last_conf),
+                ])
+                if last_element is not None:
+                    static_facts.append(('Order', last_element, e))
+                last_element = e
+                last_conf = q1
+                # TODO: save collision information
+            else:
+                raise NotImplementedError(action.name)
+        static_facts.extend([
+            ('Transition', name, initial_confs[name], last_conf),
+        ])
+    return static_facts
+
+##################################################
+
 def solve_joint(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
                 trajectories=[], collisions=True, disable=False, max_time=INF, **kwargs):
     problem = get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
@@ -537,59 +595,7 @@ def solve_serialized(robots, obstacles, node_points, element_bodies, ground_node
     print_plan(full_plan)
     return full_plan, None
 
-def partition_plan(plan):
-    plan_from_robot = defaultdict(list)
-    for action in plan:
-        plan_from_robot[action.args[0]].append(action)
-    return plan_from_robot
-
-def compute_total_orders(plan):
-    partial_orders = set()
-    for name, actions in partition_plan(plan).items():
-        last_element = None
-        for i, action in enumerate(actions):
-            if action.name == 'print':
-                r, n1, e, n2, q1, q2, t = action.args
-                if last_element is not None:
-                    # TODO: need level orders to synchronize between robots
-                    # TODO: useful for collision checking
-                    partial_orders.add((e, last_element))
-                last_element = e
-            else:
-                raise NotImplementedError(action.name)
-    return partial_orders
-
-def extract_static_facts(plan, initial_confs):
-    # TODO: use certificate instead
-    plan_from_robot = partition_plan(plan)
-    static_facts = []
-    for name, actions in plan_from_robot.items():
-        last_element = None
-        last_conf = initial_confs[name]
-        for i, action in enumerate(actions):
-            if action.name == 'print':
-                r, n1, e, n2, q1, q2, t = action.args
-                static_facts.extend([
-                    ('PrintAction',) + action.args,
-                    ('Assigned', r, e),
-                    ('Conf', r, q1),
-                    ('Conf', r, q2),
-                    ('Traj', r, t),
-                    ('CTraj', r, t),
-                    # (Start ?r ?n1 ?e ?q1) (End ?r ?e ?n2 ?q2)
-                    ('Transition', r, q2, last_conf),
-                ])
-                if last_element is not None:
-                    static_facts.append(('Order', last_element, e))
-                last_element = e
-                last_conf = q1
-                # TODO: save collision information
-            else:
-                raise NotImplementedError(action.name)
-        static_facts.extend([
-            ('Transition', name, initial_confs[name], last_conf),
-        ])
-    return static_facts
+##################################################
 
 def stripstream(robot1, obstacles, node_points, element_bodies, ground_nodes,
                 serialize=True, hierarchy=False, **kwargs):
