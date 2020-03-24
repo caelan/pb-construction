@@ -9,7 +9,8 @@ from pybullet_tools.utils import get_movable_joints, get_joint_positions, multip
     set_joint_positions, inverse_kinematics, get_link_pose, get_distance, point_from_pose, wrap_angle, get_sample_fn, \
     link_from_name, get_pose, get_collision_fn, set_pose, pairwise_collision, Pose, Euler, Point, interval_generator, \
     randomize, get_extend_fn, user_input, INF, elapsed_time, get_bodies_in_region, get_aabb, get_all_links, \
-    pairwise_link_collision, step_simulation, BASE_LINK, get_configuration
+    pairwise_link_collision, step_simulation, BASE_LINK, get_configuration, get_point, get_unit_vector, draw_pose, \
+    wait_if_gui, draw_point
 from extrusion.utils import TOOL_LINK, get_disabled_collisions, get_node_neighbors, \
     PrintTrajectory, retrace_supporters, prune_dominated, Command, MotionTrajectory, RESOLUTION, \
     JOINT_WEIGHTS, EE_LINK, EndEffector, is_ground, is_end, is_reversed, reverse_element, set_configuration
@@ -184,20 +185,32 @@ def optimize_angle(end_effector, element_pose,
 
 ##################################################
 
-def plan_approach(end_effector, print_traj, collision_fn):
+def plan_approach(end_effector, print_traj, collision_fn, approach_distance=APPROACH_DISTANCE):
     # TODO: collisions at the ends of elements
-    if APPROACH_DISTANCE == 0:
+    if approach_distance == 0:
         return Command([print_traj])
     robot = end_effector.robot
     joints = get_movable_joints(robot)
     extend_fn = get_extend_fn(robot, joints, resolutions=0.25*JOINT_RESOLUTIONS)
     tool_link = link_from_name(robot, TOOL_LINK)
-    approach_pose = Pose(Point(z=-APPROACH_DISTANCE))
+    approach_pose = Pose(Point(z=-approach_distance))
+    # TODO: constrain the orientation per robot
+
+    #element = print_traj.element
+    #midpoint = get_point(element)
+    #points = map(point_from_pose, [print_traj.tool_path[0], print_traj.tool_path[-1]])
+    #midpoint = np.average(list(points), axis=0)
+    #draw_point(midpoint)
+    #element_to_base = 0.05*get_unit_vector(get_point(robot) - midpoint)
+    #retreat_pose = Pose(Point(element_to_base))
+    # TODO: perpendicular to element
 
     # TODO: solve_ik
     start_conf = print_traj.path[0]
     set_joint_positions(robot, joints, start_conf)
     initial_pose = multiply(print_traj.tool_path[0], approach_pose)
+    #draw_pose(initial_pose)
+    #wait_if_gui()
     initial_conf = inverse_kinematics(robot, tool_link, initial_pose)
     if initial_conf is None:
         return None
@@ -282,7 +295,7 @@ class Extrusion(object):
 
 ##################################################
 
-def compute_direction_path(tool_traj, collision_fn, initial_conf=None, ee_only=False):
+def compute_direction_path(tool_traj, collision_fn, initial_conf=None, ee_only=False, **kwargs):
     """
     :param robot:
     :param length: element's length
@@ -345,7 +358,7 @@ def compute_direction_path(tool_traj, collision_fn, initial_conf=None, ee_only=F
 
     tool_path = compute_tool_path(element_pose, translation_path, direction, initial_angle, reverse)
     print_traj = PrintTrajectory(end_effector, get_movable_joints(robot), robot_path, tool_path, element, reverse)
-    return plan_approach(end_effector, print_traj, collision_fn)
+    return plan_approach(end_effector, print_traj, collision_fn, **kwargs)
 
 ##################################################
 

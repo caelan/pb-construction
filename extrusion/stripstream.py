@@ -26,7 +26,7 @@ from pddlstream.language.temporal import compute_duration, compute_start, comput
 from pybullet_tools.utils import get_configuration, set_pose, Euler, get_point, \
     get_movable_joints, has_gui, WorldSaver, wait_if_gui, add_line, RED, \
     wait_for_duration, get_length, INF, LockRenderer, randomize, set_configuration, Pose, Point, aabb_overlap, pairwise_link_collision, \
-    aabb_union, plan_joint_motion, SEPARATOR, user_input, remove_all_debug, GREEN, elapsed_time, VideoSaver
+    aabb_union, plan_joint_motion, SEPARATOR, user_input, remove_all_debug, GREEN, elapsed_time, VideoSaver, point_from_pose
 
 STRIPSTREAM_ALGORITHM = 'stripstream'
 ROBOT_TEMPLATE = 'r{}'
@@ -602,7 +602,7 @@ def solve_serialized(robots, obstacles, node_points, element_bodies, ground_node
 ##################################################
 
 def stripstream(robot1, obstacles, node_points, element_bodies, ground_nodes,
-                serialize=False, hierarchy=True, **kwargs):
+                serialize=False, hierarchy=False, **kwargs):
     robots = mirror_robot(robot1, node_points)
     elements = set(element_bodies)
     initial_confs = {ROBOT_TEMPLATE.format(i): Conf(robot) for i, robot in enumerate(robots)}
@@ -708,10 +708,19 @@ def get_wild_move_gen_fn(robots, static_obstacles, element_bodies, partial_order
         path = [conf1.positions] + path[1:-1] + [conf2.positions]
         traj = MotionTrajectory(robot, joints, path)
         command = Command([traj])
-        #outputs = [] # TODO: prevent eager quiting
-        outputs = [(command,)] # TODO: intermediate configs on the trajectory
-        facts = [('Traj', name, command), ('CTraj', name, command),
-                 ('MoveAction', name, conf1, conf2, command)]
+        edges = [
+            (conf1, command, conf2),
+            (conf2, command, conf1), # TODO: reverse
+        ]
+        outputs = []
+        #outputs = [(command,)]
+        facts = []
+        for q1, cmd, q2 in edges:
+            facts.extend([
+                ('Traj', name, cmd),
+                ('CTraj', name, cmd),
+                ('MoveAction', name, q1, q2, cmd),
+            ])
         yield WildOutput(outputs, facts)
     return wild_gen_fn
 
@@ -719,8 +728,8 @@ def get_wild_print_gen_fn(robots, static_obstacles, node_points, element_bodies,
                           initial_confs={}, return_home=False, collisions=True, **kwargs):
     # TODO: could reuse end-effector trajectories
     # TODO: max distance from nearby
-    gen_fn_from_robot = {robot: get_print_gen_fn(robot, static_obstacles, node_points, element_bodies,
-                                                 ground_nodes, p_nearby=1., **kwargs) for robot in robots}
+    gen_fn_from_robot = {robot: get_print_gen_fn(robot, static_obstacles, node_points, element_bodies, ground_nodes,
+                                                 p_nearby=1., approach_distance=0.05, **kwargs) for robot in robots}
     wild_move_fn = get_wild_move_gen_fn(robots, static_obstacles, element_bodies, **kwargs)
 
     def wild_gen_fn(name, node1, element, node2):
