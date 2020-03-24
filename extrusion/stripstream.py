@@ -16,7 +16,8 @@ from extrusion.visualization import set_extrusion_camera, draw_model
 #from examples.pybullet.turtlebots.run import *
 from pddlstream.algorithms.downward import set_cost_scale
 from pddlstream.algorithms.focused import solve_focused #, CURRENT_STREAM_PLAN
-from pddlstream.language.constants import And, PDDLProblem, print_solution, DurativeAction, Equal, print_plan
+from pddlstream.language.constants import And, PDDLProblem, print_solution, DurativeAction, Equal, print_plan, \
+    NOT, EQ, get_prefix, get_function
 from pddlstream.language.stream import StreamInfo, PartialInputs, WildOutput
 from pddlstream.language.function import FunctionInfo
 from pddlstream.utils import read, get_file_path, inclusive_range, neighbors_from_orders
@@ -123,7 +124,7 @@ def simulate_printing(node_points, trajectories, time_step=0.1, speed_up=10.):
 
 ##################################################
 
-def simulate_parallel(robots, plan, time_step=0.1, speed_up=10.):
+def simulate_parallel(robots, plan, time_step=0.1, speed_up=10., record=None): # None | video.mp4
     # TODO: ensure the step size is appropriate
     makespan = compute_duration(plan)
     print('\nMakespan: {:.3f}'.format(makespan))
@@ -144,10 +145,8 @@ def simulate_parallel(robots, plan, time_step=0.1, speed_up=10.):
     #print(sum(traj.duration for traj in trajectories))
     num_motion = sum(action.name == 'move' for action in plan)
 
-    #path = None
-    path = 'video.mp4'
     wait_if_gui('Begin?')
-    with VideoSaver(path):
+    with VideoSaver(record):
         for t in inclusive_range(0, makespan, time_step):
             # if action.start <= t <= get_end(action):
             executing = Counter(traj.robot  for traj in trajectories if traj.at(t) is not None)
@@ -464,7 +463,7 @@ def solve_pddlstream(problem, node_points, element_bodies, planner=GREEDY_PLANNE
         # TODO: allow some types of failures
         solution = solve_focused(problem, stream_info=stream_info, max_time=max_time,
                                  effort_weight=None, unit_efforts=True, unit_costs=False, # TODO: effort_weight=None vs 0
-                                 max_skeletons=None, bind=True, max_failures=0,  # 0 | INF
+                                 max_skeletons=None, bind=True, max_failures=INF,  # 0 | INF
                                  planner=planner, max_planner_time=60, debug=False, reorder=False,
                                  initial_complexity=1)
 
@@ -483,6 +482,7 @@ def partition_plan(plan):
     return plan_from_robot
 
 def compute_total_orders(plan):
+    # TODO: partially order trajectories
     partial_orders = set()
     for name, actions in partition_plan(plan).items():
         last_element = None
@@ -498,11 +498,13 @@ def compute_total_orders(plan):
                 raise NotImplementedError(action.name)
     return partial_orders
 
-def extract_static_facts(plan, initial_confs):
+def extract_static_facts(plan, certificate, initial_confs):
     # TODO: use certificate instead
-    plan_from_robot = partition_plan(plan)
-    static_facts = []
-    for name, actions in plan_from_robot.items():
+    # TODO: only keep objects used on the plan
+    #static_facts = []
+    static_facts = [f for f in certificate.all_facts if get_prefix(get_function(f))
+                    in ['distance', 'trajtrajcollision']]
+    for name, actions in partition_plan(plan).items():
         last_element = None
         last_conf = initial_confs[name]
         for i, action in enumerate(actions):
@@ -519,7 +521,7 @@ def extract_static_facts(plan, initial_confs):
                     ('Transition', r, q2, last_conf),
                 ])
                 if last_element is not None:
-                    static_facts.append(('Order', last_element, e))
+                    static_facts.append(('Order', e, last_element))
                 last_element = e
                 last_conf = q1
                 # TODO: save collision information
@@ -600,7 +602,7 @@ def solve_serialized(robots, obstacles, node_points, element_bodies, ground_node
 ##################################################
 
 def stripstream(robot1, obstacles, node_points, element_bodies, ground_nodes,
-                serialize=True, hierarchy=False, **kwargs):
+                serialize=False, hierarchy=True, **kwargs):
     robots = mirror_robot(robot1, node_points)
     elements = set(element_bodies)
     initial_confs = {ROBOT_TEMPLATE.format(i): Conf(robot) for i, robot in enumerate(robots)}
@@ -624,7 +626,7 @@ def stripstream(robot1, obstacles, node_points, element_bodies, ground_nodes,
 
     if hierarchy:
         print(SEPARATOR)
-        static_facts = extract_static_facts(plan, initial_confs)
+        static_facts = extract_static_facts(plan, certificate, initial_confs)
         partial_orders = compute_total_orders(plan)
         plan, certificate = solve_joint(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
                                         initial_confs=initial_confs, can_print=False, can_transit=True,
@@ -716,6 +718,7 @@ def get_wild_move_gen_fn(robots, static_obstacles, element_bodies, partial_order
 def get_wild_print_gen_fn(robots, static_obstacles, node_points, element_bodies, ground_nodes,
                           initial_confs={}, return_home=False, collisions=True, **kwargs):
     # TODO: could reuse end-effector trajectories
+    # TODO: max distance from nearby
     gen_fn_from_robot = {robot: get_print_gen_fn(robot, static_obstacles, node_points, element_bodies,
                                                  ground_nodes, p_nearby=1., **kwargs) for robot in robots}
     wild_move_fn = get_wild_move_gen_fn(robots, static_obstacles, element_bodies, **kwargs)
