@@ -20,12 +20,12 @@ from pddlstream.language.constants import And, PDDLProblem, print_solution, Dura
 from pddlstream.language.stream import StreamInfo, PartialInputs, WildOutput
 from pddlstream.language.function import FunctionInfo
 from pddlstream.utils import read, get_file_path, inclusive_range, neighbors_from_orders
-from pddlstream.language.temporal import compute_duration, get_end, compute_start, compute_end, apply_start, \
-    create_planner, DURATIVE_ACTIONS
+from pddlstream.language.temporal import compute_duration, compute_start, compute_end, apply_start, \
+    create_planner, DURATIVE_ACTIONS, reverse_plan
 from pybullet_tools.utils import get_configuration, set_pose, Euler, get_point, \
     get_movable_joints, has_gui, WorldSaver, wait_if_gui, add_line, RED, \
     wait_for_duration, get_length, INF, LockRenderer, randomize, set_configuration, Pose, Point, aabb_overlap, pairwise_link_collision, \
-    aabb_union, plan_joint_motion, SEPARATOR, user_input, remove_all_debug, GREEN, elapsed_time
+    aabb_union, plan_joint_motion, SEPARATOR, user_input, remove_all_debug, GREEN, elapsed_time, VideoSaver
 
 STRIPSTREAM_ALGORITHM = 'stripstream'
 ROBOT_TEMPLATE = 'r{}'
@@ -90,6 +90,7 @@ def mirror_robot(robot1, node_points):
 ##################################################
 
 def simulate_printing(node_points, trajectories, time_step=0.1, speed_up=10.):
+    # TODO: deprecate
     print_trajectories = [traj for traj in trajectories if isinstance(traj, PrintTrajectory)]
     handles = []
     current_time = 0.
@@ -120,14 +121,7 @@ def simulate_printing(node_points, trajectories, time_step=0.1, speed_up=10.):
     wait_if_gui()
     return handles
 
-def reverse_plan(plan):
-    if plan is None:
-        return None
-    # TODO: possibly move to temporal
-    makespan = compute_duration(plan)
-    print('\nLength: {} | Makespan: {:.3f}'.format(len(plan), makespan))
-    return [DurativeAction(action.name, action.args, makespan - get_end(action), action.duration) for action in plan]
-
+##################################################
 
 def simulate_parallel(robots, plan, time_step=0.1, speed_up=10.):
     # TODO: ensure the step size is appropriate
@@ -150,19 +144,22 @@ def simulate_parallel(robots, plan, time_step=0.1, speed_up=10.):
     #print(sum(traj.duration for traj in trajectories))
     num_motion = sum(action.name == 'move' for action in plan)
 
+    #path = None
+    path = 'video.mp4'
     wait_if_gui('Begin?')
-    for t in inclusive_range(0, makespan, time_step):
-        # if action.start <= t <= get_end(action):
-        executing = Counter(traj.robot  for traj in trajectories if traj.at(t) is not None)
-        print('t={:.3f}/{:.3f} | executing={}'.format(t, makespan, executing))
-        for robot in robots:
-            num = executing.get(robot, 0)
-            if 2 <= num:
-                raise RuntimeError('Robot {} simultaneously executing {} trajectories'.format(robot, num))
-            if (num_motion == 0) and (num == 0):
-                set_configuration(robot, DUAL_CONF)
-        #step_simulation()
-        wait_for_duration(time_step / speed_up)
+    with VideoSaver(path):
+        for t in inclusive_range(0, makespan, time_step):
+            # if action.start <= t <= get_end(action):
+            executing = Counter(traj.robot  for traj in trajectories if traj.at(t) is not None)
+            print('t={:.3f}/{:.3f} | executing={}'.format(t, makespan, executing))
+            for robot in robots:
+                num = executing.get(robot, 0)
+                if 2 <= num:
+                    raise RuntimeError('Robot {} simultaneously executing {} trajectories'.format(robot, num))
+                if (num_motion == 0) and (num == 0):
+                    set_configuration(robot, DUAL_CONF)
+            #step_simulation()
+            wait_for_duration(time_step / speed_up)
     wait_if_gui('Finish?')
 
 ##################################################
@@ -299,7 +296,7 @@ def get_opt_distance_fn(element_bodies, node_points):
 def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
                    initial_confs={}, printed=set(), removed=set(),
                    additional_init=[], additional_orders=set(), trajectories=[],
-                   temporal=True, sequential=True, local=False,
+                   temporal=True, sequential=False, local=False,
                    can_print=True, can_transit=False,
                    checker=None, **kwargs):
     # TODO: TFD submodule
@@ -645,6 +642,7 @@ def stripstream(robot1, obstacles, node_points, element_bodies, ground_nodes,
             time_from_start += command.duration
         plan = retimed_plan
     plan = reverse_plan(plan)
+    print('\nLength: {} | Makespan: {:.3f}'.format(len(plan), compute_duration(plan)))
     # TODO: retime using the TFD duration
     # TODO: attempt to resolve once without any optimistic facts to see if a solution exists
     # TODO: choose a better initial config

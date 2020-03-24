@@ -62,7 +62,7 @@
    :condition (and
         (at start (PrintAction ?r ?n1 ?e ?n2 ?q1 ?q2 ?t))
         (at start (Assigned ?r ?e))
-        (at start (imply (Sequential) (Stationary)))
+        (at start (imply (Sequential) (Stationary))) ; TODO: issue with non-constant antecedents
         (at start (Printed ?e))
         (at start (Idle ?r))
         (at start (imply (Move) (AtConf ?r ?q2)))
