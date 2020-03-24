@@ -329,7 +329,7 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
         'sample-move': get_wild_move_gen_fn(robots, obstacles, element_bodies,
                                             partial_orders=partial_orders, **kwargs),
         'sample-print': get_wild_print_gen_fn(robots, obstacles, node_points, element_bodies, ground_nodes,
-                                              partial_orders=partial_orders, removed=removed, **kwargs),
+                                              initial_confs=initial_confs, partial_orders=partial_orders, removed=removed, **kwargs),
         #'test-stiffness': from_test(test_stiffness),
         #'test-cfree-traj-conf': from_test(lambda *args: True),
         #'test-cfree-traj-traj': from_test(get_cfree_test(**kwargs)),
@@ -711,11 +711,12 @@ def get_wild_move_gen_fn(robots, static_obstacles, element_bodies, partial_order
     return wild_gen_fn
 
 def get_wild_print_gen_fn(robots, static_obstacles, node_points, element_bodies, ground_nodes,
-                          collisions=True, **kwargs):
+                          initial_confs={}, return_home=False, collisions=True, **kwargs):
     # TODO: could reuse end-effector trajectories
-    # TODO: bias samples to be near the initial config
     gen_fn_from_robot = {robot: get_print_gen_fn(robot, static_obstacles, node_points, element_bodies,
                                                  ground_nodes, p_nearby=1., **kwargs) for robot in robots}
+    wild_move_fn = get_wild_move_gen_fn(robots, static_obstacles, element_bodies, **kwargs)
+
     def wild_gen_fn(name, node1, element, node2):
         # TODO: could cache this
         # sequence = [result.get_mapping()['?e'].value for result in CURRENT_STREAM_PLAN]
@@ -726,15 +727,32 @@ def get_wild_print_gen_fn(robots, static_obstacles, node_points, element_bodies,
         # TODO: stream fusion
         # TODO: split element into several edges
         robot = index_from_name(robots, name)
+        q0 = initial_confs[name]
         #generator = gen_fn_from_robot[robot](node1, element)
-        for command, in gen_fn_from_robot[robot](node1, element):
-            q1 = Conf(robot, command.start_conf, node=node1, element=element)
-            q2 = Conf(robot, command.end_conf, node=node2, element=element)
-            outputs = [(q1, q2, command)]
+        for print_cmd, in gen_fn_from_robot[robot](node1, element):
+            # TODO: need to merge safe print_cmd.colliding
+            q1 = Conf(robot, print_cmd.start_conf, node=node1, element=element)
+            q2 = Conf(robot, print_cmd.end_conf, node=node2, element=element)
+
+            if return_home:
+                # TODO: can decompose into individual movements as well
+                output1 = next(wild_move_fn(name, q0, q1), None)
+                if not output1:
+                    continue
+                transit_cmd1 = output1.values[0][0]
+                print_cmd.trajectories = transit_cmd1.trajectories + print_cmd.trajectories
+                output2 = next(wild_move_fn(name, q2, q0), None)
+                if not output2:
+                    continue
+                transit_cmd2 = output2.values[0][0]
+                print_cmd.trajectories = print_cmd.trajectories + transit_cmd2.trajectories
+                q1 = q2 = q0 # TODO: must assert that AtConf holds
+
+            outputs = [(q1, q2, print_cmd)]
             # Prevents premature collision checks
-            facts = [('CTraj', name, command)] # + [('Dummy',)] # To force to be wild
+            facts = [('CTraj', name, print_cmd)] # + [('Dummy',)] # To force to be wild
             if collisions:
-                facts.extend(('Collision', command, e2) for e2 in command.colliding)
+                facts.extend(('Collision', print_cmd, e2) for e2 in print_cmd.colliding)
             yield WildOutput(outputs,  facts)
     return wild_gen_fn
 
