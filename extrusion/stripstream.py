@@ -20,7 +20,8 @@ from pddlstream.language.constants import And, PDDLProblem, print_solution, Dura
 from pddlstream.language.stream import StreamInfo, PartialInputs, WildOutput
 from pddlstream.language.function import FunctionInfo
 from pddlstream.utils import read, get_file_path, inclusive_range, neighbors_from_orders
-from pddlstream.language.temporal import compute_duration, get_end, compute_start, compute_end, apply_start
+from pddlstream.language.temporal import compute_duration, get_end, compute_start, compute_end, apply_start, \
+    create_planner, DURATIVE_ACTIONS
 from pybullet_tools.utils import get_configuration, set_pose, Euler, get_point, \
     get_movable_joints, has_gui, WorldSaver, wait_if_gui, add_line, RED, \
     wait_for_duration, get_length, INF, LockRenderer, randomize, set_configuration, Pose, Point, aabb_overlap, pairwise_link_collision, \
@@ -111,6 +112,7 @@ def simulate_printing(node_points, trajectories, time_step=0.1, speed_up=10.):
             new_position = current_curve(current_time)
             handles.append(add_line(current_position, new_position, color=RED))
             current_position = new_position
+            # TODO: longer wait for recording videos
             wait_for_duration(time_step / speed_up)
             # wait_if_gui()
     wait_if_gui()
@@ -374,6 +376,7 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
     #init.extend(('Grounded', n) for n in ground_nodes)
     init.extend(('Direction',) + tup for tup in directions)
     init.extend(('Order',) + tup for tup in partial_orders)
+    # TODO: can relax assigned if I go by layers
     init.extend(('Assigned', r, e) for r in assignments for e in assignments[r])
     #init.extend(('Transit',) + tup for tup in transits)
     # TODO: only move actions between adjacent layers
@@ -403,7 +406,11 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
 
     return PDDLProblem(domain_pddl, constant_map, stream_pddl, stream_map, init, goal)
 
-def solve_pddlstream(problem, node_points, element_bodies, max_time=60):
+GREEDY_PLANNER = create_planner(greedy=False, lazy=True, h_cea=True)
+POSTPROCESS_PLANNER = create_planner(anytime=True, greedy=False, lazy=True, h_cea=False, h_makespan=True)
+#POSTPROCESS_PLANNER = create_planner(anytime=True, lazy=False, h_makespan=True)
+
+def solve_pddlstream(problem, node_points, element_bodies, planner=GREEDY_PLANNER, max_time=60):
     # TODO: try search at different cost levels (i.e. w/ and w/o abstract)
     # TODO: only consider axioms that could be relevant
     # TODO: iterated search using random restarts
@@ -412,9 +419,11 @@ def solve_pddlstream(problem, node_points, element_bodies, max_time=60):
     # TODO: sort by action cost heuristic
     # http://www.fast-downward.org/Doc/Evaluator#Max_evaluator
 
+    temporal = DURATIVE_ACTIONS in problem.domain_pddl
     print('Init:', problem.init)
     print('Goal:', problem.goal)
     print('Max time:', max_time)
+    print('Temporal:', temporal)
 
     stream_info = {
         # TODO: stream effort
@@ -435,16 +444,17 @@ def solve_pddlstream(problem, node_points, element_bodies, max_time=60):
     # TODO: goal serialization
     # TODO: could revert back to goal count now that no deadends
     # TODO: limit the branching factor if necessary
-    # Reachability heuristics good for detecting dead-ends
-    # Infeasibility from the start means disconnected or collision
-    set_cost_scale(1)
-    # planner = 'ff-ehc'
-    # planner = 'ff-lazy-tiebreak' # Branching factor becomes large. Rely on preferred. Preferred should also be cheaper
-    planner = 'ff-eager-tiebreak'  # Need to use a eager search, otherwise doesn't incorporate child cost
-    # planner = 'max-astar'
-    # TODO: postprocess with a less greedy strategy
     # TODO: ensure that function costs aren't prunning plans
+    if not temporal:
+        # Reachability heuristics good for detecting dead-ends
+        # Infeasibility from the start means disconnected or collision
+        set_cost_scale(1)
+        # planner = 'ff-ehc'
+        # planner = 'ff-lazy-tiebreak' # Branching factor becomes large. Rely on preferred. Preferred should also be cheaper
+        planner = 'ff-eager-tiebreak'  # Need to use a eager search, otherwise doesn't incorporate child cost
+        # planner = 'max-astar'
 
+    # TODO: assert (instance.value == value)
     with LockRenderer(lock=False):
         # solution = solve_incremental(problem, planner='add-random-lazy', max_time=600,
         #                              max_planner_time=300, debug=True)
@@ -456,8 +466,6 @@ def solve_pddlstream(problem, node_points, element_bodies, max_time=60):
 
     print_solution(solution)
     plan, _, certificate = solution
-    # print(certificate.all_facts)
-    # print(certificate.preimage_facts)
     # TODO: post-process by calling planner again
     # TODO: could solve for trajectories conditioned on the sequence
     return plan, certificate
@@ -472,8 +480,9 @@ def solve_joint(robots, obstacles, node_points, element_bodies, ground_nodes, la
     return solve_pddlstream(problem, node_points, element_bodies, max_time=max_time)
 
 def solve_serialized(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
-                     trajectories=[], collisions=True, disable=False, max_time=INF, **kwargs):
+                     trajectories=[], post_process=False, collisions=True, disable=False, max_time=INF, **kwargs):
     start_time = time.time()
+    saver = WorldSaver()
     elements = set(element_bodies)
     elements_from_layers = compute_elements_from_layer(elements, layer_from_n)
     layers = sorted(elements_from_layers.keys())
@@ -485,6 +494,7 @@ def solve_serialized(robots, obstacles, node_points, element_bodies, ground_node
     for layer in reversed(layers):
         print(SEPARATOR)
         print('Layer: {}'.format(layer))
+        saver.restore()
         remaining = elements_from_layers[layer]
         printed = elements - remaining - removed
         draw_model(remaining, node_points, ground_nodes, color=GREEN)
@@ -498,6 +508,23 @@ def solve_serialized(robots, obstacles, node_points, element_bodies, ground_node
         remove_all_debug()
         if layer_plan is None:
             return None
+
+        if post_process:
+            print(SEPARATOR)
+            # Allows the planner to continue to check collisions
+            problem.init[:] = certificate.all_facts
+            #static_facts = extract_static_facts(layer_plan, ...)
+            #problem.init.extend(('Order',) + pair for pair in compute_total_orders(layer_plan))
+            for fact in [('print',), ('move',)]:
+                if fact in problem.init:
+                    problem.init.remove(fact)
+            new_layer_plan, _ = solve_pddlstream(problem, node_points, element_bodies,
+                                                 planner=POSTPROCESS_PLANNER,
+                                                 max_time=max_time - elapsed_time(start_time))
+            if (new_layer_plan is not None) and (compute_duration(new_layer_plan) < compute_duration(layer_plan)):
+                layer_plan = new_layer_plan
+            user_input('{:.3f}->{:.3f}'.format(compute_duration(layer_plan), compute_duration(new_layer_plan)))
+
         # TODO: replan in a cost sensitive way
         layer_plan = apply_start(layer_plan, makespan)
         duration = compute_duration(layer_plan)
@@ -510,14 +537,32 @@ def solve_serialized(robots, obstacles, node_points, element_bodies, ground_node
     print_plan(full_plan)
     return full_plan, None
 
-def extract_facts(plan, initial_confs):
+def partition_plan(plan):
     plan_from_robot = defaultdict(list)
     for action in plan:
         plan_from_robot[action.args[0]].append(action)
+    return plan_from_robot
 
-    # TODO: use certificate instead
-    static_facts = []
+def compute_total_orders(plan):
     partial_orders = set()
+    for name, actions in partition_plan(plan).items():
+        last_element = None
+        for i, action in enumerate(actions):
+            if action.name == 'print':
+                r, n1, e, n2, q1, q2, t = action.args
+                if last_element is not None:
+                    # TODO: need level orders to synchronize between robots
+                    # TODO: useful for collision checking
+                    partial_orders.add((e, last_element))
+                last_element = e
+            else:
+                raise NotImplementedError(action.name)
+    return partial_orders
+
+def extract_static_facts(plan, initial_confs):
+    # TODO: use certificate instead
+    plan_from_robot = partition_plan(plan)
+    static_facts = []
     for name, actions in plan_from_robot.items():
         last_element = None
         last_conf = initial_confs[name]
@@ -535,9 +580,7 @@ def extract_facts(plan, initial_confs):
                     ('Transition', r, q2, last_conf),
                 ])
                 if last_element is not None:
-                    # TODO: need level orders to synchronize between robots
-                    partial_orders.add((e, last_element)) # TODO: useful for collision checking
-                    # static_facts.append(('Order', last_element, e))
+                    static_facts.append(('Order', last_element, e))
                 last_element = e
                 last_conf = q1
                 # TODO: save collision information
@@ -546,7 +589,7 @@ def extract_facts(plan, initial_confs):
         static_facts.extend([
             ('Transition', name, initial_confs[name], last_conf),
         ])
-    return static_facts, partial_orders
+    return static_facts
 
 def stripstream(robot1, obstacles, node_points, element_bodies, ground_nodes,
                 serialize=True, hierarchy=False, **kwargs):
@@ -573,7 +616,8 @@ def stripstream(robot1, obstacles, node_points, element_bodies, ground_nodes,
 
     if hierarchy:
         print(SEPARATOR)
-        static_facts, partial_orders = extract_facts(plan, initial_confs)
+        static_facts = extract_static_facts(plan, initial_confs)
+        partial_orders = compute_total_orders(plan)
         plan, certificate = solve_joint(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
                                         initial_confs=initial_confs, can_print=False, can_transit=True,
                                         additional_init=static_facts, additional_orders=partial_orders, **kwargs)
@@ -665,7 +709,7 @@ def get_wild_print_gen_fn(robots, static_obstacles, node_points, element_bodies,
     # TODO: could reuse end-effector trajectories
     # TODO: bias samples to be near the initial config
     gen_fn_from_robot = {robot: get_print_gen_fn(robot, static_obstacles, node_points, element_bodies,
-                                                 ground_nodes, **kwargs) for robot in robots}
+                                                 ground_nodes, p_nearby=1., **kwargs) for robot in robots}
     def wild_gen_fn(name, node1, element, node2):
         # TODO: could cache this
         # sequence = [result.get_mapping()['?e'].value for result in CURRENT_STREAM_PLAN]

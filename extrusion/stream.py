@@ -313,7 +313,6 @@ def compute_direction_path(tool_traj, collision_fn, initial_conf=None, ee_only=F
         # TODO: plan_approach
         return Command([print_traj])
 
-    initial_conf = None # TODO: do with some probability
     max_error = TRANSLATION_TOLERANCE
     nearby = initial_conf is not None
     if nearby:
@@ -395,7 +394,7 @@ SKIP_PERCENTAGE = 0.0 # 0.0 | 0.95
 def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground_nodes,
                      precompute_collisions=False, partial_orders=set(), removed=set(),
                      collisions=True, disable=False, ee_only=False, allow_failures=False,
-                     max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS, max_time=INF, **kwargs):
+                     p_nearby=0., max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS, max_time=INF, **kwargs):
     # TODO: print on full sphere and just check for collisions with the printed element
     # TODO: can slide a component of the element down
     if not collisions:
@@ -452,8 +451,9 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
                 for _ in range(max_attempts):
                     if max_time <= elapsed_time(start_time):
                         return
+                    nearby_conf = initial_conf if random.random() < p_nearby else None
                     command = compute_direction_path(tool_traj, collision_fn, ee_only=ee_only,
-                                                     initial_conf=initial_conf, **kwargs)
+                                                     initial_conf=nearby_conf, **kwargs)
                     if command is None:
                         continue
 
