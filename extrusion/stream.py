@@ -113,12 +113,11 @@ def command_collision(end_effector, command, bodies):
     collisions = [False for _ in range(len(bodies))]
     # Orientation remains the same for the extrusion trajectory
     idx_from_body = dict(zip(bodies, range(len(bodies))))
-    # TODO: use bounding cylinder for each element
     # TODO: separate into another method. Sort paths by tool poses first
     for trajectory in command.trajectories:
         for tool_pose in randomize(trajectory.get_link_path()): # TODO: bisect
             end_effector.set_pose(tool_pose)
-            #for body, _ in get_bodies_in_region(tool_aabb):
+            #for body, _ in get_bodies_in_region(tool_aabb): # TODO
             for i, body in enumerate(bodies):
                 if body not in idx_from_body: # Robot
                     continue

@@ -43,7 +43,7 @@ DEFAULT_SCALE = 1.
 SCALE_ASSEMBLY = {
     'simple_frame': 5, # 3.5 | 5
     'topopt-101_tiny': 2.,
-    'four-frame': 2.
+    'four-frame': 5.
 }
 
 ##################################################

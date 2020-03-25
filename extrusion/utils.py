@@ -141,9 +141,9 @@ def get_disabled_collisions(robot):
                   for link in pair if has_link(robot, link))
                   for pair in DISABLED_COLLISIONS}
 
-def get_custom_limits(robot):
+def get_custom_limits(robot, named_limits=CUSTOM_LIMITS):
     return {joint_from_name(robot, joint): limits
-            for joint, limits in CUSTOM_LIMITS.items()}
+            for joint, limits in named_limits.items()}
 
 def get_cspace_distance(robot, q1, q2):
     #return get_distance(q1, q2)
@@ -166,8 +166,9 @@ class EndEffector(object):
         tool_links = get_link_subtree(robot, self.ee_link)
         self.body = clone_body(robot, links=tool_links, visual=False, collision=True, **kwargs)
         set_static(self.body)
-        for link in get_all_links(self.body):
-            set_color(self.body, color, link) # None = white
+        if color is not None:
+            for link in get_all_links(self.body):
+                set_color(self.body, color, link) # None = white
     def get_tool_pose(self):
         return get_link_pose(self.robot, self.tool_link)
     def set_pose(self, tool_pose):
@@ -288,6 +289,7 @@ class Trajectory(object):
 
 class MotionTrajectory(Trajectory): # Transfer
     def __init__(self, robot, joints, path, attachments=[]):
+        # TODO: store the end effector
         super(MotionTrajectory, self).__init__(robot, joints, path)
         self.attachments = attachments
     def reverse(self):

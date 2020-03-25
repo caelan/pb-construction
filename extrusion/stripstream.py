@@ -2,6 +2,7 @@ from __future__ import print_function
 
 from collections import defaultdict, Counter
 from itertools import product, permutations
+from operator import itemgetter
 
 import numpy as np
 import time
@@ -24,15 +25,20 @@ from pddlstream.utils import read, get_file_path, inclusive_range, neighbors_fro
 from pddlstream.language.temporal import compute_duration, compute_start, compute_end, apply_start, \
     create_planner, DURATIVE_ACTIONS, reverse_plan
 from pybullet_tools.utils import get_configuration, set_pose, Euler, get_point, \
-    get_movable_joints, has_gui, WorldSaver, wait_if_gui, add_line, RED, \
+    get_movable_joints, has_gui, WorldSaver, wait_if_gui, add_line, BLUE, RED, \
     wait_for_duration, get_length, INF, LockRenderer, randomize, set_configuration, Pose, Point, aabb_overlap, pairwise_link_collision, \
     aabb_union, plan_joint_motion, SEPARATOR, user_input, remove_all_debug, GREEN, elapsed_time, VideoSaver, \
-    point_from_pose
+    point_from_pose, draw_aabb, get_pose, tform_point, invert, get_yaw, draw_pose
 
 STRIPSTREAM_ALGORITHM = 'stripstream'
 ROBOT_TEMPLATE = 'r{}'
 
-DUAL_CONF = [np.pi/8, -np.pi/4, np.pi/2, 0, np.pi/4, -np.pi/2]
+DUAL_CONF = [np.pi/4, -np.pi/4, np.pi/2, 0, np.pi/4, -np.pi/2] # np.pi/8
+
+CUSTOM_LIMITS = { # TODO: do instead of modifying the URDF
+   #'robot_joint_a1': (-np.pi/2, np.pi/2),
+   #'robot_joint_a1': (-np.pi / 2, 0),
+}
 
 # ----- Small -----
 # extreme_beam_test
@@ -94,6 +100,7 @@ def mirror_robot(robot1, node_points):
         set_configuration(robot, DUAL_CONF)
         # joint1 = get_movable_joints(robot)[0]
         # set_joint_position(robot, joint1, np.pi / 8)
+        draw_pose(get_pose(robot), length=0.25)
     return robots
 
 ##################################################
@@ -255,13 +262,18 @@ def cluster_vertices(elements, node_points, ground_nodes, ratio=0.25, weight=0.)
     return cluster_from_node
 
 def compute_assignments(robots, elements, node_points, initial_confs):
+    # TODO: print direction might influence the assignment
     assignments = {name: set() for name in initial_confs}
     for element in elements:
-        point = get_midpoint(node_points, element)
+        point = get_midpoint(node_points, element) # min/max
         closest_robot, closest_distance = None, INF
         for i, robot in enumerate(robots):
-            base_point = get_point(robot)
-            distance = get_length((base_point - point)[:2])
+            base_pose = get_pose(robot)
+            base_point = point_from_pose(base_pose)
+            point_base = tform_point(invert(base_pose), point)
+            distance = get_yaw(point_base) # which side its on
+            #distance = abs((base_point - point)[0]) # x distance
+            #distance = get_length((base_point - point)[:2]) # xy distance
             if distance < closest_distance:
                 closest_robot, closest_distance = ROBOT_TEMPLATE.format(i), distance
         assert closest_robot is not None
@@ -780,14 +792,14 @@ def get_wild_print_gen_fn(robots, static_obstacles, node_points, element_bodies,
     return wild_gen_fn
 
 def get_collision_test(robots, collisions=True, **kwargs):
+    # TODO: check end-effector collisions first
     def test(name1, command1, name2, command2):
         robot1, robot2 = index_from_name(robots, name1), index_from_name(robots, name2)
         if (robot1 == robot2) or not collisions:
             return False
         # TODO: check collisions between pairs of inflated adjacent element
-        # TODO: check end-effector collisions first
         for traj1, traj2 in randomize(product(command1.trajectories, command2.trajectories)):
-            # TODO: use for element checks
+            # TODO: use swept aabbs for element checks
             aabbs1, aabbs2 = traj1.get_aabbs(), traj2.get_aabbs()
             swept_aabbs1 = {link: aabb_union(link_aabbs[link] for link_aabbs in aabbs1) for link in aabbs1[0]}
             swept_aabbs2 = {link: aabb_union(link_aabbs[link] for link_aabbs in aabbs2) for link in aabbs2[0]}
@@ -795,6 +807,11 @@ def get_collision_test(robots, collisions=True, **kwargs):
                              if aabb_overlap(swept_aabbs1[link1], swept_aabbs2[link2])]
             if not swept_overlap:
                 continue
+            # for l1 in set(map(itemgetter(0), swept_overlap)):
+            #     draw_aabb(swept_aabbs1[l1], color=RED)
+            # for l2 in set(map(itemgetter(1), swept_overlap)):
+            #     draw_aabb(swept_aabbs2[l2], color=BLUE)
+
             for index1, index2 in product(randomize(range(len(traj1.path))), randomize(range(len(traj2.path)))):
                 overlap = [(link1, link2) for link1, link2 in swept_overlap
                            if aabb_overlap(aabbs1[index1][link1], aabbs2[index2][link2])]
@@ -803,6 +820,7 @@ def get_collision_test(robots, collisions=True, **kwargs):
                     continue
                 set_configuration(robot1, traj1.path[index1])
                 set_configuration(robot2, traj2.path[index2])
+                #wait_if_gui()
                 #if pairwise_collision(robot1, robot2):
                 #    return True
                 for link1, link2 in overlap:
