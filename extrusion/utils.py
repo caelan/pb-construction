@@ -13,7 +13,7 @@ from pybullet_tools.utils import get_link_pose, BodySaver, set_point, multiply, 
     get_distance, get_relative_pose, get_link_subtree, clone_body, randomize, get_movable_joints, get_all_links, \
     get_bodies_in_region, pairwise_link_collision, \
     set_static, BASE_LINK, INF, create_plane, apply_alpha, point_from_pose, get_distance_fn, get_memory_in_kb, \
-    get_pairs, Saver, set_configuration, add_line, RED, aabb_union
+    get_pairs, Saver, set_configuration, add_line, RED, aabb_union, TRANSPARENT, set_color
 from pddlstream.utils import get_connected_components
 
 KUKA_DIR = '../conrob_pybullet/models/kuka_kr6_r900/urdf/'
@@ -158,16 +158,16 @@ def retime_waypoints(waypoints, start_time=0.):
 ##################################################
 
 class EndEffector(object):
-    def __init__(self, robot, ee_link, tool_link, **kwargs):
+    def __init__(self, robot, ee_link, tool_link, color=TRANSPARENT, **kwargs):
         self.robot = robot
         self.ee_link = ee_link
         self.tool_link = tool_link
         self.tool_from_ee = get_relative_pose(self.robot, self.ee_link, self.tool_link)
         tool_links = get_link_subtree(robot, self.ee_link)
-        self.body = clone_body(robot, links=tool_links, **kwargs)
+        self.body = clone_body(robot, links=tool_links, visual=False, collision=True, **kwargs)
         set_static(self.body)
-        # for link in get_all_links(tool_body):
-        #    set_color(tool_body, np.zeros(4), link)
+        for link in get_all_links(self.body):
+            set_color(self.body, color, link) # None = white
     def get_tool_pose(self):
         return get_link_pose(self.robot, self.tool_link)
     def set_pose(self, tool_pose):

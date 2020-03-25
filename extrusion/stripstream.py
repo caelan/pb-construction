@@ -26,7 +26,8 @@ from pddlstream.language.temporal import compute_duration, compute_start, comput
 from pybullet_tools.utils import get_configuration, set_pose, Euler, get_point, \
     get_movable_joints, has_gui, WorldSaver, wait_if_gui, add_line, RED, \
     wait_for_duration, get_length, INF, LockRenderer, randomize, set_configuration, Pose, Point, aabb_overlap, pairwise_link_collision, \
-    aabb_union, plan_joint_motion, SEPARATOR, user_input, remove_all_debug, GREEN, elapsed_time, VideoSaver, point_from_pose
+    aabb_union, plan_joint_motion, SEPARATOR, user_input, remove_all_debug, GREEN, elapsed_time, VideoSaver, \
+    point_from_pose
 
 STRIPSTREAM_ALGORITHM = 'stripstream'
 ROBOT_TEMPLATE = 'r{}'
@@ -70,15 +71,22 @@ class Conf(object):
         return '{}({})'.format(self.__class__.__name__, self.node)
 
 def mirror_robot(robot1, node_points):
+    # TODO: place robots side by side or diagonal across
     set_extrusion_camera(node_points, theta=-np.pi/3)
     #draw_pose(Pose())
     centroid = np.average(node_points, axis=0)
+    centroid_pose = Pose(point=centroid)
     #draw_pose(Pose(point=centroid))
 
     # print(centroid)
-    # print(get_point(robot1))
+    scale = 0. # 0.15
+    vector = get_point(robot1) - centroid
+    set_pose(robot1, Pose(point=Point(*+scale*vector[:2])))
+    # Inner product of end-effector z with base->centroid or perpendicular to this line
+    # Partition by sides
+
     robot2 = load_robot()
-    set_pose(robot2, Pose(point=Point(*2 * centroid[:2]), euler=Euler(yaw=np.pi)))
+    set_pose(robot2, Pose(point=Point(*-(2+scale)*vector[:2]), euler=Euler(yaw=np.pi)))
 
     # robots = [robot1]
     robots = [robot1, robot2]
@@ -326,7 +334,8 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
         'sample-move': get_wild_move_gen_fn(robots, obstacles, element_bodies,
                                             partial_orders=partial_orders, **kwargs),
         'sample-print': get_wild_print_gen_fn(robots, obstacles, node_points, element_bodies, ground_nodes,
-                                              initial_confs=initial_confs, partial_orders=partial_orders, removed=removed, **kwargs),
+                                              initial_confs=initial_confs, partial_orders=partial_orders,
+                                              removed=removed, **kwargs),
         #'test-stiffness': from_test(test_stiffness),
         #'test-cfree-traj-conf': from_test(lambda *args: True),
         #'test-cfree-traj-traj': from_test(get_cfree_test(**kwargs)),
@@ -537,8 +546,7 @@ def extract_static_facts(plan, certificate, initial_confs):
 def solve_joint(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
                 trajectories=[], collisions=True, disable=False, max_time=INF, **kwargs):
     problem = get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
-                            trajectories=trajectories, collisions=collisions, disable=disable,
-                            precompute_collisions=True, **kwargs)
+                             trajectories=trajectories, collisions=collisions, disable=disable, **kwargs)
     return solve_pddlstream(problem, node_points, element_bodies, max_time=max_time)
 
 def solve_serialized(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
@@ -563,8 +571,7 @@ def solve_serialized(robots, obstacles, node_points, element_bodies, ground_node
         draw_model(printed, node_points, ground_nodes, color=RED)
         problem = get_pddlstream(robots, obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
                                  printed=printed, removed=removed, return_home=False,
-                                 trajectories=trajectories, collisions=collisions, disable=disable,
-                                 precompute_collisions=True, **kwargs)
+                                 trajectories=trajectories, collisions=collisions, disable=disable, **kwargs)
         layer_plan, certificate = solve_pddlstream(problem, node_points, element_bodies,
                                                    max_time=max_time - elapsed_time(start_time))
         remove_all_debug()
@@ -729,7 +736,8 @@ def get_wild_print_gen_fn(robots, static_obstacles, node_points, element_bodies,
     # TODO: could reuse end-effector trajectories
     # TODO: max distance from nearby
     gen_fn_from_robot = {robot: get_print_gen_fn(robot, static_obstacles, node_points, element_bodies, ground_nodes,
-                                                 p_nearby=1., approach_distance=0.05, **kwargs) for robot in robots}
+                                                 p_nearby=1., approach_distance=0.05,
+                                                 precompute_collisions=True, **kwargs) for robot in robots}
     wild_move_fn = get_wild_move_gen_fn(robots, static_obstacles, element_bodies, **kwargs)
 
     def wild_gen_fn(name, node1, element, node2):

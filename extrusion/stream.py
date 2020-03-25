@@ -10,7 +10,7 @@ from pybullet_tools.utils import get_movable_joints, get_joint_positions, multip
     link_from_name, get_pose, get_collision_fn, set_pose, pairwise_collision, Pose, Euler, Point, interval_generator, \
     randomize, get_extend_fn, user_input, INF, elapsed_time, get_bodies_in_region, get_aabb, get_all_links, \
     pairwise_link_collision, step_simulation, BASE_LINK, get_configuration, get_point, get_unit_vector, draw_pose, \
-    wait_if_gui, draw_point
+    wait_if_gui, draw_point, tform_point, set_color, GREEN, RED
 from extrusion.utils import TOOL_LINK, get_disabled_collisions, get_node_neighbors, \
     PrintTrajectory, retrace_supporters, prune_dominated, Command, MotionTrajectory, RESOLUTION, \
     JOINT_WEIGHTS, EE_LINK, EndEffector, is_ground, is_end, is_reversed, reverse_element, set_configuration
@@ -56,7 +56,8 @@ TRANSLATION_TOLERANCE = 1e-2
     #return multiply(thing, rot)
 
 
-def get_direction_generator(**kwargs):
+def get_direction_generator(end_effector, **kwargs):
+    world_from_base = get_pose(end_effector.robot)
     lower = [-np.pi/2, -np.pi/2]
     upper = [+np.pi/2, +np.pi/2]
     for [roll, pitch] in interval_generator(lower, upper, **kwargs):
@@ -194,7 +195,6 @@ def plan_approach(end_effector, print_traj, collision_fn, approach_distance=APPR
     extend_fn = get_extend_fn(robot, joints, resolutions=0.25*JOINT_RESOLUTIONS)
     tool_link = link_from_name(robot, TOOL_LINK)
     approach_pose = Pose(Point(z=-approach_distance))
-    # TODO: constrain the orientation per robot
 
     #element = print_traj.element
     #midpoint = get_point(element)
@@ -276,7 +276,7 @@ class Extrusion(object):
             # TODO: orthogonal to the ground
             self.direction_generator = cycle([Pose(euler=Euler(roll=0, pitch=0))])
         else:
-            self.direction_generator = get_direction_generator(use_halton=False)
+            self.direction_generator = get_direction_generator(self.end_effector, use_halton=False)
         self.trajectories = []
     @property
     def directed(self):
@@ -418,8 +418,7 @@ def get_print_gen_fn(robot, fixed_obstacles, node_points, element_bodies, ground
 
     initial_conf = get_configuration(robot)
     end_effector = EndEffector(robot, ee_link=link_from_name(robot, EE_LINK),
-                               tool_link=link_from_name(robot, TOOL_LINK),
-                               visual=False, collision=False)
+                               tool_link=link_from_name(robot, TOOL_LINK))
     extrusions = {reverse_element(element) if reverse else element:
                       Extrusion(end_effector, element_bodies, node_points, ground_nodes, element, reverse)
                   for element in element_bodies for reverse in [False, True]}
