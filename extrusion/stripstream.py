@@ -6,6 +6,7 @@ from operator import itemgetter
 
 import numpy as np
 import time
+import os
 
 from extrusion.heuristics import compute_layer_from_vertex, compute_distance_from_node
 from extrusion.stream import get_print_gen_fn, USE_CONMECH, APPROACH_DISTANCE, SELF_COLLISIONS, \
@@ -16,6 +17,7 @@ from extrusion.utils import load_robot, get_other_node, get_node_neighbors, Prin
 from extrusion.visualization import set_extrusion_camera, draw_model
 #from examples.pybullet.turtlebots.run import *
 from pddlstream.algorithms.downward import set_cost_scale
+from pddlstream.algorithms.incremental import solve_incremental
 from pddlstream.algorithms.focused import solve_focused #, CURRENT_STREAM_PLAN
 from pddlstream.language.constants import And, PDDLProblem, print_solution, DurativeAction, Equal, print_plan, \
     NOT, EQ, get_prefix, get_function
@@ -23,7 +25,7 @@ from pddlstream.language.stream import StreamInfo, PartialInputs, WildOutput
 from pddlstream.language.function import FunctionInfo
 from pddlstream.utils import read, get_file_path, inclusive_range, neighbors_from_orders
 from pddlstream.language.temporal import compute_duration, compute_start, compute_end, apply_start, \
-    create_planner, DURATIVE_ACTIONS, reverse_plan
+    create_planner, DURATIVE_ACTIONS, reverse_plan, get_tfd_path
 from pybullet_tools.utils import get_configuration, set_pose, Euler, get_point, \
     get_movable_joints, has_gui, WorldSaver, wait_if_gui, add_line, BLUE, RED, \
     wait_for_duration, get_length, INF, LockRenderer, randomize, set_configuration, Pose, Point, aabb_overlap, pairwise_link_collision, \
@@ -318,6 +320,11 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
                    temporal=True, sequential=False, local=False,
                    can_print=True, can_transit=False,
                    checker=None, **kwargs):
+    try:
+        get_tfd_path()
+    except RuntimeError:
+        temporal = False
+        print('Temporal Fast Downward is not installed. Disabling temporal planning.')
     # TODO: TFD submodule
     assert not removed & printed
     remaining = set(element_bodies) - removed - printed
@@ -335,7 +342,7 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
     # draw_model(supporters, node_points, ground_nodes, color=RED)
     # wait_if_gui()
 
-    domain_pddl = read(get_file_path(__file__, 'pddl/temporal.pddl' if temporal else 'pddl/domain.pddl'))
+    domain_pddl = read(get_file_path(__file__, os.path.join('pddl', 'temporal.pddl' if temporal else 'domain.pddl')))
     stream_pddl = read(get_file_path(__file__, 'pddl/stream.pddl'))
     constant_map = {}
 
@@ -621,8 +628,8 @@ def solve_serialized(robots, obstacles, node_points, element_bodies, ground_node
 ##################################################
 
 def stripstream(robot1, obstacles, node_points, element_bodies, ground_nodes,
-                serialize=False, hierarchy=False, **kwargs):
-    robots = mirror_robot(robot1, node_points)
+                dual=True, serialize=False, hierarchy=False, **kwargs):
+    robots = mirror_robot(robot1, node_points) if dual else [robot1]
     elements = set(element_bodies)
     initial_confs = {ROBOT_TEMPLATE.format(i): Conf(robot) for i, robot in enumerate(robots)}
     saver = WorldSaver()
