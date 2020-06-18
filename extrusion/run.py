@@ -90,7 +90,7 @@ def plan_extrusion(args, viewer=False, precompute=False, verify=False, verbose=F
 
     partial_orders = [] # TODO: could treat ground as partial orders
 
-    connect(use_gui=viewer, color=BACKGROUND_COLOR) # TODO: avoid reconnecting
+    connect(use_gui=viewer) #, color=BACKGROUND_COLOR) # TODO: avoid reconnecting
     with LockRenderer(True):
         draw_pose(unit_pose(), length=1.)
         obstacles, robot = load_world()
