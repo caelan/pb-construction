@@ -21,6 +21,7 @@ LAZY = True
 def create_bounding_mesh(element_bodies, node_points, printed_elements):
     # TODO: use bounding boxes instead of points
     # TODO: connected components
+    # TODO: buffer or use distance from the mesh
     #printed_points = [node_points[n] for element in printed_elements for n in element]
     printed_points = []
     for element in printed_elements:

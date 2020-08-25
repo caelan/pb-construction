@@ -7,11 +7,18 @@ import numpy as np
 from collections import namedtuple
 from itertools import combinations, product, combinations_with_replacement
 
-from pyconmech import StiffnessChecker
-
 from extrusion.utils import get_extructed_ids, compute_sequence_distance, get_distance, \
     compute_printable_directed, get_undirected, compute_z_distance, reverse_element, get_directions
-from pybullet_tools.utils import HideOutput, INF, elapsed_time, randomize, implies
+from pybullet_tools.utils import HideOutput, INF, elapsed_time, randomize, implies, user_input
+
+try:
+    import pyconmech
+except ImportError as e:
+    print('\x1b[6;30;43m' + '{}, Not using conmech'.format(e) + '\x1b[0m')
+    USE_CONMECH = False
+    user_input("Press Enter to continue...")
+else:
+    USE_CONMECH = True
 
 TRANS_TOL = 0.0015
 ROT_TOL = INF # 5 * np.pi / 180
@@ -22,6 +29,9 @@ Reaction = namedtuple('Reaction', ['fx', 'fy', 'fz', 'mx', 'my', 'mz'])
 
 
 def create_stiffness_checker(extrusion_path, verbose=False):
+    if not USE_CONMECH:
+        return None
+    from pyconmech import StiffnessChecker
     # TODO: the stiffness checker likely has a memory leak
     # https://github.com/yijiangh/conmech/blob/master/src/bindings/pyconmech/pyconmech.cpp
     if not os.path.exists(extrusion_path):

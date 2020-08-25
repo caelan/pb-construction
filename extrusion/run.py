@@ -150,6 +150,14 @@ def solve_extrusion(robot, obstacles, element_from_id, node_points, element_bodi
         plan = compute_motions(robot, obstacles, element_bodies, initial_conf, plan, collisions=not args.cfree)
     return plan, data
 
+def transform_model(problem, elements, node_points, ground_nodes):
+    #elements = downsample_structure(elements, node_points, ground_nodes, num=None)
+    #elements, ground_nodes = downsample_nodes(elements, node_points, ground_nodes)
+    node_points = scale_assembly(elements, node_points, ground_nodes,
+                                 scale=SCALE_ASSEMBLY.get(problem, DEFAULT_SCALE))
+    node_points = rotate_assembly(elements, node_points, ground_nodes, yaw=np.pi / 8)
+    return node_points
+
 def plan_extrusion(args_list, viewer=False, verify=False, verbose=False, watch=False):
     results = []
     if not args_list:
@@ -167,12 +175,7 @@ def plan_extrusion(args_list, viewer=False, verify=False, verbose=False, watch=F
     #extrusion_path = rotate_problem(extrusion_path)
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path, verbose=True)
     elements = sorted(element_from_id.values())
-
-    #elements = downsample_structure(elements, node_points, ground_nodes, num=None)
-    #elements, ground_nodes = downsample_nodes(elements, node_points, ground_nodes)
-    node_points = scale_assembly(elements, node_points, ground_nodes,
-                                 scale=SCALE_ASSEMBLY.get(problem, DEFAULT_SCALE))
-    node_points = rotate_assembly(elements, node_points, ground_nodes, yaw=np.pi / 8)
+    #node_points = transform_model(problem, elements, node_points, ground_nodes)
 
     connect(use_gui=viewer, shadows=SHADOWS, color=BACKGROUND_COLOR)
     with LockRenderer(lock=True):
@@ -188,12 +191,16 @@ def plan_extrusion(args_list, viewer=False, verify=False, verbose=False, watch=F
         #    label_nodes(node_points)
         saver = WorldSaver()
 
-    checker = create_stiffness_checker(extrusion_path, verbose=False) # if stiffness else None
     #visualize_stiffness(extrusion_path)
     #debug_elements(robot, node_points, node_order, elements)
     initial_position = point_from_pose(get_link_pose(robot, link_from_name(robot, TOOL_LINK)))
 
+    checker = None
+    plan = None
     for args in args_list:
+        if args.stiffness and (checker is None):
+            checker = create_stiffness_checker(extrusion_path, verbose=False)
+
         saver.restore()
         #initial_conf = get_joint_positions(robot, get_movable_joints(robot))
         with LockRenderer(lock=not viewer):
@@ -243,14 +250,15 @@ def plan_extrusion(args_list, viewer=False, verify=False, verbose=False, watch=F
     reset_simulation()
     disconnect()
     if watch and (plan is not None):
-        # TODO: avoid reconnecting
+        args = args_list[-1]
         animate = not (args.disable or args.ee_only)
-        connect(use_gui=True, shadows=SHADOWS, color=BACKGROUND_COLOR)
+        connect(use_gui=True, shadows=SHADOWS, color=BACKGROUND_COLOR) # TODO: avoid reconnecting
         obstacles, robot = load_world()
         display_trajectories(node_points, ground_nodes, plan, #time_step=None, video=True,
                              animate=animate)
         reset_simulation()
         disconnect()
+
     if not verbose:
         sys.stdout.close()
     return results

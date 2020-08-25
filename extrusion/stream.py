@@ -25,14 +25,6 @@ except ImportError as e:
 else:
     USE_IKFAST = True
 
-try:
-    import pyconmech
-except ImportError as e:
-    print('\x1b[6;30;43m' + '{}, Not using conmech'.format(e) + '\x1b[0m')
-    USE_CONMECH = False
-    user_input("Press Enter to continue...")
-else:
-    USE_CONMECH = True
 
 SELF_COLLISIONS = True
 ORTHOGONAL_GROUND = False

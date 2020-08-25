@@ -9,8 +9,9 @@ import time
 import os
 
 from extrusion.heuristics import compute_layer_from_vertex, compute_distance_from_node
-from extrusion.stream import get_print_gen_fn, USE_CONMECH, APPROACH_DISTANCE, SELF_COLLISIONS, \
+from extrusion.stream import get_print_gen_fn, APPROACH_DISTANCE, SELF_COLLISIONS, \
     JOINT_WEIGHTS, RESOLUTION
+from extrusion.stiffness import USE_CONMECH
 from extrusion.utils import load_robot, get_other_node, get_node_neighbors, PrintTrajectory, get_midpoint, \
     get_element_length, TOOL_VELOCITY, Command, MotionTrajectory, \
     get_disabled_collisions, retrace_supporters
