@@ -30,7 +30,6 @@ def get_pairs(iterator):
 def create_bounding_mesh(printed_elements, element_bodies=None, node_points=None, buffer=0.):
     # TODO: use bounding boxes instead of points
     # TODO: connected components
-    # TODO: implicit buffer by distance from the mesh
     assert printed_elements
     assert element_bodies or node_points
     printed_points = []
@@ -42,7 +41,7 @@ def create_bounding_mesh(printed_elements, element_bodies=None, node_points=None
             printed_points.extend(apply_affine(get_pose(body), vertices_from_link(body, BASE_LINK)))
 
     if buffer != 0.:
-        half_extents = buffer*np.ones(3) / 2.
+        half_extents = buffer*np.ones(3)
         for point in list(printed_points):
             printed_points.extend(np.array(point) + np.array(corner)
                                   for corner in get_aabb_vertices(AABB(-half_extents, half_extents)))
@@ -58,7 +57,7 @@ def create_bounding_mesh(printed_elements, element_bodies=None, node_points=None
         raise e
         #return None
 
-def decompose_structure(fixed_obstacles, element_bodies, printed_elements,  resolution=0.25):
+def decompose_structure(fixed_obstacles, element_bodies, printed_elements, resolution=0.25):
     # TODO: precompute this
     frequencies = {}
     for element in printed_elements:
@@ -81,8 +80,6 @@ def decompose_structure(fixed_obstacles, element_bodies, printed_elements,  reso
             hulls[hull] = element_obstacles
         else:
             obstacles.extend(element_obstacles)
-
-    #pairwise_collision(robot, element, max_distance=0.1) # body_collision
     return hulls, obstacles
 
 ##################################################
@@ -112,7 +109,8 @@ def compute_motion(robot, fixed_obstacles, element_bodies,
     bounding = None
     if printed_elements:
         # TODO: pass in node_points
-        bounding = create_bounding_mesh(printed_elements, element_bodies=element_bodies, node_points=None, buffer=buffer)
+        bounding = create_bounding_mesh(printed_elements, element_bodies=element_bodies, node_points=None,
+                                        buffer=0.01) # buffer=buffer)
         #wait_for_user()
 
     sample_fn = get_sample_fn(robot, joints, custom_limits=custom_limits)
@@ -126,7 +124,7 @@ def compute_motion(robot, fixed_obstacles, element_bodies,
 
     def test_bounding(q):
         set_joint_positions(robot, joints, q)
-        collision = (bounding is not None) and pairwise_collision(robot, bounding)
+        collision = (bounding is not None) and pairwise_collision(robot, bounding, max_distance=buffer) # body_collision
         return q, collision
 
     def dynamic_extend_fn(q_start, q_end):
