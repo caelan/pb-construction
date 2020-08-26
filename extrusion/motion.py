@@ -10,7 +10,7 @@ from scipy.spatial.qhull import QhullError
 from pybullet_tools.utils import get_movable_joints, elapsed_time, wait_for_user, convex_hull, \
     create_mesh, apply_alpha, remove_body, pairwise_collision, get_sample_fn, get_distance_fn, get_extend_fn, \
     check_initial_end, birrt, INF, BASE_LINK, vertices_from_link, apply_affine, get_pose, has_gui, set_color, remove_all_debug, \
-    RED
+    RED, randomize, get_refine_fn, AABB, get_aabb_vertices
 
 from extrusion.utils import get_disabled_collisions, MotionTrajectory, PrintTrajectory, RESOLUTION, JOINT_WEIGHTS
 from extrusion.stream import get_element_collision_fn
@@ -18,15 +18,25 @@ from extrusion.stream import get_element_collision_fn
 MIN_ELEMENTS = INF # 2 | 3 | INF
 LAZY = True
 
-def create_bounding_mesh(element_bodies, node_points, printed_elements):
+def create_bounding_mesh(printed_elements, element_bodies=None, node_points=None, buffer=0.):
     # TODO: use bounding boxes instead of points
     # TODO: connected components
-    # TODO: buffer or use distance from the mesh
-    #printed_points = [node_points[n] for element in printed_elements for n in element]
+    # TODO: implicit buffer by distance from the mesh
+    assert printed_elements
+    assert element_bodies or node_points
     printed_points = []
-    for element in printed_elements:
-        body = element_bodies[element]
-        printed_points.extend(apply_affine(get_pose(body), vertices_from_link(body, BASE_LINK)))
+    if node_points is not None:
+        printed_points.extend(node_points[n] for element in printed_elements for n in element)
+    if element_bodies is not None:
+        for element in printed_elements:
+            body = element_bodies[element]
+            printed_points.extend(apply_affine(get_pose(body), vertices_from_link(body, BASE_LINK)))
+
+    if buffer != 0.:
+        half_extents = buffer*np.ones(3) / 2.
+        for point in list(printed_points):
+            printed_points.extend(np.array(point) + np.array(corner)
+                                  for corner in get_aabb_vertices(AABB(-half_extents, half_extents)))
 
     rgb = colorsys.hsv_to_rgb(h=random.random(), s=1, v=1)
     #rgb = RED
@@ -34,7 +44,6 @@ def create_bounding_mesh(element_bodies, node_points, printed_elements):
         mesh = convex_hull(printed_points)
         # handles = draw_mesh(mesh)
         return create_mesh(mesh, under=True, color=apply_alpha(rgb, 0.5))
-        # TODO: check collisions with hull before the elements
     except QhullError as e:
         print(printed_elements)
         raise e
@@ -52,39 +61,21 @@ def compute_motion(robot, fixed_obstacles, element_bodies,
     custom_limits = {}
     #element_from_body = {b: e for e, b in element_bodies.items()}
 
-    element_obstacles = {element_bodies[e] for e in printed_elements}
-    obstacles = set(fixed_obstacles) | element_obstacles
-    hulls = {}
-
-    # # TODO: precompute this
-    # resolution = 0.25
-    # frequencies = {}
-    # for element in printed_elements:
-    #     #key = None
-    #     midpoint = np.average([node_points[n] for n in element], axis=0)
-    #     #key = int(midpoint[2] / resolution)
-    #     key = tuple((midpoint / resolution).astype(int).tolist()) # round or int?
-    #     frequencies.setdefault(key, []).append(element)
-    # #print(len(frequencies))
-    # #print(Counter({key: len(elements) for key, elements in frequencies.items()}))
-    #
-    # # TODO: apply this elsewhere
-    # obstacles = list(fixed_obstacles)
-    # for elements in frequencies.values():
-    #     element_obstacles = randomize(element_bodies[e] for e in elements)
-    #     if MIN_ELEMENTS <= len(elements):
-    #         hull = create_bounding_mesh(element_bodies, node_points, elements)
-    #         assert hull is not None
-    #         hulls[hull] = element_obstacles
-    #     else:
-    #         obstacles.extend(element_obstacles)
-
-    if not collisions:
-        hulls = {}
-        obstacles = []
+    hulls, obstacles = {}, []
+    if collisions:
+        element_obstacles = {element_bodies[e] for e in printed_elements}
+        obstacles = set(fixed_obstacles) | element_obstacles
+        #hulls, obstacles = decompose_structure(fixed_obstacles, element_bodies, printed_elements)
     #print(hulls)
     #print(obstacles)
     #wait_for_user()
+
+    #printed_elements = set(element_bodies)
+    bounding = None
+    if printed_elements:
+        # TODO: pass in node_points
+        bounding = create_bounding_mesh(printed_elements, element_bodies=element_bodies, node_points=None, buffer=0.05)
+        #wait_for_user()
 
     sample_fn = get_sample_fn(robot, joints, custom_limits=custom_limits)
     distance_fn = get_distance_fn(robot, joints, weights=weights)
@@ -114,6 +105,8 @@ def compute_motion(robot, fixed_obstacles, element_bodies,
     #                          weights=weights, resolutions=resolutions,
     #                          restarts=50, iterations=100, smooth=100)
 
+    if bounding is not None:
+        remove_body(bounding)
     for hull in hulls:
         remove_body(hull)
     if path is None:
