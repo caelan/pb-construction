@@ -89,7 +89,7 @@ def decompose_structure(fixed_obstacles, element_bodies, printed_elements,  reso
 
 def compute_motion(robot, fixed_obstacles, element_bodies,
                    printed_elements, start_conf, end_conf,
-                   collisions=True, max_time=INF, smooth=100):
+                   collisions=True, max_time=INF, buffer=0.1, smooth=100):
     # TODO: can also just plan to initial conf and then shortcut
     joints = get_movable_joints(robot)
     assert len(joints) == len(end_conf)
@@ -112,7 +112,7 @@ def compute_motion(robot, fixed_obstacles, element_bodies,
     bounding = None
     if printed_elements:
         # TODO: pass in node_points
-        bounding = create_bounding_mesh(printed_elements, element_bodies=element_bodies, node_points=None, buffer=0.2)
+        bounding = create_bounding_mesh(printed_elements, element_bodies=element_bodies, node_points=None, buffer=buffer)
         #wait_for_user()
 
     sample_fn = get_sample_fn(robot, joints, custom_limits=custom_limits)
@@ -122,7 +122,7 @@ def compute_motion(robot, fixed_obstacles, element_bodies,
     #                                disabled_collisions=disabled_collisions, custom_limits=custom_limits, max_distance=0.)
     collision_fn = get_element_collision_fn(robot, obstacles)
 
-    fine_extend_fn = get_extend_fn(robot, joints, resolutions=10*resolutions)
+    fine_extend_fn = get_extend_fn(robot, joints, resolutions=1e-1*resolutions) #, norm=INF)
 
     def test_bounding(q):
         set_joint_positions(robot, joints, q)
@@ -130,13 +130,16 @@ def compute_motion(robot, fixed_obstacles, element_bodies,
         return q, collision
 
     def dynamic_extend_fn(q_start, q_end):
+        # TODO: retime trajectories to be move more slowly around the structure
         for (q1, c1), (q2, c2) in get_pairs(map(test_bounding, extend_fn(q_start, q_end))):
-            #print(c1, c2)
+            # print(c1, c2, len(list(fine_extend_fn(q1, q2))))
+            # set_joint_positions(robot, joints, q2)
+            # wait_for_user()
             if c1 and c2:
                 for q in fine_extend_fn(q1, q2):
-                    yield q
                     # set_joint_positions(robot, joints, q)
                     # wait_for_user()
+                    yield q
             else:
                 yield q2
 
@@ -159,7 +162,12 @@ def compute_motion(robot, fixed_obstacles, element_bodies,
     #                          self_collisions=SELF_COLLISIONS, disabled_collisions=disabled_collisions,
     #                          weights=weights, resolutions=resolutions,
     #                          restarts=50, iterations=100, smooth=100)
-    #print(len(path))
+
+    # if (bounding is not None) and (path is not None):
+    #     for i, q in enumerate(path):
+    #         print('{}/{}'.format(i, len(path)))
+    #         set_joint_positions(robot, joints, q)
+    #         wait_for_user()
 
     if bounding is not None:
         remove_body(bounding)
