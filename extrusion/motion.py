@@ -10,13 +10,22 @@ from scipy.spatial.qhull import QhullError
 from pybullet_tools.utils import get_movable_joints, elapsed_time, wait_for_user, convex_hull, \
     create_mesh, apply_alpha, remove_body, pairwise_collision, get_sample_fn, get_distance_fn, get_extend_fn, \
     check_initial_end, birrt, INF, BASE_LINK, vertices_from_link, apply_affine, get_pose, has_gui, set_color, remove_all_debug, \
-    RED, randomize, get_refine_fn, AABB, get_aabb_vertices
+    RED, randomize, get_refine_fn, AABB, get_aabb_vertices, set_joint_positions
 
 from extrusion.utils import get_disabled_collisions, MotionTrajectory, PrintTrajectory, RESOLUTION, JOINT_WEIGHTS
 from extrusion.stream import get_element_collision_fn
 
 MIN_ELEMENTS = INF # 2 | 3 | INF
 LAZY = True
+
+def get_pairs(iterator):
+    try:
+        last = next(iterator)
+    except StopIteration:
+        return
+    for current in iterator:
+        yield last, current
+        last = current
 
 def create_bounding_mesh(printed_elements, element_bodies=None, node_points=None, buffer=0.):
     # TODO: use bounding boxes instead of points
@@ -49,6 +58,35 @@ def create_bounding_mesh(printed_elements, element_bodies=None, node_points=None
         raise e
         #return None
 
+def decompose_structure(fixed_obstacles, element_bodies, printed_elements,  resolution=0.25):
+    # TODO: precompute this
+    frequencies = {}
+    for element in printed_elements:
+        #key = None
+        midpoint = np.average([node_points[n] for n in element], axis=0)
+        #key = int(midpoint[2] / resolution)
+        key = tuple((midpoint / resolution).astype(int).tolist()) # round or int?
+        frequencies.setdefault(key, []).append(element)
+    #print(len(frequencies))
+    #print(Counter({key: len(elements) for key, elements in frequencies.items()}))
+
+    # TODO: apply this elsewhere
+    hulls = {}
+    obstacles = list(fixed_obstacles)
+    for elements in frequencies.values():
+        element_obstacles = randomize(element_bodies[e] for e in elements)
+        if MIN_ELEMENTS <= len(elements):
+            hull = create_bounding_mesh(element_bodies, node_points, elements)
+            assert hull is not None
+            hulls[hull] = element_obstacles
+        else:
+            obstacles.extend(element_obstacles)
+
+    #pairwise_collision(robot, element, max_distance=0.1) # body_collision
+    return hulls, obstacles
+
+##################################################
+
 def compute_motion(robot, fixed_obstacles, element_bodies,
                    printed_elements, start_conf, end_conf,
                    collisions=True, max_time=INF, smooth=100):
@@ -74,7 +112,7 @@ def compute_motion(robot, fixed_obstacles, element_bodies,
     bounding = None
     if printed_elements:
         # TODO: pass in node_points
-        bounding = create_bounding_mesh(printed_elements, element_bodies=element_bodies, node_points=None, buffer=0.05)
+        bounding = create_bounding_mesh(printed_elements, element_bodies=element_bodies, node_points=None, buffer=0.2)
         #wait_for_user()
 
     sample_fn = get_sample_fn(robot, joints, custom_limits=custom_limits)
@@ -83,6 +121,24 @@ def compute_motion(robot, fixed_obstacles, element_bodies,
     #collision_fn = get_collision_fn(robot, joints, obstacles, attachments={}, self_collisions=SELF_COLLISIONS,
     #                                disabled_collisions=disabled_collisions, custom_limits=custom_limits, max_distance=0.)
     collision_fn = get_element_collision_fn(robot, obstacles)
+
+    fine_extend_fn = get_extend_fn(robot, joints, resolutions=10*resolutions)
+
+    def test_bounding(q):
+        set_joint_positions(robot, joints, q)
+        collision = (bounding is not None) and pairwise_collision(robot, bounding)
+        return q, collision
+
+    def dynamic_extend_fn(q_start, q_end):
+        for (q1, c1), (q2, c2) in get_pairs(map(test_bounding, extend_fn(q_start, q_end))):
+            #print(c1, c2)
+            if c1 and c2:
+                for q in fine_extend_fn(q1, q2):
+                    yield q
+                    # set_joint_positions(robot, joints, q)
+                    # wait_for_user()
+            else:
+                yield q2
 
     def element_collision_fn(q):
         if collision_fn(q):
@@ -97,13 +153,13 @@ def compute_motion(robot, fixed_obstacles, element_bodies,
 
     path = None
     if check_initial_end(start_conf, end_conf, collision_fn):
-        path = birrt(start_conf, end_conf, distance_fn, sample_fn, extend_fn, element_collision_fn,
+        path = birrt(start_conf, end_conf, distance_fn, sample_fn, dynamic_extend_fn, element_collision_fn,
                      restarts=50, iterations=100, smooth=smooth, max_time=max_time)
-
     # path = plan_joint_motion(robot, joints, end_conf, obstacles=obstacles,
     #                          self_collisions=SELF_COLLISIONS, disabled_collisions=disabled_collisions,
     #                          weights=weights, resolutions=resolutions,
     #                          restarts=50, iterations=100, smooth=100)
+    #print(len(path))
 
     if bounding is not None:
         remove_body(bounding)
