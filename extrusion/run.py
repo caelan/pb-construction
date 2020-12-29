@@ -22,9 +22,9 @@ from extrusion.experiment import train_parallel
 from extrusion.motion import compute_motions, validate_trajectories
 from extrusion.stripstream import stripstream
 from extrusion.utils import load_world, TOOL_LINK, compute_sequence_distance, get_print_distance, \
-    recover_sequence, recover_directed_sequence, Profiler
+    recover_sequence, recover_directed_sequence, Profiler, extract_plan_data
 from extrusion.parsing import load_extrusion, create_elements_bodies, \
-    enumerate_problems, get_extrusion_path, affine_extrusion
+    enumerate_problems, get_extrusion_path, affine_extrusion, parse_origin_pose
 from extrusion.stream import get_print_gen_fn
 from extrusion.progression import progression, get_global_parameters
 from extrusion.regression import regression
@@ -33,16 +33,17 @@ from extrusion.validator import check_plan, compute_plan_deformation
 from extrusion.lookahead import lookahead
 from extrusion.stiffness import plan_stiffness, create_stiffness_checker
 
+from pybullet_tools.transformations import scale_matrix, rotation_matrix
 from pybullet_tools.utils import connect, disconnect, get_movable_joints, get_joint_positions, LockRenderer, \
     unit_pose, reset_simulation, draw_pose, apply_alpha, BLACK, Pose, Euler, has_gui, set_numpy_seed, \
-    set_random_seed, INF, wait_for_user, link_from_name, get_link_pose, point_from_pose, WorldSaver, elapsed_time, \
-    timeout, get_configuration, RED, wait_if_gui, apply_affine, invert, multiply
+    set_random_seed, INF, link_from_name, get_link_pose, point_from_pose, WorldSaver, elapsed_time, \
+    timeout, get_configuration, RED, wait_if_gui, apply_affine, invert, multiply, tform_from_pose, write_json, read_json
 
 DEFAULT_SCALE = 1.
 
 SCALE_ASSEMBLY = {
     'simple_frame': 5, # 3.5 | 5
-    'topopt-101_tiny': 2.,
+    'topopt-101_tiny': 3.5, # 2. | 3.5
     'four-frame': 5.
 }
 
@@ -73,6 +74,8 @@ def get_base_centroid(node_points, ground_nodes):
 # Introduce support scaffolding fixities and then require that they be removed
 # Robot spiderweb printing weaving hook which may slide
 def scale_assembly(elements, node_points, ground_nodes, scale=1.):
+    if scale is None:
+        return node_points
     base_centroid = get_base_centroid(node_points, ground_nodes)
     scaled_node_points = [scale*(point - base_centroid) + base_centroid
                           for point in node_points] # + np.array([0., 0., 2e-2])
@@ -81,6 +84,8 @@ def scale_assembly(elements, node_points, ground_nodes, scale=1.):
     return scaled_node_points
 
 def rotate_assembly(elements, node_points, ground_nodes, yaw=0.):
+    if yaw is None:
+        return node_points
     # TODO: more general affine transformations
     world_from_base = Pose(point=get_base_centroid(node_points, ground_nodes))
     points_base = apply_affine(invert(world_from_base), node_points)
@@ -90,16 +95,43 @@ def rotate_assembly(elements, node_points, ground_nodes, yaw=0.):
     #wait_if_gui()
     return points_world
 
-def rotate_problem(problem_path, roll=np.pi):
-    tform = Pose(euler=Euler(roll=roll))
-    json_data = affine_extrusion(problem_path, tform)
-    path = 'rotated.json' # TODO: create folder
-    with open(path, 'w') as f:
-        json.dump(json_data, f, indent=2, sort_keys=True)
-    problem_path = path
+def transform_assembly(problem, elements, node_points, ground_nodes):
+    # TODO: need to write the new structure to ensure the same points are used downstream
+    #elements = downsample_structure(elements, node_points, ground_nodes, num=None)
+    #elements, ground_nodes = downsample_nodes(elements, node_points, ground_nodes)
+
+    scale = SCALE_ASSEMBLY.get(problem, DEFAULT_SCALE)
+    if scale is not None:
+        node_points = scale_assembly(elements, node_points, ground_nodes, scale)
+
+    #yaw = np.pi / 8
+    yaw = None
+    if yaw is not None:
+        node_points = rotate_assembly(elements, node_points, ground_nodes, yaw)
+    return node_points
+
+##################################################
+
+def transform_json(problem):
+    original_path = get_extrusion_path(problem)
+    #new_path = '{}_transformed.json'.format(problem)
+    new_path = 'transformed.json'.format(problem) # TODO: create folder
+
+    #pose = Pose(euler=Euler(roll=np.pi / 2.))
+    yaw = np.pi / 4.
+    pose = Pose(euler=Euler(yaw=yaw))
+    tform = tform_from_pose(pose)
+    tform = rotation_matrix(angle=yaw, direction=[0, 0, 1])
+
+    scale = SCALE_ASSEMBLY.get(problem, DEFAULT_SCALE)
+    #tform = scale*np.identity(4)
+    tform = scale_matrix(scale, origin=None, direction=None)
+
+    json_data = affine_extrusion(original_path, tform)
+    write_json(new_path, json_data)
     # TODO: rotate the whole robot as well
     # TODO: could also use the z heuristic when upside down
-    return problem_path
+    return new_path
 
 ##################################################
 
@@ -117,7 +149,7 @@ def solve_extrusion(robot, obstacles, element_from_id, node_points, element_bodi
     #                           initial_position=initial_position, max_time=INF, max_backtrack=INF)
     # if has_gui():
     #     draw_ordered(sequence, node_points)
-    #     wait_for_user()
+    #     wait_if_gui()
     # return
 
     initial_conf = get_configuration(robot)
@@ -150,14 +182,6 @@ def solve_extrusion(robot, obstacles, element_from_id, node_points, element_bodi
         plan = compute_motions(robot, obstacles, element_bodies, initial_conf, plan, collisions=not args.cfree)
     return plan, data
 
-def transform_model(problem, elements, node_points, ground_nodes):
-    #elements = downsample_structure(elements, node_points, ground_nodes, num=None)
-    #elements, ground_nodes = downsample_nodes(elements, node_points, ground_nodes)
-    node_points = scale_assembly(elements, node_points, ground_nodes,
-                                 scale=SCALE_ASSEMBLY.get(problem, DEFAULT_SCALE))
-    node_points = rotate_assembly(elements, node_points, ground_nodes, yaw=np.pi / 8)
-    return node_points
-
 def plan_extrusion(args_list, viewer=False, verify=False, verbose=False, watch=False):
     results = []
     if not args_list:
@@ -172,17 +196,20 @@ def plan_extrusion(args_list, viewer=False, verify=False, verbose=False, watch=F
 
     # TODO: change dir for pddlstream
     extrusion_path = get_extrusion_path(problem)
-    #extrusion_path = rotate_problem(extrusion_path)
+    #extrusion_path = transform_json(problem)
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path, verbose=True)
     elements = sorted(element_from_id.values())
     #node_points = transform_model(problem, elements, node_points, ground_nodes)
 
     connect(use_gui=viewer, shadows=SHADOWS, color=BACKGROUND_COLOR)
     with LockRenderer(lock=True):
-        #draw_pose(unit_pose(), length=1.)
+        draw_pose(unit_pose(), length=1.)
+        with open(extrusion_path, 'r') as f: # TODO: read_json
+            json_data = json.loads(f.read())
+        draw_pose(parse_origin_pose(json_data))
+        draw_model(elements, node_points, ground_nodes)
+
         obstacles, robot = load_world()
-        #draw_model(elements, node_points, ground_nodes)
-        #wait_for_user()
         color = apply_alpha(BLACK, alpha=0) # 0, 1
         #color = None
         element_bodies = dict(zip(elements, create_elements_bodies(node_points, elements, color=color)))
@@ -190,6 +217,7 @@ def plan_extrusion(args_list, viewer=False, verify=False, verbose=False, watch=F
         #if viewer:
         #    label_nodes(node_points)
         saver = WorldSaver()
+    wait_if_gui()
 
     #visualize_stiffness(extrusion_path)
     #debug_elements(robot, node_points, node_order, elements)
@@ -242,10 +270,13 @@ def plan_extrusion(args_list, viewer=False, verify=False, verbose=False, watch=F
             'use_stiffness': args.stiffness,
         })
         print(data)
-        #plan_path = '{}_solution.json'.format(args.problem)
-        #with open(plan_path, 'w') as f:
-        #    json.dump(plan_data, f, indent=2, sort_keys=True)
         results.append((args, data))
+
+        if False:
+            data['plan'] = extract_plan_data(plan) # plan | trajectories
+            plan_file = '{}_solution.json'.format(args.problem)
+            plan_path = os.path.join('solutions', plan_file)
+            write_json(plan_path, data)
 
     reset_simulation()
     disconnect()

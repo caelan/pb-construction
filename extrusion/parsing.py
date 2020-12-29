@@ -5,8 +5,7 @@ import numpy as np
 from collections import namedtuple, OrderedDict
 from pybullet_tools.utils import create_box, create_cylinder, set_point, set_quat, \
     quat_from_euler, Euler, tform_point, multiply, tform_from_pose, pose_from_tform, \
-    RED, apply_alpha, get_collision_data, get_visual_data, get_aabb_extent, get_aabb, \
-    wait_for_user, Pose, draw_aabb, dump_body, get_all_links, STATIC_MASS, set_color
+    RED, apply_alpha, STATIC_MASS, set_color, read_json
 
 Element = namedtuple('Element', ['id', 'layer', 'nodes'])
 
@@ -94,13 +93,19 @@ def parse_point(json_point, scale=DEFAULT_SCALE):
 def parse_transform(json_transform, **kwargs):
     transform = np.eye(4)
     transform[:3, 3] = parse_point(json_transform['Origin'], **kwargs) # Normal
-    transform[:3, :3] = np.vstack([parse_point(json_transform[axis], scale=1)
+    # TODO: OriginX, OriginY, OriginZ
+    transform[:3, :3] = np.vstack([parse_point(json_transform[axis], scale=1) # TODO: scale=scale?
                                    for axis in ['XAxis', 'YAxis', 'ZAxis']])
     return transform
 
 
 def parse_origin(json_data):
+    # TODO: OriginX, OriginY, OriginZ, XAxis, YAxis, ZAxis
     return parse_point(json_data['base_frame_in_rob_base']['Origin'])
+
+
+def parse_origin_pose(json_data, **kwargs):
+    return pose_from_tform(parse_transform(json_data['base_frame_in_rob_base'], **kwargs))
 
 
 def parse_elements(json_data):
@@ -109,7 +114,7 @@ def parse_elements(json_data):
 
 
 def parse_node_points(json_data):
-    origin = parse_origin(json_data)
+    origin = parse_origin(json_data) # TODO: parse_origin_pose
     return [origin + parse_point(json_node['point']) for json_node in json_data['node_list']]
 
 
@@ -121,35 +126,51 @@ def parse_ground_nodes(json_data):
 def json_from_point(point):
     return dict(zip(['X', 'Y', 'Z'], point))
 
-def affine_extrusion(extrusion_path, tform):
+def apply_affine(affine, point):
+    # TODO: name conflict & might be implemented elsewhere
+    assert affine.shape == (4, 4)
+    assert len(point) == 3
+    return affine.dot(np.append(point, [1.]))[:3]
+
+def affine_extrusion(extrusion_path, tform, local=True):
+    assert tform.shape == (4, 4)
     with open(extrusion_path, 'r') as f:
         data = json.loads(f.read())
+    #data = read_json(extrusion_path) # TODO:
     new_data = {}
     for key, value in data.items():
-        if key == 'base_frame_in_rob_base':
+        # TODO: separate into two methods
+        if key == 'base_frame_in_rob_base' and not local:
             origin = parse_point(value['Origin'], scale=1)
-            new_origin = tform_point(tform, origin)
-            rob_from_base = pose_from_tform(parse_transform(value, scale=1))
-            new_pose = tform_from_pose(multiply(tform, rob_from_base))
-            x, y, z = new_pose[:3,3]
+            #new_origin = tform_point(tform, origin)
+            new_origin = apply_affine(tform, origin)
+            rob_from_base = parse_transform(value, scale=1) # pose_from_tform
+            #new_pose = tform_from_pose(multiply(tform, rob_from_base))
+            new_pose = tform.dot(rob_from_base)
+            x, y, z = new_pose[:3, 3]
             new_data[key] = {
+                # TODO: some of this is redundant
                 'Origin': json_from_point(new_origin),
                 "OriginX": x,
                 "OriginY": y,
                 "OriginZ": z,
-                "XAxis": json_from_point(new_pose[0,:3]),
-                "YAxis": json_from_point(new_pose[1,:3]),
-                "ZAxis": json_from_point(new_pose[2,:3]),
+                "XAxis": json_from_point(new_pose[0, :3]),
+                "YAxis": json_from_point(new_pose[1, :3]),
+                "ZAxis": json_from_point(new_pose[2, :3]),
                 "IsValid": value['IsValid'],
             }
         elif key == 'node_list':
+            # TODO: be careful when transforming origin and node_points in origin
             new_data[key] = []
             for node_data in value:
                 new_node_data = {}
                 for node_key in node_data:
                     if node_key == 'point':
                         point = parse_point(node_data[node_key], scale=1)
-                        new_point = tform_point(tform, point)
+                        #if not local:
+                        #    new_point = point
+                        #new_point = tform_point(tform, point)
+                        new_point = apply_affine(tform, point)
                         new_node_data[node_key] = json_from_point(new_point)
                     else:
                         new_node_data[node_key] = node_data[node_key]
@@ -191,6 +212,7 @@ def create_elements_bodies(node_points, elements, color=apply_alpha(RED, alpha=1
 
         # Visually, smallest diameter is 2e-3
         # The geometries and bounding boxes seem correct though
+        # TODO: create_cylinder takes in a radius not diameter
         #body = create_cylinder(ELEMENT_DIAMETER, height, color=color, mass=STATIC_MASS)
         #print('Diameter={:.5f} | Height={:.5f}'.format(ELEMENT_DIAMETER/2., height))
         #print(get_aabb_extent(get_aabb(body)).round(6).tolist())

@@ -141,18 +141,24 @@ def visualize_stiffness(extrusion_path):
 ##################################################
 
 def draw_element(node_points, element, color=RED):
+    if color is not None:
+        # TODO: select a color when color=None
+        color = color[:3]
     n1, n2 = element
     p1 = node_points[n1]
     p2 = node_points[n2]
-    return add_line(p1, p2, color=color[:3], width=LINE_WIDTH)
+    return add_line(p1, p2, color=color, width=LINE_WIDTH)
 
 
 def draw_model(elements, node_points, ground_nodes, color=None):
     handles = []
     with LockRenderer():
         for element in elements:
-            #color = BLUE if is_ground(element, ground_nodes) else RED
-            handles.append(draw_element(node_points, element, color=color))
+            if color is None:
+                element_color = BLUE if is_ground(element, ground_nodes) else RED
+            else:
+                element_color = color
+            handles.append(draw_element(node_points, element, color=element_color))
     return handles
 
 

@@ -10,12 +10,8 @@ sys.path.extend([
     'ss-pybullet/',
 ])
 
-from collections import OrderedDict
-
 from extrusion.experiment import EXCLUDE #, EXPERIMENTS_DIR
 from extrusion.parsing import get_extrusion_dir
-from pddlstream.utils import INF, str_from_object, get_python_version
-from pybullet_tools.utils import read_pickle, implies
 
 OVERLEAF = '/Users/caelan/Desktop/Construction/20-01-31_14-54/'
 RELATIVE = 'figures/regression-StiffPlan_result_repo/'

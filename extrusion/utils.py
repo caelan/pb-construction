@@ -11,9 +11,9 @@ from collections import defaultdict, deque
 from pybullet_tools.utils import get_link_pose, BodySaver, set_point, multiply, set_pose, set_joint_positions, \
     Point, HideOutput, load_pybullet, link_from_name, has_link, joint_from_name, get_aabb, \
     get_distance, get_relative_pose, get_link_subtree, clone_body, randomize, get_movable_joints, get_all_links, \
-    get_bodies_in_region, pairwise_link_collision, \
+    waypoints_from_path, get_bodies_in_region, pairwise_link_collision, \
     set_static, BASE_LINK, INF, create_plane, apply_alpha, point_from_pose, get_distance_fn, get_memory_in_kb, \
-    get_pairs, Saver, set_configuration, add_line, RED, aabb_union, TRANSPARENT, set_color
+    get_pairs, Saver, set_configuration, add_line, RED, aabb_union, TRANSPARENT, set_color, get_joint_names
 from pddlstream.utils import get_connected_components
 
 KUKA_DIR = '../conrob_pybullet/models/kuka_kr6_r900/urdf/'
@@ -286,6 +286,11 @@ class Trajectory(object):
     def interpolate(self):
         # TODO: linear or spline interpolation
         raise NotImplementedError()
+    def extract_data(self, **kwargs):
+        return {
+            'joints': get_joint_names(self.robot, self.joints),
+            'waypoints': list(map(tuple, waypoints_from_path(self.path))),
+        }
 
 class MotionTrajectory(Trajectory): # Transfer
     def __init__(self, robot, joints, path, attachments=[]):
@@ -294,6 +299,12 @@ class MotionTrajectory(Trajectory): # Transfer
         self.attachments = attachments
     def reverse(self):
         return self.__class__(self.robot, self.joints, self.path[::-1], self.attachments)
+    def extract_data(self, **kwargs):
+        data = {
+            'mode': 'transit', # TODO: extract automatically
+        }
+        data.update(super(MotionTrajectory, self).extract_data(**kwargs))
+        return data
     def __repr__(self):
         return 'm({},{})'.format(len(self.joints), len(self.path))
 
@@ -318,6 +329,15 @@ class PrintTrajectory(Trajectory): # TODO: add element body?
     def reverse(self):
         return self.__class__(self.end_effector, self.joints, self.path[::-1],
                               self.tool_path[::-1], self.element, not self.is_reverse)
+    def extract_data(self, **kwargs):
+        data = {
+            'mode': 'print',
+            'element': self.element,
+            'node1': self.n1,
+            'node2': self.n2,
+        }
+        data.update(super(PrintTrajectory, self).extract_data(**kwargs))
+        return data
     def __repr__(self):
         return 'p({}->{})'.format(self.n1, self.n2)
     def at(self, time_from_start):
@@ -345,6 +365,8 @@ class PrintTrajectory(Trajectory): # TODO: add element body?
         # TODO: maintain a constant end-effector velocity by retiming
         raise NotImplementedError()
 
+##################################################
+
 def get_print_distance(trajectories, teleport=False):
     if trajectories is None:
         return INF
@@ -355,6 +377,14 @@ def get_print_distance(trajectories, teleport=False):
         else:
             distance += trajectory.get_distance()
     return distance
+
+def extract_plan_data(trajectories, **kwargs):
+    if trajectories is None:
+        return None
+    plan = [trajectory.extract_data(**kwargs) for trajectory in trajectories]
+    #for i, data in enumerate(plan):
+    #    print(i, data)
+    return plan
 
 ##################################################
 
