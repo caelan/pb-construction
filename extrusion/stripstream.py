@@ -14,7 +14,8 @@ from extrusion.stream import get_print_gen_fn, APPROACH_DISTANCE, SELF_COLLISION
 from extrusion.stiffness import USE_CONMECH, test_stiffness
 from extrusion.utils import load_robot, get_other_node, get_node_neighbors, PrintTrajectory, get_midpoint, \
     get_element_length, TOOL_VELOCITY, Command, compute_z_distance, MotionTrajectory, \
-    get_disabled_collisions, retrace_supporters, flatten_commands, compute_printed_nodes, check_connected
+    get_disabled_collisions, retrace_supporters, flatten_commands, compute_printed_nodes, check_connected, \
+    nodes_from_elements, TOOL_LINK
 from extrusion.visualization import set_extrusion_camera, draw_model
 #from examples.pybullet.turtlebots.run import *
 
@@ -35,7 +36,7 @@ from pybullet_tools.utils import get_configuration, set_pose, Euler, get_point, 
     get_movable_joints, has_gui, WorldSaver, wait_if_gui, add_line, BLUE, RED, \
     wait_for_duration, get_length, INF, LockRenderer, randomize, set_configuration, Pose, Point, aabb_overlap, pairwise_link_collision, \
     aabb_union, plan_joint_motion, SEPARATOR, user_input, remove_all_debug, GREEN, elapsed_time, VideoSaver, \
-    point_from_pose, draw_aabb, get_pose, tform_point, invert, get_yaw, draw_pose, get_distance
+    point_from_pose, draw_aabb, get_pose, tform_point, invert, get_yaw, draw_pose, get_distance, get_link_pose, link_from_name
 
 STRIPSTREAM_ALGORITHM = 'stripstream' # focused, incremental
 ROBOT_TEMPLATE = 'r{}'
@@ -370,7 +371,7 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
 
         'test-printable': from_test(get_test_printable(ground_nodes)),
         'test-stiff': from_test(get_test_stiff()),
-        'NodeDistance': lambda n1, n2: get_distance(node_points[n2], node_points[n1]),
+        'LocationDistance': get_location_distance(node_points, robots, initial_confs),
 
         #'test-cfree-traj-conf': from_test(lambda *args: True),
         #'test-cfree-traj-traj': from_test(get_cfree_test(**kwargs)),
@@ -395,6 +396,7 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
 
     init = [
         ('Stationary',),
+        #Equal(('PrintCost',), 1),
         Equal(('Speed',), TOOL_VELOCITY),
     ]
     init.extend(additional_init)
@@ -404,12 +406,13 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
         init.append(('Move',))
     if sequential:
         init.append(('Sequential',))
+
     for name, conf in initial_confs.items():
-        robot = index_from_name(robots, name)
+        #robot = index_from_name(robots, name)
         #init_node = -robot
-        init_node = '{}-q0'.format(robot)
+        init_node = '{}-q0'.format(name)
         init.extend([
-            #('Node', init_node),
+            ('Location', init_node),
             ('BackoffConf', name, conf),
             ('Robot', name),
             ('Conf', name, conf),
@@ -433,19 +436,22 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
     #init.extend(('Transit',) + tup for tup in transits)
     # TODO: only move actions between adjacent layers
 
-    for e in remaining:
-        n1, n2 = e
-        #n1, n2 = ['n{}'.format(i) for i in e]
+    for n in nodes_from_elements(remaining):
         init.extend([
-            ('Node', n1),
-            ('Node', n2),
+            ('Node', n),
+            ('Location', n),
+        ])
+    for e in remaining:
+        init.extend([
             ('Element', e),
-            ('Endpoint', n1, e),
-            ('Endpoint', n2, e),
-            ('Edge', n1, e, n2),
-            ('Edge', n2, e, n1),
             ('Printed', e),
         ])
+        #n1, n2 = ['n{}'.format(i) for i in e]
+        for n1, n2 in [e, reversed(e)]:
+            init.extend([
+                ('Endpoint', n1, e),
+                ('Edge', n1, e, n2),
+            ])
 
     assert not trajectories
     # for t in trajectories:
@@ -529,7 +535,7 @@ def solve_pddlstream(problem, node_points, element_bodies, planner=GREEDY_PLANNE
             else:
                 planner = 'add-random-lazy'
             solution = solve_incremental(problem, planner=planner, max_time=600,
-                                         max_planner_time=300, debug=True)
+                                         max_planner_time=300, debug=True, verbose=True)
         else:
             # TODO: allow some types of failures
             solution = solve_focused(problem, stream_info=stream_info, max_time=max_time,
@@ -886,6 +892,22 @@ def get_collision_test(robots, collisions=True, **kwargs):
 
 # TODO: use stream statistics for ordering
 
+def get_location_distance(node_points, robots=[], initial_confs={}):
+
+    def extract_point(l):
+        if isinstance(l, str):
+            name = l.split('-')[0]
+            conf = initial_confs[name]
+            conf.assign()
+            robot = index_from_name(robots, name)
+            return point_from_pose(get_link_pose(robot, link_from_name(robot, TOOL_LINK)))
+        else:
+            return node_points[l]
+
+    def fn(*locations):
+        return 1. + get_distance(*map(extract_point, locations))
+    return fn
+
 def extract_printed(fluents):
     assert all(get_prefix(fact) == 'printed' for fact in fluents)
     return {get_args(fact)[0] for fact in fluents}
@@ -943,6 +965,8 @@ def get_fluent_print_gen_fn(robots, static_obstacles, node_points, element_bodie
     return gen_fn
 
 def get_order_fn(node_points):
+    # TODO: general heuristic function
+    # TODO: bias toward nearby elements
     #heuristic_fn = get_heuristic_fn(robot=None, extrusion_path=None, heuristic='z', checker=None, forward=False)
 
     def order_fn(state, goal, operators):

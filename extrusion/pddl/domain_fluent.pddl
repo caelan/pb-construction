@@ -6,6 +6,7 @@
     (Element ?e)
     (Endpoint ?n1 ?e)
     (Edge ?n1 ?e ?n2)
+    (Location ?l)
 
     (Traj ?r ?t)
     (PrintAction ?r ?n1 ?e ?n2 ?t) ; print ?e from ?n1 to ?n2
@@ -26,16 +27,16 @@
     (Printable ?n ?e) ; ?n is connected even when ?e is removed
   )
   (:functions
-    (NodeDistance ?n1 ?n2)
+    (LocationDistance ?l1 ?l2)
   )
 
   ;(:action move ; -backward
-  ;  :parameters (?r ?n1 ?n2)
-  ;  :precondition (and (Robot ?r) (Node ?n1) (Node ?n2) (not (= ?n1 ?n2))
-  ;                     (AtNode ?r ?n2) (CanMove ?r))
-  ;  :effect (and (AtNode ?r ?n1)
-  ;               (not (AtNode ?r ?n2)) (not (CanMove ?r))
-  ;               (increase (total-cost) (NodeDistance ?n1 ?n2)))
+  ;  :parameters (?r ?l1 ?l2)
+  ;  :precondition (and (Robot ?r) (Location ?l1) (Location ?l2) (not (= ?l1 ?l2)) (Movable ?r)
+  ;                     (AtNode ?r ?l2) (CanMove ?r)) ; TODO: rename to location or waypoint
+  ;  :effect (and (AtNode ?r ?l1)
+  ;               (not (AtNode ?r ?l2)) (not (CanMove ?r))
+  ;               (increase (total-cost) (LocationDistance ?l1 ?l2)))
   ;)
 
   (:action print ; -backward
