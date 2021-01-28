@@ -7,6 +7,7 @@
     (Endpoint ?n1 ?e)
     (Edge ?n1 ?e ?n2)
     (Location ?l)
+    (Move) ; TODO: rename to (Movable ?r)
 
     (Traj ?r ?t)
     (PrintAction ?r ?n1 ?e ?n2 ?t) ; print ?e from ?n1 to ?n2
@@ -18,7 +19,7 @@
     ; Fluent
     (Printed ?e)
     (Removed ?e)
-    (AtNode ?r ?q)
+    (AtLoc ?r ?q)
     (CanMove ?r)
     (Stiff)
 
@@ -30,19 +31,20 @@
     (LocationDistance ?l1 ?l2)
   )
 
-  ;(:action move ; -backward
-  ;  :parameters (?r ?l1 ?l2)
-  ;  :precondition (and (Robot ?r) (Location ?l1) (Location ?l2) (not (= ?l1 ?l2)) (Movable ?r)
-  ;                     (AtNode ?r ?l2) (CanMove ?r)) ; TODO: rename to location or waypoint
-  ;  :effect (and (AtNode ?r ?l1)
-  ;               (not (AtNode ?r ?l2)) (not (CanMove ?r))
-  ;               (increase (total-cost) (LocationDistance ?l1 ?l2)))
-  ;)
+  (:action move ; -backward
+    :parameters (?r ?l1 ?l2)
+    :precondition (and (Robot ?r) (Location ?l1) (Location ?l2) (not (= ?l1 ?l2)) (Move)
+                       (AtLoc ?r ?l2) (CanMove ?r))
+    :effect (and (AtLoc ?r ?l1)
+                 (not (AtLoc ?r ?l2)) (not (CanMove ?r))
+                 (increase (total-cost) (LocationDistance ?l1 ?l2)))
+  )
 
   (:action print ; -backward
     :parameters (?r ?n1 ?e ?n2 ?t)
     :precondition (and (PrintAction ?r ?n1 ?e ?n2 ?t) (Printed ?e)
-                       ; (AtNode ?r ?n2)
+                       ;(imply (Move) (AtLoc ?r ?n2)) ; TODO: support disjunctions
+                       ;(AtLoc ?r ?n2)
                        (Stiff)
                        (Printable ?n1 ?e)
                        ;(or (Grounded ?n1)
@@ -52,8 +54,8 @@
                        ;(forall (?e2) (imply (Order ?e ?e2) (Removed ?e2)))
                   )
     :effect (and (Removed ?e) (CanMove ?r)
-                 (AtNode ?r ?n1)
-                 (not (AtNode ?r ?n2))
+                 (AtLoc ?r ?n1)
+                 (not (AtLoc ?r ?n2))
                  (not (Printed ?e))
                  (increase (total-cost) 1)
             ))

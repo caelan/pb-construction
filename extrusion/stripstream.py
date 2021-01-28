@@ -409,24 +409,26 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
 
     for name, conf in initial_confs.items():
         #robot = index_from_name(robots, name)
-        #init_node = -robot
-        init_node = '{}-q0'.format(name)
+        #init_loc = -robot
+        init_loc = '{}-q0'.format(name)
         init.extend([
-            ('Location', init_node),
+            ('Location', init_loc),
+            ('AtLoc', name, init_loc),
             ('BackoffConf', name, conf),
             ('Robot', name),
             ('Conf', name, conf),
             ('AtConf', name, conf),
             ('Idle', name),
-            #('CanMove', name),
-            #('Start', name, init_node, None, conf),
-            #('End', name, None, init_node, conf),
+            #('Start', name, init_loc, None, conf),
+            #('End', name, None, init_loc, conf),
         ])
+        if can_transit:
+            init.append(('CanMove', name)) # TODO: might need to comment out again
         for (n1, e, n2) in directions:
             if layer_from_n[n1] == 0:
-                transits.append((None, init_node, n1, e))
+                transits.append((None, init_loc, n1, e))
             if layer_from_n[n2] == max_layer:
-                transits.append((e, n2, init_node, None))
+                transits.append((e, n2, init_loc, None))
 
     init.extend(('Grounded', n) for n in ground_nodes)
     init.extend(('Direction',) + tup for tup in directions) # Directed edge
@@ -460,9 +462,9 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
     #         ('PrintAction', t.n1, t.element, t),
     #     ])
 
-    goal_literals = [] # TODO: init_node
-    if can_transit:
-        goal_literals.extend(('AtConf', r, q) for r, q in initial_confs.items())
+    goal_literals = []
+    #if can_transit:
+    #    goal_literals.extend(('AtConf', r, q) for r, q in initial_confs.items()) # TODO: AtLoc
     goal_literals.extend(('Removed', e) for e in remaining)
     goal = And(*goal_literals)
 
@@ -525,7 +527,7 @@ def solve_pddlstream(problem, node_points, element_bodies, planner=GREEDY_PLANNE
         if use_incremental:
             if use_attachments:
                 planner = {
-                    'search': 'eager', # eager | lazy
+                    'search': 'lazy', # eager | lazy
                     'evaluator': 'greedy',
                     'heuristic': 'ff', # goal | ff (can detect dead ends)
                     #'heuristic': ['ff', get_bias_fn(element_from_index)],
@@ -894,15 +896,15 @@ def get_collision_test(robots, collisions=True, **kwargs):
 
 def get_location_distance(node_points, robots=[], initial_confs={}):
 
-    def extract_point(l):
-        if isinstance(l, str):
-            name = l.split('-')[0]
+    def extract_point(loc):
+        if isinstance(loc, str):
+            name = loc.split('-')[0]
             conf = initial_confs[name]
             conf.assign()
             robot = index_from_name(robots, name)
             return point_from_pose(get_link_pose(robot, link_from_name(robot, TOOL_LINK)))
         else:
-            return node_points[l]
+            return node_points[loc]
 
     def fn(*locations):
         return 1. + get_distance(*map(extract_point, locations))
@@ -979,6 +981,9 @@ def get_order_fn(node_points):
             if name == 'print':
                 _, _, element, _, _ = args
                 priority = -compute_z_distance(node_points, element)
+            elif name == 'move':
+                _, loc1, loc2 = args
+                priority = 0. # TODO: use the location of the best element here
             else:
                 raise NotImplementedError(name)
             action_priorities[action] = priority
