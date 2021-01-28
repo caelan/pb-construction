@@ -4,6 +4,8 @@
     (Robot ?r)
     (Node ?n)
     (Element ?e)
+    (Endpoint ?n1 ?e)
+    (Edge ?n1 ?e ?n2)
 
     (Traj ?r ?t)
     (PrintAction ?r ?n1 ?e ?n2 ?t) ; print ?e from ?n1 to ?n2
@@ -17,11 +19,11 @@
     (Removed ?e)
     (AtNode ?r ?q)
     (CanMove ?r)
-    (Connected)
     (Stiff)
 
     ; Derived
-    (Connected ?n ?e) ; ?n is connected even when ?e is removed
+    (Connected ?n)
+    (Printable ?n ?e) ; ?n is connected even when ?e is removed
   )
   (:functions
     (NodeDistance ?n1 ?n2)
@@ -39,9 +41,13 @@
   (:action print ; -backward
     :parameters (?r ?n1 ?e ?n2 ?t)
     :precondition (and (PrintAction ?r ?n1 ?e ?n2 ?t) (Printed ?e)
-                       (Connected ?n1 ?e)
-                       (Stiff)
                        ; (AtNode ?r ?n2)
+                       (Stiff)
+                       (Printable ?n1 ?e)
+                       ;(or (Grounded ?n1)
+                       ;    (exists (?n0 ?e0) (and (Edge ?n0 ?e0 ?n1) (not (= ?e0 ?e)) ; (not (= ?n0 ?n2))
+                       ;                           (Connected ?n0) (Printed ?e0)
+                       ;)))
                        ;(forall (?e2) (imply (Order ?e ?e2) (Removed ?e2)))
                   )
     :effect (and (Removed ?e) (CanMove ?r)
@@ -49,14 +55,18 @@
                  (not (AtNode ?r ?n2))
                  (not (Printed ?e))
                  (increase (total-cost) 1)
-            )
-  )
+            ))
 
-  ;(:derived (Connected ?n ?e)
-  ;  (or (Grounded ?n)
-  ;      (exists (?n2 ?e2) (and (Edge ?n2 ?e2 ?n) ; Edge dones
-  ;                             (Connected ?n2 ?e) (Printed ?e2)
-  ;
-  ;                             ))) ; Can also just do on StartNode
-  ;)
+  (:derived (Connected ?n2)
+    (or (Grounded ?n2)
+        (exists (?n1 ?e) (and (Edge ?n1 ?e ?n2)
+                              (Connected ?n1) (Printed ?e)
+                         ))))
+
+  (:derived (Printable ?n1 ?e) (and (Endpoint ?n1 ?e)
+    (or (Grounded ?n1)
+      (exists (?n0 ?e0) (and (Edge ?n0 ?e0 ?n1) (not (= ?e0 ?e)) ; (not (= ?n0 ?n2))
+                             (Connected ?n0) (Printed ?e0)
+    )))
+  ))
 )

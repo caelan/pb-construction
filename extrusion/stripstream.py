@@ -34,7 +34,7 @@ from pybullet_tools.utils import get_configuration, set_pose, Euler, get_point, 
     aabb_union, plan_joint_motion, SEPARATOR, user_input, remove_all_debug, GREEN, elapsed_time, VideoSaver, \
     point_from_pose, draw_aabb, get_pose, tform_point, invert, get_yaw, draw_pose, get_distance
 
-STRIPSTREAM_ALGORITHM = 'stripstream'
+STRIPSTREAM_ALGORITHM = 'stripstream' # focused, incremental
 ROBOT_TEMPLATE = 'r{}'
 
 DUAL_CONF = [np.pi/4, -np.pi/4, np.pi/2, 0, np.pi/4, -np.pi/2] # np.pi/8
@@ -365,8 +365,8 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
                                               initial_confs=initial_confs, partial_orders=partial_orders,
                                               removed=removed, **kwargs),
 
+        'test-printable': from_test(get_test_printable(ground_nodes)),
         'test-stiff': from_test(get_test_stiff()),
-        'test-connected': from_test(get_test_connected(ground_nodes)),
         'NodeDistance': lambda n1, n2: get_distance(node_points[n2], node_points[n1]),
 
         #'test-cfree-traj-conf': from_test(lambda *args: True),
@@ -439,6 +439,8 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
             ('Element', e),
             ('Endpoint', n1, e),
             ('Endpoint', n2, e),
+            ('Edge', n1, e, n2),
+            ('Edge', n2, e, n1),
             ('Printed', e),
         ])
 
@@ -872,18 +874,18 @@ def extract_printed(fluents):
     assert all(get_prefix(fact) == 'printed' for fact in fluents)
     return {get_args(fact)[0] for fact in fluents}
 
-def get_test_connected(ground_nodes, debug=True):
-    def test_connected(node1, element, fluents=[]):
+def get_test_printable(ground_nodes, debug=True):
+    def test_printable(node1, element, fluents=[]):
         printed = extract_printed(fluents)
         next_printed = printed - {element}
         if debug:
-            print(test_connected.__name__, node1, element, len(next_printed), next_printed)
+            print(test_printable.__name__, node1, element, len(next_printed), next_printed)
             #user_input()
         # TODO: should be connected before and after the extrusion
         # Building from connected node and connected structure
         next_nodes = compute_printed_nodes(ground_nodes, next_printed)
         return (node1 in next_nodes) and check_connected(ground_nodes, next_printed)
-    return test_connected
+    return test_printable
 
 def get_test_stiff(debug=True):
     def test_stiff(fluents=[]):
@@ -899,20 +901,20 @@ def get_test_stiff(debug=True):
     return test_stiff
 
 def get_fluent_print_gen_fn(robots, static_obstacles, node_points, element_bodies, ground_nodes,
-                            connectivity=False, stiffness=False, **kwargs):
+                            connectivity=False, stiffness=False, debug=True, **kwargs):
     #wild_print_gen_fn = get_wild_print_gen_fn(robots, static_obstacles, node_points, element_bodies, ground_nodes,
     #                                          initial_confs={}, return_home=False, **kwargs) # collisions=False,
     print_gen_fn_from_robot = {robot: get_print_gen_fn(robot, static_obstacles, node_points, element_bodies, ground_nodes,
                                                        precompute_collisions=False, **kwargs) for robot in robots}
 
-    test_connected = get_test_connected(ground_nodes, debug=debug)
+    test_printable = get_test_printable(ground_nodes, debug=debug)
     #test_stiff = get_test_stiff(debug=debug)
 
     def gen_fn(name, node1, element, node2, fluents=[]):
         robot = index_from_name(robots, name)
         printed = extract_printed(fluents)
         next_printed = printed - {element}
-        if connectivity and not test_connected(node1, element, fluents=fluents):
+        if connectivity and not test_printable(node1, element, fluents=fluents):
             return
         if stiffness and not test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker):
             return

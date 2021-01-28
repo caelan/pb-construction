@@ -16,12 +16,12 @@
     :certified (PrintAction ?r ?n1 ?e ?n2 ?t)
   )
 
-  (:stream test-connected
-    :inputs (?n ?e)
-    :domain (Endpoint ?n ?e)
-    :fluents (Printed)
-    :certified (Connected ?n ?e)
-  )
+  ;(:stream test-printable
+  ;  :inputs (?n ?e)
+  ;  :domain (Endpoint ?n ?e)
+  ;  :fluents (Printed)
+  ;  :certified (Printable ?n ?e)
+  ;)
 
   (:stream test-stiff
     :fluents (Printed)
