@@ -17,8 +17,10 @@
   )
 
   (:stream test-connected
+    :inputs (?n ?e)
+    :domain (Endpoint ?n ?e)
     :fluents (Printed)
-    :certified (Connected)
+    :certified (Connected ?n ?e)
   )
 
   (:stream test-stiff

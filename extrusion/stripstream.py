@@ -11,7 +11,7 @@ import os
 from extrusion.heuristics import compute_layer_from_vertex, compute_distance_from_node
 from extrusion.stream import get_print_gen_fn, APPROACH_DISTANCE, SELF_COLLISIONS, \
     JOINT_WEIGHTS, RESOLUTION
-from extrusion.stiffness import USE_CONMECH
+from extrusion.stiffness import USE_CONMECH, test_stiffness
 from extrusion.utils import load_robot, get_other_node, get_node_neighbors, PrintTrajectory, get_midpoint, \
     get_element_length, TOOL_VELOCITY, Command, MotionTrajectory, \
     get_disabled_collisions, retrace_supporters, flatten_commands, compute_printed_nodes, check_connected
@@ -382,8 +382,9 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
     }
     if use_fluent:
         stream_map.update({
-            'sample-print': from_gen_fn(get_fluent_print_gen_fn(robots, obstacles, node_points, element_bodies, ground_nodes,
-                                                                partial_orders=partial_orders, removed=removed, **kwargs)),
+            'sample-print': from_gen_fn(get_fluent_print_gen_fn(
+                robots, obstacles, node_points, element_bodies, ground_nodes,
+                partial_orders=partial_orders, removed=removed, **kwargs)),
         })
 
     assignments = compute_assignments(robots, remaining, node_points, initial_confs)
@@ -421,8 +422,8 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
             if layer_from_n[n2] == max_layer:
                 transits.append((e, n2, init_node, None))
 
-    #init.extend(('Grounded', n) for n in ground_nodes)
-    init.extend(('Direction',) + tup for tup in directions)
+    init.extend(('Grounded', n) for n in ground_nodes)
+    init.extend(('Direction',) + tup for tup in directions) # Directed edge
     init.extend(('Order',) + tup for tup in partial_orders)
     # TODO: can relax assigned if I go by layers
     init.extend(('Assigned', r, e) for r in assignments for e in assignments[r])
@@ -436,6 +437,8 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
             ('Node', n1),
             ('Node', n2),
             ('Element', e),
+            ('Endpoint', n1, e),
+            ('Endpoint', n2, e),
             ('Printed', e),
         ])
 
@@ -446,13 +449,15 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
     #         ('PrintAction', t.n1, t.element, t),
     #     ])
 
-    goal_literals = []
+    goal_literals = [] # TODO: init_node
     if can_transit:
         goal_literals.extend(('AtConf', r, q) for r, q in initial_confs.items())
     goal_literals.extend(('Removed', e) for e in remaining)
     goal = And(*goal_literals)
 
     return PDDLProblem(domain_pddl, constant_map, stream_pddl, stream_map, init, goal)
+
+##################################################
 
 GREEDY_PLANNER = create_planner(greedy=False, lazy=True, h_cea=True)
 POSTPROCESS_PLANNER = create_planner(anytime=True, greedy=False, lazy=True, h_cea=False, h_makespan=True)
@@ -868,12 +873,16 @@ def extract_printed(fluents):
     return {get_args(fact)[0] for fact in fluents}
 
 def get_test_connected(ground_nodes, debug=True):
-    def test_connected(fluents=[]):
+    def test_connected(node1, element, fluents=[]):
         printed = extract_printed(fluents)
+        next_printed = printed - {element}
         if debug:
-            print(test_connected.__name__, len(printed), printed)
+            print(test_connected.__name__, node1, element, len(next_printed), next_printed)
             #user_input()
-        return check_connected(ground_nodes, printed)
+        # TODO: should be connected before and after the extrusion
+        # Building from connected node and connected structure
+        next_nodes = compute_printed_nodes(ground_nodes, next_printed)
+        return (node1 in next_nodes) and check_connected(ground_nodes, next_printed)
     return test_connected
 
 def get_test_stiff(debug=True):
@@ -896,13 +905,14 @@ def get_fluent_print_gen_fn(robots, static_obstacles, node_points, element_bodie
     print_gen_fn_from_robot = {robot: get_print_gen_fn(robot, static_obstacles, node_points, element_bodies, ground_nodes,
                                                        precompute_collisions=False, **kwargs) for robot in robots}
 
+    test_connected = get_test_connected(ground_nodes, debug=debug)
+    #test_stiff = get_test_stiff(debug=debug)
+
     def gen_fn(name, node1, element, node2, fluents=[]):
         robot = index_from_name(robots, name)
         printed = extract_printed(fluents)
         next_printed = printed - {element}
-        next_nodes = compute_printed_nodes(ground_nodes, next_printed)
-        if connectivity and not ((node1 in next_nodes) and check_connected(ground_nodes, next_printed)):
-            # TODO: should be connected before and after the extrusion
+        if connectivity and not test_connected(node1, element, fluents=fluents):
             return
         if stiffness and not test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker):
             return
