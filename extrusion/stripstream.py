@@ -24,6 +24,7 @@ from pddlstream.language.constants import And, PDDLProblem, print_solution, Dura
     NOT, EQ, get_prefix, get_function
 from pddlstream.language.stream import StreamInfo, PartialInputs, WildOutput
 from pddlstream.language.function import FunctionInfo
+from pddlstream.language.generator import from_gen_fn
 from pddlstream.utils import read, get_file_path, inclusive_range, neighbors_from_orders
 from pddlstream.language.temporal import compute_duration, compute_start, compute_end, apply_start, \
     create_planner, DURATIVE_ACTIONS, reverse_plan, get_tfd_path
@@ -378,7 +379,7 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
     ]
     init.extend(additional_init)
     if can_print:
-        init.append(('Print',))
+        init.append(('Print',)) # TODO: Printable and Movable per robot
     if can_transit:
         init.append(('Move',))
     if sequential:
@@ -798,6 +799,16 @@ def get_wild_print_gen_fn(robots, static_obstacles, node_points, element_bodies,
                 facts.extend(('Collision', print_cmd, e2) for e2 in print_cmd.colliding)
             yield WildOutput(outputs,  facts)
     return wild_gen_fn
+
+def get_fluent_print_gen_fn(robots, static_obstacles, node_points, element_bodies, ground_nodes, **kwargs):
+    wild_print_gen_fn = get_wild_print_gen_fn(robots, static_obstacles, node_points, element_bodies, ground_nodes,
+                                              initial_confs={}, return_home=False, **kwargs) # collisions=False,
+
+    def gen_fn(*args):
+        for outputs, facts in wild_print_gen_fn(*args):
+            for q1, q2, print_cmd in outputs:
+                yield (print_cmd,)
+    return gen_fn
 
 def get_collision_test(robots, collisions=True, **kwargs):
     # TODO: check end-effector collisions first

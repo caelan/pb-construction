@@ -34,7 +34,7 @@
   (:stream sample-print
     :inputs (?r ?n1 ?e ?n2)
     :domain (and (Robot ?r) (Direction ?n1 ?e ?n2) (Assigned ?r ?e) (Print))
-    ; :fluents (Printed)
+    ; :fluents (Printed) ; TODO: Only one fluent stream can certify a predicate: conf
     :outputs (?q1 ?q2 ?t)
     :certified (and (PrintAction ?r ?n1 ?e ?n2 ?q1 ?q2 ?t)
                     (Start ?r ?n1 ?e ?q1) (End ?r ?e ?n2 ?q2)

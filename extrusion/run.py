@@ -196,7 +196,8 @@ def plan_extrusion(args_list, viewer=False, verify=False, verbose=False, watch=F
 
     # TODO: change dir for pddlstream
     extrusion_path = get_extrusion_path(problem)
-    #extrusion_path = transform_json(problem)
+    if False:
+        extrusion_path = transform_json(problem)
     element_from_id, node_points, ground_nodes = load_extrusion(extrusion_path, verbose=True)
     elements = sorted(element_from_id.values())
     #node_points = transform_model(problem, elements, node_points, ground_nodes)
@@ -272,8 +273,11 @@ def plan_extrusion(args_list, viewer=False, verify=False, verbose=False, watch=F
         print(data)
         results.append((args, data))
 
-        if False:
-            data['plan'] = extract_plan_data(plan) # plan | trajectories
+        if True:
+            data.update({
+                'assembly': read_json(extrusion_path),
+                'plan': extract_plan_data(plan), # plan | trajectories
+            })
             plan_file = '{}_solution.json'.format(args.problem)
             plan_path = os.path.join('solutions', plan_file)
             write_json(plan_path, data)
