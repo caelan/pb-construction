@@ -134,9 +134,7 @@ def apply_affine(affine, point):
 
 def affine_extrusion(extrusion_path, tform, local=True):
     assert tform.shape == (4, 4)
-    with open(extrusion_path, 'r') as f:
-        data = json.loads(f.read())
-    #data = read_json(extrusion_path) # TODO:
+    data = read_json(extrusion_path)
     new_data = {}
     for key, value in data.items():
         # TODO: separate into two methods

@@ -11,12 +11,21 @@
   (:stream sample-print
     :inputs (?r ?n1 ?e ?n2)
     :domain (and (Robot ?r) (Direction ?n1 ?e ?n2) (Assigned ?r ?e) (Print))
-    ;:fluents (Printed)
+    :fluents (Printed)
     :outputs (?t)
-    :certified (and (PrintAction ?r ?n1 ?e ?n2 ?t)
-                    (Traj ?r ?t))
+    :certified (PrintAction ?r ?n1 ?e ?n2 ?t)
   )
 
-  ;(:function (Distance ?n1 ?n2)
-  ;           (and (Node ?n1) (Node ?n2)))
+  (:stream test-connected
+    :fluents (Printed)
+    :certified (Connected)
+  )
+
+  (:stream test-stiff
+    :fluents (Printed)
+    :certified (Stiff)
+  )
+
+  (:function (NodeDistance ?n1 ?n2)
+    (and (Node ?n1) (Node ?n2)))
 )

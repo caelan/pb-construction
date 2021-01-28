@@ -205,8 +205,7 @@ def plan_extrusion(args_list, viewer=False, verify=False, verbose=False, watch=F
     connect(use_gui=viewer, shadows=SHADOWS, color=BACKGROUND_COLOR)
     with LockRenderer(lock=True):
         draw_pose(unit_pose(), length=1.)
-        with open(extrusion_path, 'r') as f: # TODO: read_json
-            json_data = json.loads(f.read())
+        json_data = read_json(extrusion_path)
         draw_pose(parse_origin_pose(json_data))
         draw_model(elements, node_points, ground_nodes)
 

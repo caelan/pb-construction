@@ -1,7 +1,7 @@
 from __future__ import print_function
 
 from collections import defaultdict, Counter
-from itertools import product, permutations
+from itertools import product, permutations, islice
 from operator import itemgetter
 
 import numpy as np
@@ -14,17 +14,17 @@ from extrusion.stream import get_print_gen_fn, APPROACH_DISTANCE, SELF_COLLISION
 from extrusion.stiffness import USE_CONMECH
 from extrusion.utils import load_robot, get_other_node, get_node_neighbors, PrintTrajectory, get_midpoint, \
     get_element_length, TOOL_VELOCITY, Command, MotionTrajectory, \
-    get_disabled_collisions, retrace_supporters
+    get_disabled_collisions, retrace_supporters, flatten_commands, compute_printed_nodes, check_connected
 from extrusion.visualization import set_extrusion_camera, draw_model
 #from examples.pybullet.turtlebots.run import *
 from pddlstream.algorithms.downward import set_cost_scale
 from pddlstream.algorithms.incremental import solve_incremental
 from pddlstream.algorithms.focused import solve_focused #, CURRENT_STREAM_PLAN
 from pddlstream.language.constants import And, PDDLProblem, print_solution, DurativeAction, Equal, print_plan, \
-    NOT, EQ, get_prefix, get_function
+    NOT, EQ, get_prefix, get_function, get_args
 from pddlstream.language.stream import StreamInfo, PartialInputs, WildOutput
 from pddlstream.language.function import FunctionInfo
-from pddlstream.language.generator import from_gen_fn
+from pddlstream.language.generator import from_gen_fn, from_test
 from pddlstream.utils import read, get_file_path, inclusive_range, neighbors_from_orders
 from pddlstream.language.temporal import compute_duration, compute_start, compute_end, apply_start, \
     create_planner, DURATIVE_ACTIONS, reverse_plan, get_tfd_path
@@ -32,7 +32,7 @@ from pybullet_tools.utils import get_configuration, set_pose, Euler, get_point, 
     get_movable_joints, has_gui, WorldSaver, wait_if_gui, add_line, BLUE, RED, \
     wait_for_duration, get_length, INF, LockRenderer, randomize, set_configuration, Pose, Point, aabb_overlap, pairwise_link_collision, \
     aabb_union, plan_joint_motion, SEPARATOR, user_input, remove_all_debug, GREEN, elapsed_time, VideoSaver, \
-    point_from_pose, draw_aabb, get_pose, tform_point, invert, get_yaw, draw_pose
+    point_from_pose, draw_aabb, get_pose, tform_point, invert, get_yaw, draw_pose, get_distance
 
 STRIPSTREAM_ALGORITHM = 'stripstream'
 ROBOT_TEMPLATE = 'r{}'
@@ -344,8 +344,15 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
     # draw_model(supporters, node_points, ground_nodes, color=RED)
     # wait_if_gui()
 
-    domain_pddl = read(get_file_path(__file__, os.path.join('pddl', 'temporal.pddl' if temporal else 'domain.pddl')))
-    stream_pddl = read(get_file_path(__file__, 'pddl/stream.pddl'))
+    use_fluent = False
+    if use_fluent:
+        domain_file = 'domain_fluent.pddl'
+        stream_file = 'stream_fluent.pddl'
+    else:
+        domain_file = 'temporal.pddl' if temporal else 'domain.pddl'
+        stream_file = 'stream.pddl'
+    domain_pddl = read(get_file_path(__file__, os.path.join('pddl', domain_file)))
+    stream_pddl = read(get_file_path(__file__, os.path.join('pddl', stream_file)))
     constant_map = {}
 
     # TODO: don't evaluate TrajTrajCollision until the plan is retimed
@@ -357,7 +364,11 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
         'sample-print': get_wild_print_gen_fn(robots, obstacles, node_points, element_bodies, ground_nodes,
                                               initial_confs=initial_confs, partial_orders=partial_orders,
                                               removed=removed, **kwargs),
-        #'test-stiffness': from_test(test_stiffness),
+
+        'test-stiff': from_test(get_test_stiff()),
+        'test-connected': from_test(get_test_connected(ground_nodes)),
+        'NodeDistance': lambda n1, n2: get_distance(node_points[n2], node_points[n1]),
+
         #'test-cfree-traj-conf': from_test(lambda *args: True),
         #'test-cfree-traj-traj': from_test(get_cfree_test(**kwargs)),
 
@@ -369,6 +380,11 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
         'Duration': lambda r, t: t.get_link_distance() / TOOL_VELOCITY,
         'Euclidean': lambda n1, n2: get_element_length((n1, n2), node_points),
     }
+    if use_fluent:
+        stream_map.update({
+            'sample-print': from_gen_fn(get_fluent_print_gen_fn(robots, obstacles, node_points, element_bodies, ground_nodes,
+                                                                partial_orders=partial_orders, removed=removed, **kwargs)),
+        })
 
     assignments = compute_assignments(robots, remaining, node_points, initial_confs)
     transits = compute_transits(layer_from_n, directions)
@@ -488,14 +504,16 @@ def solve_pddlstream(problem, node_points, element_bodies, planner=GREEDY_PLANNE
 
     # TODO: assert (instance.value == value)
     with LockRenderer(lock=False):
-        # solution = solve_incremental(problem, planner='add-random-lazy', max_time=600,
-        #                              max_planner_time=300, debug=True)
-        # TODO: allow some types of failures
-        solution = solve_focused(problem, stream_info=stream_info, max_time=max_time,
-                                 effort_weight=None, unit_efforts=True, unit_costs=False, # TODO: effort_weight=None vs 0
-                                 max_skeletons=None, bind=True, max_failures=INF,  # 0 | INF
-                                 planner=planner, max_planner_time=60, debug=False, reorder=False,
-                                 initial_complexity=1)
+        if False:
+            solution = solve_incremental(problem, planner='add-random-lazy', max_time=600,
+                                         max_planner_time=300, debug=True)
+        else:
+            # TODO: allow some types of failures
+            solution = solve_focused(problem, stream_info=stream_info, max_time=max_time,
+                                     effort_weight=None, unit_efforts=True, unit_costs=False, # TODO: effort_weight=None vs 0
+                                     max_skeletons=None, bind=True, max_failures=INF,  # 0 | INF
+                                     planner=planner, max_planner_time=60, debug=False, reorder=False,
+                                     initial_complexity=1)
 
     print_solution(solution)
     plan, _, certificate = solution
@@ -682,21 +700,23 @@ def stripstream(robot1, obstacles, node_points, element_bodies, ground_nodes,
     #if not check_plan(extrusion_path, planned_elements):
     #    return None, data
 
+    #trajectories = None
+    #trajectories = extract_trajectories(plan)
+    commands = [action.args[-1] for action in reversed(plan) if action.name == 'print']
+    trajectories = flatten_commands(commands)
+
     if has_gui():
         saver.restore()
         #label_nodes(node_points)
-        # commands = [action.args[-1] for action in reversed(plan) if action.name == 'print']
-        # trajectories = flatten_commands(commands)
-        # elements = recover_sequence(trajectories)
-        # draw_ordered(elements, node_points)
+        # draw_ordered(recover_sequence(trajectories), node_points)
         # wait_if_gui('Continue?')
 
         #simulate_printing(node_points, trajectories)
         #display_trajectories(node_points, ground_nodes, trajectories)
         simulate_parallel(robots, plan)
 
-    return None, data
-    #return trajectories, data
+    assert not dual
+    return trajectories, data
 
 ##################################################
 
@@ -771,7 +791,6 @@ def get_wild_print_gen_fn(robots, static_obstacles, node_points, element_bodies,
         # TODO: stream fusion
         # TODO: split element into several edges
         robot = index_from_name(robots, name)
-        q0 = initial_confs[name]
         #generator = gen_fn_from_robot[robot](node1, element)
         for print_cmd, in gen_fn_from_robot[robot](node1, element):
             # TODO: need to merge safe print_cmd.colliding
@@ -779,6 +798,7 @@ def get_wild_print_gen_fn(robots, static_obstacles, node_points, element_bodies,
             q2 = Conf(robot, print_cmd.end_conf, node=node2, element=element)
 
             if return_home:
+                q0 = initial_confs[name]
                 # TODO: can decompose into individual movements as well
                 output1 = next(wild_move_fn(name, q0, q1), None)
                 if not output1:
@@ -799,16 +819,6 @@ def get_wild_print_gen_fn(robots, static_obstacles, node_points, element_bodies,
                 facts.extend(('Collision', print_cmd, e2) for e2 in print_cmd.colliding)
             yield WildOutput(outputs,  facts)
     return wild_gen_fn
-
-def get_fluent_print_gen_fn(robots, static_obstacles, node_points, element_bodies, ground_nodes, **kwargs):
-    wild_print_gen_fn = get_wild_print_gen_fn(robots, static_obstacles, node_points, element_bodies, ground_nodes,
-                                              initial_confs={}, return_home=False, **kwargs) # collisions=False,
-
-    def gen_fn(*args):
-        for outputs, facts in wild_print_gen_fn(*args):
-            for q1, q2, print_cmd in outputs:
-                yield (print_cmd,)
-    return gen_fn
 
 def get_collision_test(robots, collisions=True, **kwargs):
     # TODO: check end-effector collisions first
@@ -849,12 +859,57 @@ def get_collision_test(robots, collisions=True, **kwargs):
         return False
     return test
 
-def test_stiffness(fluents=[]):
-    assert all(fact[0] == 'printed' for fact in fluents)
-    if not USE_CONMECH:
-       return True
-    # https://github.com/yijiangh/conmech
-    # TODO: to use the non-skeleton focused algorithm, need to remove the negative axiom upon success
-    elements = {fact[1] for fact in fluents}
-    #print(elements)
-    return True
+##################################################
+
+# TODO: use stream statistics for ordering
+
+def extract_printed(fluents):
+    assert all(get_prefix(fact) == 'printed' for fact in fluents)
+    return {get_args(fact)[0] for fact in fluents}
+
+def get_test_connected(ground_nodes, debug=True):
+    def test_connected(fluents=[]):
+        printed = extract_printed(fluents)
+        if debug:
+            print(test_connected.__name__, len(printed), printed)
+            #user_input()
+        return check_connected(ground_nodes, printed)
+    return test_connected
+
+def get_test_stiff(debug=True):
+    def test_stiff(fluents=[]):
+        printed = extract_printed(fluents)
+        if debug:
+            print(test_stiff.__name__, len(printed), printed)
+            #user_input()
+        if not USE_CONMECH:
+           return True
+        # https://github.com/yijiangh/conmech
+        # TODO: to use the non-skeleton focused algorithm, need to remove the negative axiom upon success
+        return True
+    return test_stiff
+
+def get_fluent_print_gen_fn(robots, static_obstacles, node_points, element_bodies, ground_nodes,
+                            connectivity=False, stiffness=False, **kwargs):
+    #wild_print_gen_fn = get_wild_print_gen_fn(robots, static_obstacles, node_points, element_bodies, ground_nodes,
+    #                                          initial_confs={}, return_home=False, **kwargs) # collisions=False,
+    print_gen_fn_from_robot = {robot: get_print_gen_fn(robot, static_obstacles, node_points, element_bodies, ground_nodes,
+                                                       precompute_collisions=False, **kwargs) for robot in robots}
+
+    def gen_fn(name, node1, element, node2, fluents=[]):
+        robot = index_from_name(robots, name)
+        printed = extract_printed(fluents)
+        next_printed = printed - {element}
+        next_nodes = compute_printed_nodes(ground_nodes, next_printed)
+        if connectivity and not ((node1 in next_nodes) and check_connected(ground_nodes, next_printed)):
+            # TODO: should be connected before and after the extrusion
+            return
+        if stiffness and not test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker):
+            return
+        generator = print_gen_fn_from_robot[robot](node1, element, extruded=next_printed)
+        #generator = islice(generator, stop=1)
+        #return generator
+        for print_cmd, in generator:
+            yield (print_cmd,)
+            #break
+    return gen_fn

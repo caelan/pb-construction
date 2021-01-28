@@ -16,15 +16,16 @@
     ; Fluent
     (Printed ?e)
     (Removed ?e)
-    (Stiff)
     (AtNode ?r ?q)
     (CanMove ?r)
+    (Connected)
+    (Stiff)
 
     ; Derived
-    (Connected ?n)
+    (Reachable ?n)
   )
   (:functions
-    (Distance ?n1 ?n2)
+    (NodeDistance ?n1 ?n2)
   )
 
   ;(:action move
@@ -33,12 +34,13 @@
   ;                     (AtNode ?r ?n1) (CanMove ?r))
   ;  :effect (and (AtNode ?r ?n2)
   ;               (not (AtNode ?r ?n1)) (not (CanMove ?r))
-  ;               (increase (total-cost) (Distance ?n1 ?n2)))
+  ;               (increase (total-cost) (NodeDistance ?n1 ?n2)))
   ;)
 
   (:action print
     :parameters (?r ?n1 ?e ?n2 ?t)
-    :precondition (and (PrintAction ?r ?n1 ?e ?n2 ?t) (Printed ?e) ; (Stiff)
+    :precondition (and (PrintAction ?r ?n1 ?e ?n2 ?t) (Printed ?e)
+                       (Connected) (Stiff)
                        ;(Connected ?n1) (Connected ?n2) ; No nodes disconnected
                        ; (AtNode ?r ?n1)
                        ;(forall (?e2) (imply (Order ?e ?e2) (Removed ?e2)))
@@ -51,9 +53,9 @@
             )
   )
 
-  (:derived (Connected ?n2) ; TODO: define on nodes or elements
-    (or (Grounded ?n2)
-        (exists (?n1 ?e) (and (Edge ?n1 ?e ?n2)
-                              (Printed ?e) (Connected ?n1)))) ; Can also just do on StartNode
-  )
+  ;(:derived (Reachable ?n2) ; TODO: define on nodes or elements
+  ;  (or (Grounded ?n2)
+  ;      (exists (?n1 ?e) (and (Edge ?n1 ?e ?n2)
+  ;                            (Printed ?e) (Reachable ?n1)))) ; Can also just do on StartNode
+  ;)
 )
