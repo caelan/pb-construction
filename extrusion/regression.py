@@ -6,7 +6,7 @@ from extrusion.progression import Node, retrace_commands
 from extrusion.heuristics import get_heuristic_fn, get_tool_position
 from extrusion.motion import compute_motion, compute_motions, LAZY
 from extrusion.parsing import load_extrusion
-from extrusion.stream import get_print_gen_fn, MAX_DIRECTIONS, MAX_ATTEMPTS
+from extrusion.stream import get_print_gen_fn
 from extrusion.utils import get_id_from_element, get_ground_elements, is_ground, \
     check_connected, check_memory, get_undirected, get_directions, compute_printed_nodes, \
     flatten_commands
@@ -53,9 +53,7 @@ def regression(robot, obstacles, element_bodies, extrusion_path, partial_orders=
     if stiffness and (checker is None):
         checker = create_stiffness_checker(extrusion_path, verbose=False)
     print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                    precompute_collisions=False,
-                                    max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS,
-                                    collisions=collisions, **kwargs)
+                                    precompute_collisions=False, collisions=collisions, **kwargs)
     heuristic_fn = get_heuristic_fn(robot, extrusion_path, heuristic, checker=checker, forward=False)
 
     queue = []

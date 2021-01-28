@@ -8,7 +8,7 @@ from extrusion.validator import compute_plan_deformation
 from extrusion.progression import Node, retrace_trajectories, add_successors
 from extrusion.heuristics import get_heuristic_fn, get_tool_position
 from extrusion.parsing import load_extrusion
-from extrusion.stream import get_print_gen_fn, MAX_DIRECTIONS, MAX_ATTEMPTS
+from extrusion.stream import get_print_gen_fn
 from extrusion.utils import check_connected, get_id_from_element, PrintTrajectory, JOINT_WEIGHTS, compute_printed_nodes, \
     compute_printable_elements, get_undirected, recover_sequence, recover_directed_sequence
 from extrusion.stiffness import create_stiffness_checker, test_stiffness
@@ -106,11 +106,11 @@ def lookahead(robot, obstacles, element_bodies, extrusion_path, partial_orders=[
     #                                max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS, collisions=collisions, **kwargs)
     full_print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
                                          precompute_collisions=False, ee_only=ee_only, allow_failures=True,
-                                         max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS, collisions=collisions, **kwargs)
+                                         collisions=collisions, **kwargs)
     # TODO: could just check environment collisions & kinematics instead of element collisions
     ee_print_gen_fn = get_print_gen_fn(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                        precompute_collisions=False, ee_only=True, allow_failures=True,
-                                        max_directions=MAX_DIRECTIONS, max_attempts=MAX_ATTEMPTS, collisions=collisions, **kwargs)
+                                       precompute_collisions=False, ee_only=True, allow_failures=True,
+                                       collisions=collisions, **kwargs)
     id_from_element = get_id_from_element(element_from_id)
     all_elements = frozenset(element_bodies)
     heuristic_fn = get_heuristic_fn(robot, extrusion_path, heuristic, checker=checker, forward=True)
