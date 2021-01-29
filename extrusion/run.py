@@ -20,7 +20,7 @@ from extrusion.visualization import label_element, set_extrusion_camera, label_n
     BACKGROUND_COLOR, draw_model, SHADOWS, draw_ordered
 from extrusion.experiment import train_parallel
 from extrusion.motion import compute_motions, validate_trajectories
-from extrusion.stripstream import stripstream
+from extrusion.stripstream import solve_stripstream
 from extrusion.utils import load_world, TOOL_LINK, compute_sequence_distance, get_print_distance, \
     recover_sequence, recover_directed_sequence, Profiler, extract_plan_data
 from extrusion.parsing import load_extrusion, create_elements_bodies, \
@@ -157,9 +157,9 @@ def solve_extrusion(robot, obstacles, element_from_id, node_points, element_bodi
         sampled_trajectories = []
         if precompute:
             sampled_trajectories = sample_trajectories(robot, obstacles, node_points, element_bodies, ground_nodes)
-        plan, data = stripstream(robot, obstacles, node_points, element_bodies, ground_nodes,
-                                 trajectories=sampled_trajectories, collisions=not args.cfree,
-                                 max_time=args.max_time, disable=args.disable, **kwargs)
+        plan, data = solve_stripstream(robot, obstacles, node_points, element_bodies, ground_nodes,
+                                       trajectories=sampled_trajectories, collisions=not args.cfree,
+                                       max_time=args.max_time, disable=args.disable, **kwargs)
     elif args.algorithm == 'progression':
         plan, data = progression(robot, obstacles, element_bodies, extrusion_path, partial_orders=partial_orders,
                                  heuristic=args.bias, max_time=args.max_time,
