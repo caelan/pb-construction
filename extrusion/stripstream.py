@@ -1,42 +1,41 @@
 from __future__ import print_function
 
 from collections import defaultdict, Counter
-from itertools import product, permutations, islice
-from operator import itemgetter
+from itertools import product, permutations
 
 import numpy as np
 import time
 import os
 
-from extrusion.heuristics import compute_layer_from_vertex, compute_distance_from_node, get_heuristic_fn
+from extrusion.fluent import get_location_distance, get_test_printable, get_test_stiff, get_fluent_print_gen_fn, \
+    get_order_fn
+from extrusion.heuristics import compute_layer_from_vertex, compute_distance_from_node
 from extrusion.stream import get_print_gen_fn, APPROACH_DISTANCE, SELF_COLLISIONS, \
     JOINT_WEIGHTS, RESOLUTION
-from extrusion.stiffness import USE_CONMECH, test_stiffness
+from extrusion.temporal import index_from_name
 from extrusion.utils import load_robot, get_other_node, get_node_neighbors, PrintTrajectory, get_midpoint, \
-    get_element_length, TOOL_VELOCITY, Command, compute_z_distance, MotionTrajectory, \
-    get_disabled_collisions, retrace_supporters, flatten_commands, compute_printed_nodes, check_connected, \
-    nodes_from_elements, TOOL_LINK
+    get_element_length, TOOL_VELOCITY, Command, MotionTrajectory, \
+    get_disabled_collisions, retrace_supporters, flatten_commands, nodes_from_elements
 from extrusion.visualization import set_extrusion_camera, draw_model
 #from examples.pybullet.turtlebots.run import *
 
-from pddlstream.algorithms.downward import set_cost_scale, parse_action
+from pddlstream.algorithms.downward import set_cost_scale
 from pddlstream.algorithms.incremental import solve_incremental
 from pddlstream.algorithms.focused import solve_focused #, CURRENT_STREAM_PLAN
 from pddlstream.language.constants import And, PDDLProblem, print_solution, DurativeAction, Equal, print_plan, \
-    NOT, EQ, get_prefix, get_function, get_args
+    get_prefix, get_function
 from pddlstream.language.stream import StreamInfo, PartialInputs, WildOutput
 from pddlstream.language.function import FunctionInfo
 from pddlstream.language.generator import from_gen_fn, from_test
-from pddlstream.language.conversion import obj_from_pddl
 from pddlstream.utils import read, get_file_path, inclusive_range, neighbors_from_orders
 from pddlstream.language.temporal import compute_duration, compute_start, compute_end, apply_start, \
     create_planner, DURATIVE_ACTIONS, reverse_plan, get_tfd_path
 
 from pybullet_tools.utils import get_configuration, set_pose, Euler, get_point, \
-    get_movable_joints, has_gui, WorldSaver, wait_if_gui, add_line, BLUE, RED, \
-    wait_for_duration, get_length, INF, LockRenderer, randomize, set_configuration, Pose, Point, aabb_overlap, pairwise_link_collision, \
+    get_movable_joints, has_gui, WorldSaver, wait_if_gui, add_line, RED, \
+    wait_for_duration, INF, LockRenderer, randomize, set_configuration, Pose, Point, aabb_overlap, pairwise_link_collision, \
     aabb_union, plan_joint_motion, SEPARATOR, user_input, remove_all_debug, GREEN, elapsed_time, VideoSaver, \
-    point_from_pose, draw_aabb, get_pose, tform_point, invert, get_yaw, draw_pose, get_distance, get_link_pose, link_from_name
+    point_from_pose, get_pose, tform_point, invert, get_yaw, draw_pose
 
 STRIPSTREAM_ALGORITHM = 'stripstream' # focused, incremental
 ROBOT_TEMPLATE = 'r{}'
@@ -63,12 +62,6 @@ CUSTOM_LIMITS = { # TODO: do instead of modifying the URDF
 # compas_fea_beam_tree_simp, compas_fea_beam_tree_S_simp, compas_fea_beam_tree_M_simp
 
 ##################################################
-
-def index_from_name(robots, name):
-    return robots[int(name[1:])]
-
-#def name_from_index(i):
-#    return ROBOT_TEMPLATE.format(i)
 
 class Conf(object):
     def __init__(self, robot, positions=None, node=None, element=None):
@@ -147,12 +140,9 @@ def simulate_printing(node_points, trajectories, time_step=0.1, speed_up=10.):
 
 ##################################################
 
-def simulate_parallel(robots, plan, time_step=0.1, speed_up=10., record=None): # None | video.mp4
-    # TODO: ensure the step size is appropriate
-    makespan = compute_duration(plan)
-    print('\nMakespan: {:.3f}'.format(makespan))
+def extract_parallel_trajectories(plan):
     if plan is None:
-        return
+        return None
     trajectories = []
     for action in plan:
         command = action.args[-1]
@@ -166,9 +156,17 @@ def simulate_parallel(robots, plan, time_step=0.1, speed_up=10., record=None): #
         #    print(traj, traj.start_time, traj.end_time, traj.duration)
         trajectories.extend(command.trajectories)
     #print(sum(traj.duration for traj in trajectories))
-    num_motion = sum(action.name == 'move' for action in plan)
+    return trajectories
 
+def simulate_parallel(robots, plan, time_step=0.1, speed_up=10., record=None): # None | video.mp4
+    # TODO: ensure the step size is appropriate
+    makespan = compute_duration(plan)
+    print('\nMakespan: {:.3f}'.format(makespan))
+    trajectories = extract_parallel_trajectories(plan)
+    if trajectories is None:
+        return
     wait_if_gui('Begin?')
+    num_motion = sum(action.name == 'move' for action in plan)
     with VideoSaver(record):
         for t in inclusive_range(0, makespan, time_step):
             # if action.start <= t <= get_end(action):
@@ -521,8 +519,7 @@ def solve_pddlstream(problem, node_points, element_bodies, planner=GREEDY_PLANNE
         # planner = 'max-astar'
 
     # TODO: assert (instance.value == value)
-    use_incremental = False
-    use_attachments = False
+    use_incremental = use_attachments = True
     with LockRenderer(lock=False):
         if use_incremental:
             if use_attachments:
@@ -889,103 +886,3 @@ def get_collision_test(robots, collisions=True, **kwargs):
                         return True
         return False
     return test
-
-##################################################
-
-# TODO: use stream statistics for ordering
-
-def get_location_distance(node_points, robots=[], initial_confs={}):
-
-    def extract_point(loc):
-        if isinstance(loc, str):
-            name = loc.split('-')[0]
-            conf = initial_confs[name]
-            conf.assign()
-            robot = index_from_name(robots, name)
-            return point_from_pose(get_link_pose(robot, link_from_name(robot, TOOL_LINK)))
-        else:
-            return node_points[loc]
-
-    def fn(*locations):
-        return 1. + get_distance(*map(extract_point, locations))
-    return fn
-
-def extract_printed(fluents):
-    assert all(get_prefix(fact) == 'printed' for fact in fluents)
-    return {get_args(fact)[0] for fact in fluents}
-
-def get_test_printable(ground_nodes, debug=True):
-    def test_printable(node1, element, fluents=[]):
-        printed = extract_printed(fluents)
-        next_printed = printed - {element}
-        if debug:
-            print(test_printable.__name__, node1, element, len(next_printed), next_printed)
-            #user_input()
-        # TODO: should be connected before and after the extrusion
-        # Building from connected node and connected structure
-        next_nodes = compute_printed_nodes(ground_nodes, next_printed)
-        return (node1 in next_nodes) and check_connected(ground_nodes, next_printed)
-    return test_printable
-
-def get_test_stiff(debug=True):
-    def test_stiff(fluents=[]):
-        printed = extract_printed(fluents)
-        if debug:
-            print(test_stiff.__name__, len(printed), printed)
-            #user_input()
-        if not USE_CONMECH:
-           return True
-        # https://github.com/yijiangh/conmech
-        # TODO: to use the non-skeleton focused algorithm, need to remove the negative axiom upon success
-        return True
-    return test_stiff
-
-def get_fluent_print_gen_fn(robots, static_obstacles, node_points, element_bodies, ground_nodes,
-                            connectivity=False, stiffness=False, debug=True, **kwargs):
-    #wild_print_gen_fn = get_wild_print_gen_fn(robots, static_obstacles, node_points, element_bodies, ground_nodes,
-    #                                          initial_confs={}, return_home=False, **kwargs) # collisions=False,
-    print_gen_fn_from_robot = {robot: get_print_gen_fn(robot, static_obstacles, node_points, element_bodies, ground_nodes,
-                                                       precompute_collisions=False, **kwargs) for robot in robots}
-
-    test_printable = get_test_printable(ground_nodes, debug=debug)
-    #test_stiff = get_test_stiff(debug=debug)
-
-    def gen_fn(name, node1, element, node2, fluents=[]):
-        robot = index_from_name(robots, name)
-        printed = extract_printed(fluents)
-        next_printed = printed - {element}
-        if connectivity and not test_printable(node1, element, fluents=fluents):
-            return
-        if stiffness and not test_stiffness(extrusion_path, element_from_id, next_printed, checker=checker):
-            return
-        generator = print_gen_fn_from_robot[robot](node1, element, extruded=next_printed)
-        #generator = islice(generator, stop=1)
-        #return generator
-        for print_cmd, in generator:
-            yield (print_cmd,)
-            #break
-    return gen_fn
-
-def get_order_fn(node_points):
-    # TODO: general heuristic function
-    # TODO: bias toward nearby elements
-    #heuristic_fn = get_heuristic_fn(robot=None, extrusion_path=None, heuristic='z', checker=None, forward=False)
-
-    def order_fn(state, goal, operators):
-        from strips.utils import ha_applicable
-        actions = ha_applicable(state, goal, operators) # filters axioms
-        action_priorities = {}
-        for action in actions:
-            name, args = parse_action(action.fd_action.name)
-            args = [obj_from_pddl(arg).value for arg in args]
-            if name == 'print':
-                _, _, element, _, _ = args
-                priority = -compute_z_distance(node_points, element)
-            elif name == 'move':
-                _, loc1, loc2 = args
-                priority = 0. # TODO: use the location of the best element here
-            else:
-                raise NotImplementedError(name)
-            action_priorities[action] = priority
-        return sorted(actions, key=action_priorities.__getitem__)
-    return order_fn
