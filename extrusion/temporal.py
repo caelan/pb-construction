@@ -4,24 +4,47 @@ from itertools import product, permutations
 import numpy as np
 
 from extrusion.heuristics import compute_distance_from_node
-from extrusion.stream import APPROACH_DISTANCE
+from extrusion.stream import APPROACH_DISTANCE, SELF_COLLISIONS, get_print_gen_fn
 
 from extrusion.utils import get_other_node, get_node_neighbors, get_midpoint, get_element_length, load_robot, \
-    PrintTrajectory
+    PrintTrajectory, retrace_supporters, JOINT_WEIGHTS, RESOLUTION, get_disabled_collisions, MotionTrajectory, Command
 from extrusion.visualization import set_extrusion_camera
-from pddlstream.language.temporal import compute_duration
-from pddlstream.utils import inclusive_range
+from pddlstream.language.stream import WildOutput
+from pddlstream.language.temporal import compute_duration, create_planner
+from pddlstream.utils import inclusive_range, neighbors_from_orders
 from pybullet_tools.utils import wait_if_gui, VideoSaver, set_configuration, wait_for_duration, INF, get_pose, \
-    point_from_pose, tform_point, invert, get_yaw, Pose, get_point, set_pose, Point, Euler, draw_pose, add_line, RED
+    point_from_pose, tform_point, invert, get_yaw, Pose, get_point, set_pose, Point, Euler, draw_pose, add_line, RED, \
+    get_movable_joints, plan_joint_motion, randomize, aabb_union, aabb_overlap, pairwise_link_collision, \
+    get_configuration
 
 ROBOT_TEMPLATE = 'r{}'
 DUAL_CONF = [np.pi/4, -np.pi/4, np.pi/2, 0, np.pi/4, -np.pi/2] # np.pi/8
+
+GREEDY_PLANNER = create_planner(greedy=False, lazy=True, h_cea=True)
+POSTPROCESS_PLANNER = create_planner(anytime=True, greedy=False, lazy=True, h_cea=False, h_makespan=True)
+#POSTPROCESS_PLANNER = create_planner(anytime=True, lazy=False, h_makespan=True)
+
+##################################################
 
 def index_from_name(robots, name):
     return robots[int(name[1:])]
 
 #def name_from_index(i):
 #    return ROBOT_TEMPLATE.format(i)
+
+class Conf(object):
+    def __init__(self, robot, positions=None, node=None, element=None):
+        self.robot = robot
+        self.joints = get_movable_joints(self.robot)
+        if positions is None:
+            positions = get_configuration(self.robot)
+        self.positions = positions
+        self.node = node
+        self.element = element
+    def assign(self):
+        set_configuration(self.robot, self.positions)
+    def __repr__(self):
+        return '{}({})'.format(self.__class__.__name__, self.node)
 
 ##################################################
 
@@ -269,3 +292,146 @@ def simulate_printing(node_points, trajectories, time_step=0.1, speed_up=10.):
             # wait_if_gui()
     wait_if_gui()
     return handles
+
+##################################################
+
+def get_wild_move_gen_fn(robots, static_obstacles, element_bodies, partial_orders=set(), collisions=True, **kwargs):
+    incoming_supporters, _ = neighbors_from_orders(partial_orders)
+
+    def wild_gen_fn(name, conf1, conf2, *args):
+        is_initial = (conf1.element is None) and (conf2.element is not None)
+        is_goal = (conf1.element is not None) and (conf2.element is None)
+        if is_initial:
+            supporters = []
+        elif is_goal:
+            supporters = list(element_bodies)
+        else:
+            supporters = [conf1.element]  # TODO: can also do according to levels
+            retrace_supporters(conf1.element, incoming_supporters, supporters)
+        element_obstacles = {element_bodies[e] for e in supporters}
+        obstacles = set(static_obstacles) | element_obstacles
+        if not collisions:
+            obstacles = set()
+
+        robot = index_from_name(robots, name)
+        conf1.assign()
+        joints = get_movable_joints(robot)
+        # TODO: break into pieces at the furthest part from the structure
+
+        weights = JOINT_WEIGHTS
+        resolutions = np.divide(RESOLUTION * np.ones(weights.shape), weights)
+        disabled_collisions = get_disabled_collisions(robot)
+        #path = [conf1, conf2]
+        path = plan_joint_motion(robot, joints, conf2.positions, obstacles=obstacles,
+                                 self_collisions=SELF_COLLISIONS, disabled_collisions=disabled_collisions,
+                                 weights=weights, resolutions=resolutions,
+                                 restarts=3, iterations=100, smooth=100)
+        if not path:
+            return
+        path = [conf1.positions] + path[1:-1] + [conf2.positions]
+        traj = MotionTrajectory(robot, joints, path)
+        command = Command([traj])
+        edges = [
+            (conf1, command, conf2),
+            (conf2, command, conf1), # TODO: reverse
+        ]
+        outputs = []
+        #outputs = [(command,)]
+        facts = []
+        for q1, cmd, q2 in edges:
+            facts.extend([
+                ('Traj', name, cmd),
+                ('CTraj', name, cmd),
+                ('MoveAction', name, q1, q2, cmd),
+            ])
+        yield WildOutput(outputs, facts)
+    return wild_gen_fn
+
+
+def get_wild_print_gen_fn(robots, static_obstacles, node_points, element_bodies, ground_nodes,
+                          initial_confs={}, return_home=False, collisions=True, **kwargs):
+    # TODO: could reuse end-effector trajectories
+    # TODO: max distance from nearby
+    gen_fn_from_robot = {robot: get_print_gen_fn(robot, static_obstacles, node_points, element_bodies, ground_nodes,
+                                                 p_nearby=1., approach_distance=0.05,
+                                                 precompute_collisions=True, **kwargs) for robot in robots}
+    wild_move_fn = get_wild_move_gen_fn(robots, static_obstacles, element_bodies, **kwargs)
+
+    def wild_gen_fn(name, node1, element, node2):
+        # TODO: could cache this
+        # sequence = [result.get_mapping()['?e'].value for result in CURRENT_STREAM_PLAN]
+        # index = sequence.index(element)
+        # printed = sequence[:index]
+        # TODO: this might need to be recomputed per iteration
+        # TODO: condition on plan/downstream constraints
+        # TODO: stream fusion
+        # TODO: split element into several edges
+        robot = index_from_name(robots, name)
+        #generator = gen_fn_from_robot[robot](node1, element)
+        for print_cmd, in gen_fn_from_robot[robot](node1, element):
+            # TODO: need to merge safe print_cmd.colliding
+            q1 = Conf(robot, print_cmd.start_conf, node=node1, element=element)
+            q2 = Conf(robot, print_cmd.end_conf, node=node2, element=element)
+
+            if return_home:
+                q0 = initial_confs[name]
+                # TODO: can decompose into individual movements as well
+                output1 = next(wild_move_fn(name, q0, q1), None)
+                if not output1:
+                    continue
+                transit_cmd1 = output1.values[0][0]
+                print_cmd.trajectories = transit_cmd1.trajectories + print_cmd.trajectories
+                output2 = next(wild_move_fn(name, q2, q0), None)
+                if not output2:
+                    continue
+                transit_cmd2 = output2.values[0][0]
+                print_cmd.trajectories = print_cmd.trajectories + transit_cmd2.trajectories
+                q1 = q2 = q0 # TODO: must assert that AtConf holds
+
+            outputs = [(q1, q2, print_cmd)]
+            # Prevents premature collision checks
+            facts = [('CTraj', name, print_cmd)] # + [('Dummy',)] # To force to be wild
+            if collisions:
+                facts.extend(('Collision', print_cmd, e2) for e2 in print_cmd.colliding)
+            yield WildOutput(outputs,  facts)
+    return wild_gen_fn
+
+
+def get_collision_test(robots, collisions=True, **kwargs):
+    # TODO: check end-effector collisions first
+    def test(name1, command1, name2, command2):
+        robot1, robot2 = index_from_name(robots, name1), index_from_name(robots, name2)
+        if (robot1 == robot2) or not collisions:
+            return False
+        # TODO: check collisions between pairs of inflated adjacent element
+        for traj1, traj2 in randomize(product(command1.trajectories, command2.trajectories)):
+            # TODO: use swept aabbs for element checks
+            aabbs1, aabbs2 = traj1.get_aabbs(), traj2.get_aabbs()
+            swept_aabbs1 = {link: aabb_union(link_aabbs[link] for link_aabbs in aabbs1) for link in aabbs1[0]}
+            swept_aabbs2 = {link: aabb_union(link_aabbs[link] for link_aabbs in aabbs2) for link in aabbs2[0]}
+            swept_overlap = [(link1, link2) for link1, link2 in product(swept_aabbs1, swept_aabbs2)
+                             if aabb_overlap(swept_aabbs1[link1], swept_aabbs2[link2])]
+            if not swept_overlap:
+                continue
+            # for l1 in set(map(itemgetter(0), swept_overlap)):
+            #     draw_aabb(swept_aabbs1[l1], color=RED)
+            # for l2 in set(map(itemgetter(1), swept_overlap)):
+            #     draw_aabb(swept_aabbs2[l2], color=BLUE)
+
+            for index1, index2 in product(randomize(range(len(traj1.path))), randomize(range(len(traj2.path)))):
+                overlap = [(link1, link2) for link1, link2 in swept_overlap
+                           if aabb_overlap(aabbs1[index1][link1], aabbs2[index2][link2])]
+                #overlap = list(product(aabbs1[index1], aabbs2[index2]))
+                if not overlap:
+                    continue
+                set_configuration(robot1, traj1.path[index1])
+                set_configuration(robot2, traj2.path[index2])
+                #wait_if_gui()
+                #if pairwise_collision(robot1, robot2):
+                #    return True
+                for link1, link2 in overlap:
+                    if pairwise_link_collision(robot1, link1, robot2, link2):
+                        #wait_if_gui()
+                        return True
+        return False
+    return test

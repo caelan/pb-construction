@@ -1,8 +1,5 @@
 from __future__ import print_function
 
-from itertools import product
-
-import numpy as np
 import time
 import os
 
@@ -10,13 +7,11 @@ from extrusion.decomposition import compute_total_orders, extract_static_facts
 from extrusion.fluent import get_location_distance, get_test_printable, get_test_stiff, get_fluent_print_gen_fn, \
     get_order_fn
 from extrusion.heuristics import compute_layer_from_vertex
-from extrusion.stream import get_print_gen_fn, SELF_COLLISIONS, \
-    JOINT_WEIGHTS, RESOLUTION
-from extrusion.temporal import index_from_name, compute_directions, compute_local_orders, compute_elements_from_layer, \
+from extrusion.temporal import compute_directions, compute_local_orders, compute_elements_from_layer, \
     compute_global_orders, simulate_parallel, compute_assignments, compute_transits, get_opt_distance_fn, \
-    ROBOT_TEMPLATE, mirror_robot
-from extrusion.utils import get_element_length, TOOL_VELOCITY, Command, MotionTrajectory, \
-    get_disabled_collisions, retrace_supporters, flatten_commands, nodes_from_elements
+    ROBOT_TEMPLATE, mirror_robot, GREEDY_PLANNER, POSTPROCESS_PLANNER, get_wild_move_gen_fn, get_wild_print_gen_fn, \
+    get_collision_test, Conf
+from extrusion.utils import get_element_length, TOOL_VELOCITY, flatten_commands, nodes_from_elements
 from extrusion.visualization import draw_model
 #from examples.pybullet.turtlebots.run import *
 
@@ -24,16 +19,15 @@ from pddlstream.algorithms.downward import set_cost_scale
 from pddlstream.algorithms.incremental import solve_incremental
 from pddlstream.algorithms.focused import solve_focused #, CURRENT_STREAM_PLAN
 from pddlstream.language.constants import And, PDDLProblem, print_solution, DurativeAction, Equal, print_plan
-from pddlstream.language.stream import StreamInfo, PartialInputs, WildOutput
+from pddlstream.language.stream import StreamInfo, PartialInputs
 from pddlstream.language.function import FunctionInfo
 from pddlstream.language.generator import from_gen_fn, from_test
-from pddlstream.utils import read, get_file_path, neighbors_from_orders
+from pddlstream.utils import read, get_file_path
 from pddlstream.language.temporal import compute_duration, compute_start, compute_end, apply_start, \
-    create_planner, DURATIVE_ACTIONS, reverse_plan, get_tfd_path
+    DURATIVE_ACTIONS, reverse_plan, get_tfd_path
 
-from pybullet_tools.utils import get_configuration, get_movable_joints, has_gui, WorldSaver, RED, \
-    INF, LockRenderer, randomize, set_configuration, aabb_overlap, pairwise_link_collision, \
-    aabb_union, plan_joint_motion, SEPARATOR, user_input, remove_all_debug, GREEN, elapsed_time
+from pybullet_tools.utils import has_gui, WorldSaver, RED, \
+    INF, LockRenderer, SEPARATOR, user_input, remove_all_debug, GREEN, elapsed_time
 
 STRIPSTREAM_ALGORITHM = 'stripstream' # focused, incremental
 
@@ -56,25 +50,8 @@ CUSTOM_LIMITS = { # TODO: do instead of modifying the URDF
 # semi_sphere
 # compas_fea_beam_tree_simp, compas_fea_beam_tree_S_simp, compas_fea_beam_tree_M_simp
 
-##################################################
-
-class Conf(object):
-    def __init__(self, robot, positions=None, node=None, element=None):
-        self.robot = robot
-        self.joints = get_movable_joints(self.robot)
-        if positions is None:
-            positions = get_configuration(self.robot)
-        self.positions = positions
-        self.node = node
-        self.element = element
-    def assign(self):
-        set_configuration(self.robot, self.positions)
-    def __repr__(self):
-        return '{}({})'.format(self.__class__.__name__, self.node)
-
 
 ##################################################
-
 
 def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground_nodes, layer_from_n,
                    initial_confs={}, printed=set(), removed=set(),
@@ -227,10 +204,6 @@ def get_pddlstream(robots, static_obstacles, node_points, element_bodies, ground
     return PDDLProblem(domain_pddl, constant_map, stream_pddl, stream_map, init, goal)
 
 ##################################################
-
-GREEDY_PLANNER = create_planner(greedy=False, lazy=True, h_cea=True)
-POSTPROCESS_PLANNER = create_planner(anytime=True, greedy=False, lazy=True, h_cea=False, h_makespan=True)
-#POSTPROCESS_PLANNER = create_planner(anytime=True, lazy=False, h_makespan=True)
 
 def solve_pddlstream(problem, node_points, element_bodies, planner=GREEDY_PLANNER, max_time=60):
     # TODO: try search at different cost levels (i.e. w/ and w/o abstract)
@@ -444,144 +417,3 @@ def solve_stripstream(robot1, obstacles, node_points, element_bodies, ground_nod
 
     assert not dual
     return trajectories, data
-
-##################################################
-
-def get_wild_move_gen_fn(robots, static_obstacles, element_bodies, partial_orders=set(), collisions=True, **kwargs):
-    incoming_supporters, _ = neighbors_from_orders(partial_orders)
-
-    def wild_gen_fn(name, conf1, conf2, *args):
-        is_initial = (conf1.element is None) and (conf2.element is not None)
-        is_goal = (conf1.element is not None) and (conf2.element is None)
-        if is_initial:
-            supporters = []
-        elif is_goal:
-            supporters = list(element_bodies)
-        else:
-            supporters = [conf1.element]  # TODO: can also do according to levels
-            retrace_supporters(conf1.element, incoming_supporters, supporters)
-        element_obstacles = {element_bodies[e] for e in supporters}
-        obstacles = set(static_obstacles) | element_obstacles
-        if not collisions:
-            obstacles = set()
-
-        robot = index_from_name(robots, name)
-        conf1.assign()
-        joints = get_movable_joints(robot)
-        # TODO: break into pieces at the furthest part from the structure
-
-        weights = JOINT_WEIGHTS
-        resolutions = np.divide(RESOLUTION * np.ones(weights.shape), weights)
-        disabled_collisions = get_disabled_collisions(robot)
-        #path = [conf1, conf2]
-        path = plan_joint_motion(robot, joints, conf2.positions, obstacles=obstacles,
-                                 self_collisions=SELF_COLLISIONS, disabled_collisions=disabled_collisions,
-                                 weights=weights, resolutions=resolutions,
-                                 restarts=3, iterations=100, smooth=100)
-        if not path:
-            return
-        path = [conf1.positions] + path[1:-1] + [conf2.positions]
-        traj = MotionTrajectory(robot, joints, path)
-        command = Command([traj])
-        edges = [
-            (conf1, command, conf2),
-            (conf2, command, conf1), # TODO: reverse
-        ]
-        outputs = []
-        #outputs = [(command,)]
-        facts = []
-        for q1, cmd, q2 in edges:
-            facts.extend([
-                ('Traj', name, cmd),
-                ('CTraj', name, cmd),
-                ('MoveAction', name, q1, q2, cmd),
-            ])
-        yield WildOutput(outputs, facts)
-    return wild_gen_fn
-
-def get_wild_print_gen_fn(robots, static_obstacles, node_points, element_bodies, ground_nodes,
-                          initial_confs={}, return_home=False, collisions=True, **kwargs):
-    # TODO: could reuse end-effector trajectories
-    # TODO: max distance from nearby
-    gen_fn_from_robot = {robot: get_print_gen_fn(robot, static_obstacles, node_points, element_bodies, ground_nodes,
-                                                 p_nearby=1., approach_distance=0.05,
-                                                 precompute_collisions=True, **kwargs) for robot in robots}
-    wild_move_fn = get_wild_move_gen_fn(robots, static_obstacles, element_bodies, **kwargs)
-
-    def wild_gen_fn(name, node1, element, node2):
-        # TODO: could cache this
-        # sequence = [result.get_mapping()['?e'].value for result in CURRENT_STREAM_PLAN]
-        # index = sequence.index(element)
-        # printed = sequence[:index]
-        # TODO: this might need to be recomputed per iteration
-        # TODO: condition on plan/downstream constraints
-        # TODO: stream fusion
-        # TODO: split element into several edges
-        robot = index_from_name(robots, name)
-        #generator = gen_fn_from_robot[robot](node1, element)
-        for print_cmd, in gen_fn_from_robot[robot](node1, element):
-            # TODO: need to merge safe print_cmd.colliding
-            q1 = Conf(robot, print_cmd.start_conf, node=node1, element=element)
-            q2 = Conf(robot, print_cmd.end_conf, node=node2, element=element)
-
-            if return_home:
-                q0 = initial_confs[name]
-                # TODO: can decompose into individual movements as well
-                output1 = next(wild_move_fn(name, q0, q1), None)
-                if not output1:
-                    continue
-                transit_cmd1 = output1.values[0][0]
-                print_cmd.trajectories = transit_cmd1.trajectories + print_cmd.trajectories
-                output2 = next(wild_move_fn(name, q2, q0), None)
-                if not output2:
-                    continue
-                transit_cmd2 = output2.values[0][0]
-                print_cmd.trajectories = print_cmd.trajectories + transit_cmd2.trajectories
-                q1 = q2 = q0 # TODO: must assert that AtConf holds
-
-            outputs = [(q1, q2, print_cmd)]
-            # Prevents premature collision checks
-            facts = [('CTraj', name, print_cmd)] # + [('Dummy',)] # To force to be wild
-            if collisions:
-                facts.extend(('Collision', print_cmd, e2) for e2 in print_cmd.colliding)
-            yield WildOutput(outputs,  facts)
-    return wild_gen_fn
-
-def get_collision_test(robots, collisions=True, **kwargs):
-    # TODO: check end-effector collisions first
-    def test(name1, command1, name2, command2):
-        robot1, robot2 = index_from_name(robots, name1), index_from_name(robots, name2)
-        if (robot1 == robot2) or not collisions:
-            return False
-        # TODO: check collisions between pairs of inflated adjacent element
-        for traj1, traj2 in randomize(product(command1.trajectories, command2.trajectories)):
-            # TODO: use swept aabbs for element checks
-            aabbs1, aabbs2 = traj1.get_aabbs(), traj2.get_aabbs()
-            swept_aabbs1 = {link: aabb_union(link_aabbs[link] for link_aabbs in aabbs1) for link in aabbs1[0]}
-            swept_aabbs2 = {link: aabb_union(link_aabbs[link] for link_aabbs in aabbs2) for link in aabbs2[0]}
-            swept_overlap = [(link1, link2) for link1, link2 in product(swept_aabbs1, swept_aabbs2)
-                             if aabb_overlap(swept_aabbs1[link1], swept_aabbs2[link2])]
-            if not swept_overlap:
-                continue
-            # for l1 in set(map(itemgetter(0), swept_overlap)):
-            #     draw_aabb(swept_aabbs1[l1], color=RED)
-            # for l2 in set(map(itemgetter(1), swept_overlap)):
-            #     draw_aabb(swept_aabbs2[l2], color=BLUE)
-
-            for index1, index2 in product(randomize(range(len(traj1.path))), randomize(range(len(traj2.path)))):
-                overlap = [(link1, link2) for link1, link2 in swept_overlap
-                           if aabb_overlap(aabbs1[index1][link1], aabbs2[index2][link2])]
-                #overlap = list(product(aabbs1[index1], aabbs2[index2]))
-                if not overlap:
-                    continue
-                set_configuration(robot1, traj1.path[index1])
-                set_configuration(robot2, traj2.path[index2])
-                #wait_if_gui()
-                #if pairwise_collision(robot1, robot2):
-                #    return True
-                for link1, link2 in overlap:
-                    if pairwise_link_collision(robot1, link1, robot2, link2):
-                        #wait_if_gui()
-                        return True
-        return False
-    return test
