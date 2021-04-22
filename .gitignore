@@ -10,3 +10,5 @@ gurobi.log
 **~
 **/*.swp
 **/*.~un
+
+.vscode
